@@ -16,16 +16,16 @@ class AnimationControls {
     controls.className = 'anim-controls';
     controls.innerHTML = `
       <button class="anim-btn" data-action="reset" aria-label="重置" title="重置">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12"/><path d="M3 5v7h7"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
       </button>
       <button class="anim-btn" data-action="stepBack" aria-label="上一步" title="上一步">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
       <button class="anim-btn primary" data-action="toggle" aria-label="播放/暂停" title="播放/暂停">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"/></svg>
+        <svg id="play-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"/></svg>
       </button>
       <button class="anim-btn" data-action="step" aria-label="下一步" title="下一步">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
       </button>
       <span class="anim-step-info" id="anim-step-info">${this.stepFormat.replace('{current}', '0').replace('{total}', '1')}</span>
       <select class="anim-speed-select" data-action="speed" aria-label="播放速度">
@@ -79,12 +79,13 @@ class AnimationControls {
 
     const state = this.player.getState();
     const toggleBtn = controls.querySelector('[data-action="toggle"]');
+    const playIcon = controls.querySelector('#play-icon');
     const stepInfo = controls.querySelector('#anim-step-info');
 
-    if (toggleBtn) {
-      toggleBtn.innerHTML = state.isPlaying
-        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
-        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21"/></svg>';
+    if (playIcon) {
+      playIcon.innerHTML = state.isPlaying
+        ? '<rect x="5" y="3" width="4" height="18" fill="currentColor"/><rect x="15" y="3" width="4" height="18" fill="currentColor"/>'
+        : '<polygon points="6 3 20 12 6 21" fill="currentColor"/>';
     }
 
     if (stepInfo) {

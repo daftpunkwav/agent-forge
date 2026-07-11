@@ -30,16 +30,15 @@ class McpAnimation {
           <div style="text-align:center;">
             <div style="font:700 13px/1 var(--font-mono); color:var(--primary); margin-bottom:10px;">LLM Client</div>
             <div id="mcp-client-area" style="min-height:200px; border:1.5px dashed var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:6px; align-items:center;">
-              <div style="font:700 13px/1 var(--font-mono); color:var(--primary);">LLM Client</div>
-              <div style="font-size:12px; color:var(--muted-foreground);">等待连接...</div>
+              <div id="mcp-client-content"></div>
             </div>
           </div>
 
           <!-- Connection -->
           <div style="display:flex; flex-direction:column; align-items:center; gap:2px; padding: 0 8px;">
             <div id="mcp-line-1" style="width:2px; height:50px; background:var(--border); border-radius:1px; transition:all 0.3s;"></div>
-            <div id="mcp-pkt-1" style="width:6px; height:6px; border-radius:50%; background:var(--primary); opacity:0; transition:all 0.3s; font-size:9px; color:var(--primary);">↑</div>
-            <div id="mcp-pkt-2" style="width:6px; height:6px; border-radius:50%; background:var(--chart-2); opacity:0; transition:all 0.3s; font-size:9px; color:var(--chart-2);">↓</div>
+            <div id="mcp-pkt-1" style="width:6px; height:6px; border-radius:50%; background:var(--primary); opacity:0; transition:all 0.3s; font-size:9px; color:var(--primary);">up</div>
+            <div id="mcp-pkt-2" style="width:6px; height:6px; border-radius:50%; background:var(--chart-2); opacity:0; transition:all 0.3s; font-size:9px; color:var(--chart-2);">dn</div>
             <div id="mcp-line-2" style="width:2px; height:50px; background:var(--border); border-radius:1px; transition:all 0.3s;"></div>
             <div style="font:700 10px/1 var(--font-mono); color:var(--muted-foreground); margin-top:4px;">MCP</div>
           </div>
@@ -48,8 +47,7 @@ class McpAnimation {
           <div style="text-align:center;">
             <div style="font:700 13px/1 var(--font-mono); color:var(--chart-2); margin-bottom:10px;">MCP Server</div>
             <div id="mcp-server-area" style="min-height:200px; border:1.5px dashed var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:6px; align-items:center;">
-              <div style="font:700 13px/1 var(--font-mono); color:var(--chart-2);">MCP Server</div>
-              <div style="font-size:12px; color:var(--muted-foreground);">等待请求...</div>
+              <div id="mcp-server-content"></div>
             </div>
           </div>
         </div>
@@ -58,6 +56,11 @@ class McpAnimation {
         </div>
       </div>
     `;
+
+    this.clientContent = this.container.querySelector('#mcp-client-content');
+    this.serverContent = this.container.querySelector('#mcp-server-content');
+    this.clientArea = this.container.querySelector('#mcp-client-area');
+    this.serverArea = this.container.querySelector('#mcp-server-area');
 
     this.player = new AnimationPlayer(this.container, {
       totalSteps: this.steps.length + 1,
@@ -69,18 +72,18 @@ class McpAnimation {
   }
 
   _renderStep(step) {
-    const clientArea = this.container.querySelector('#mcp-client-area');
-    const serverArea = this.container.querySelector('#mcp-server-area');
+    const clientContent = this.clientContent;
+    const serverContent = this.serverContent;
     const desc = this.container.querySelector('#mcp-desc');
     const line1 = this.container.querySelector('#mcp-line-1');
     const line2 = this.container.querySelector('#mcp-line-2');
     const pkt1 = this.container.querySelector('#mcp-pkt-1');
     const pkt2 = this.container.querySelector('#mcp-pkt-2');
-    if (!clientArea || !serverArea) return;
+    if (!clientContent || !serverContent) return;
 
     if (step === 0) {
-      clientArea.innerHTML = '<div style="font:600 11px/1 var(--font-mono); color:var(--primary);">CLIENT</div><div style="font-size:12px; color:var(--muted-foreground);">等待连接...</div>';
-      serverArea.innerHTML = '<div style="font:600 11px/1 var(--font-mono); color:var(--chart-2);">SERVER</div><div style="font-size:12px; color:var(--muted-foreground);">等待请求...</div>';
+      clientContent.innerHTML = '<div style="font:600 11px/1 var(--font-mono); color:var(--primary);">CLIENT</div><div style="font-size:12px; color:var(--muted-foreground);">等待连接...</div>';
+      serverContent.innerHTML = '<div style="font:600 11px/1 var(--font-mono); color:var(--chart-2);">SERVER</div><div style="font-size:12px; color:var(--muted-foreground);">等待请求...</div>';
       line1.style.background = 'var(--border)'; line2.style.background = 'var(--border)';
       pkt1.style.opacity = '0'; pkt2.style.opacity = '0';
       if (desc) desc.textContent = '点击播放按钮，观看MCP协议如何连接LLM与外部工具';
@@ -93,32 +96,32 @@ class McpAnimation {
       case 'connect':
         line1.style.background = 'var(--chart-3)'; line2.style.background = 'var(--chart-3)';
         pkt1.style.opacity = '0.6'; pkt2.style.opacity = '0.6';
-        clientArea.innerHTML = '<div style="font:600 12px/1 var(--font-mono); color:var(--chart-3);">已连接</div>';
-        serverArea.innerHTML = '<div style="font:600 12px/1 var(--font-mono); color:var(--chart-3);">就绪</div>';
+        clientContent.innerHTML = '<div style="font:600 12px/1 var(--font-mono); color:var(--chart-3);">已连接</div>';
+        serverContent.innerHTML = '<div style="font:600 12px/1 var(--font-mono); color:var(--chart-3);">就绪</div>';
         break;
       case 'request':
-        clientArea.innerHTML += this._msgBubble('→ tools/list', 'outgoing');
+        clientContent.innerHTML += this._msgBubble('→ tools/list', 'outgoing');
         pkt1.style.opacity = '1';
         break;
       case 'tools':
-        serverArea.innerHTML += this._msgBubble('← tools/list', 'incoming');
-        serverArea.innerHTML += `<div style="display:flex; flex-wrap:wrap; gap:4px; justify-content:center;">${data.items.map(t =>
+        serverContent.innerHTML += this._msgBubble('← tools/list', 'incoming');
+        serverContent.innerHTML += `<div style="display:flex; flex-wrap:wrap; gap:4px; justify-content:center;">${data.items.map(t =>
           `<span class="tag tag-muted" style="font-size:10px; padding:2px 8px;">${t}</span>`
         ).join('')}</div>`;
         pkt2.style.opacity = '1';
         break;
       case 'resources':
-        serverArea.innerHTML += `<div style="display:flex; flex-wrap:wrap; gap:4px; justify-content:center;">${data.items.map(t =>
+        serverContent.innerHTML += `<div style="display:flex; flex-wrap:wrap; gap:4px; justify-content:center;">${data.items.map(t =>
           `<span class="tag tag-secondary" style="font-size:10px; padding:2px 8px;">${t}</span>`
         ).join('')}</div>`;
         break;
       case 'call':
-        clientArea.innerHTML += this._msgBubble('→ tools/call', 'outgoing');
+        clientContent.innerHTML += this._msgBubble('→ tools/call', 'outgoing');
         pkt1.style.opacity = '1';
         break;
       case 'result':
-        serverArea.innerHTML += this._msgBubble('← result', 'incoming');
-        serverArea.innerHTML += '<div style="font:11px/1.5 var(--font-mono); color:var(--chart-3); padding:6px; background:var(--muted); border-radius:6px;">{"result": "success"}</div>';
+        serverContent.innerHTML += this._msgBubble('← result', 'incoming');
+        serverContent.innerHTML += '<div style="font:11px/1.5 var(--font-mono); color:var(--chart-3); padding:6px; background:var(--muted); border-radius:6px;">{"result": "success"}</div>';
         pkt2.style.opacity = '1';
         break;
       case 'done':

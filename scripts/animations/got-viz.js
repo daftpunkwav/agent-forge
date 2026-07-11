@@ -44,6 +44,15 @@ class GotAnimation {
     `;
 
     this.svg = this.container.querySelector('#got-svg');
+    // Create a nodes overlay layer inside the relative-positioned wrapper
+    const wrapper = this.container.querySelector('div[style*="position:relative"]');
+    if (wrapper) {
+      this.nodesLayer = document.createElement('div');
+      this.nodesLayer.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;';
+      wrapper.appendChild(this.nodesLayer);
+    } else {
+      this.nodesLayer = null;
+    }
     this._drawEdges();
 
     this.player = new AnimationPlayer(this.container, {
@@ -101,7 +110,7 @@ class GotAnimation {
         node.style.top = ent.y + 'px';
         node.textContent = ent.label;
         node.dataset.id = ent.id;
-        const nodesLayer = this.container.querySelector('div > div:nth-child(2)');
+        const nodesLayer = this.nodesLayer;
         if (nodesLayer) {
           nodesLayer.appendChild(node);
           requestAnimationFrame(() => node.classList.add('visible'));
@@ -125,7 +134,7 @@ class GotAnimation {
   pause() { this.player?.pause(); }
   step() { this.player?.step(); }
   reset() {
-    const nodesLayer = this.container.querySelector('div > div:nth-child(2)');
+    const nodesLayer = this.nodesLayer;
     if (nodesLayer) nodesLayer.innerHTML = '';
     this.svg.querySelectorAll('.got-relation').forEach(e => e.classList.remove('highlighted'));
     this.svg.querySelectorAll('.got-label').forEach(e => {

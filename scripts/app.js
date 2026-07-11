@@ -231,8 +231,8 @@
 
   // ── 页面特定脚本初始化 ──
   function initPageScripts(hash) {
-    // 重新初始化Lucide图标
-    if (window.lucide) lucide.createIcons();
+    // 重新初始化图标（预留，当前使用内联SVG）
+    // 图标使用内联SVG，无需额外库
 
     // 滚动入场动画
     initScrollAnimations();
