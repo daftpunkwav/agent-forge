@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Tag } from '@/components/ui/Tag';
 import { TableOfContents } from './TableOfContents';
+import { AnnotationPanel } from './AnnotationPanel';
+import { Link } from 'react-router-dom';
 
 export function ArticleLayout({
   tags,
@@ -8,19 +10,35 @@ export function ArticleLayout({
   summary,
   meta,
   children,
+  articleSlug,
+  articleId,
+  isArticleAuthor,
 }: {
   tags?: ReactNode;
   title: string;
   summary?: string;
   meta?: ReactNode;
   children: ReactNode;
+  articleSlug?: string;
+  articleId?: string;
+  isArticleAuthor?: boolean;
 }) {
   return (
-    <div className="container" style={{ padding: '28px 28px', display: 'flex', gap: 40 }}>
+    <div
+      className="container"
+      style={{
+        padding: '28px 12px',
+        display: 'flex',
+        gap: 24,
+        alignItems: 'flex-start',
+      }}
+    >
       <TableOfContents />
-      <article style={{ flex: 1, minWidth: 0, maxWidth: 760 }}>
+      <article style={{ flex: 1, minWidth: 0, maxWidth: 720 }}>
         <header style={{ marginBottom: 40 }}>
-          {tags ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>{tags}</div> : null}
+          {tags ? (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>{tags}</div>
+          ) : null}
           <h1
             style={{
               fontFamily: 'var(--font-serif)',
@@ -34,7 +52,15 @@ export function ArticleLayout({
             {title}
           </h1>
           {summary ? (
-            <p style={{ fontSize: 17, lineHeight: 1.7, color: 'var(--muted-foreground)', maxWidth: 640, margin: 0 }}>
+            <p
+              style={{
+                fontSize: 17,
+                lineHeight: 1.7,
+                color: 'var(--muted-foreground)',
+                maxWidth: 640,
+                margin: 0,
+              }}
+            >
               {summary}
             </p>
           ) : null}
@@ -53,11 +79,31 @@ export function ArticleLayout({
           <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 600, marginBottom: 12 }}>
             讨论
           </h3>
-          <p style={{ fontSize: 14, color: 'var(--muted-foreground)', fontStyle: 'italic', margin: 0 }}>
-            评论功能即将推出，敬请期待。
+          <p style={{ fontSize: 14, color: 'var(--muted-foreground)', margin: '0 0 12px' }}>
+            可在话题区发帖，并附带本文提出问题或观点。
           </p>
+          {articleSlug ? (
+            <Link
+              to={`/topics?article=${encodeURIComponent(articleSlug)}`}
+              className="btn btn-secondary btn-sm"
+              style={{ textDecoration: 'none' }}
+            >
+              去话题讨论 →
+            </Link>
+          ) : (
+            <Link to="/topics" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>
+              去话题区 →
+            </Link>
+          )}
         </section>
       </article>
+      {articleSlug ? (
+        <AnnotationPanel
+          articleSlug={articleSlug}
+          articleId={articleId}
+          isArticleAuthor={isArticleAuthor}
+        />
+      ) : null}
     </div>
   );
 }

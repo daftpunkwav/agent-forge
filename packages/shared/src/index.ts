@@ -1,6 +1,12 @@
 /** 共享类型与常量 — AgentForge */
 
-export type UserRole = 'reader' | 'author' | 'admin';
+export type { UserRole, AuthorTier, RuntimeIdentity, Permission, Principal } from './permissions.js';
+export {
+  can,
+  isAuthorLike,
+  isAdminLike,
+  roleLabel,
+} from './permissions.js';
 
 export type ArticleStatus = 'draft' | 'published';
 
@@ -18,6 +24,7 @@ export type AnimationTemplate =
   | 'harness';
 
 export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
+export type ApplicationKind = 'author' | 'elite';
 
 export type ArticleCategory =
   | '推理模式'
@@ -31,7 +38,13 @@ export interface PublicUser {
   id: string;
   email: string;
   name: string;
-  role: UserRole;
+  role: import('./permissions.js').UserRole;
+  authorTier: import('./permissions.js').AuthorTier;
+  adminLevel: number;
+  bio?: string;
+  avatarUrl?: string;
+  headline?: string;
+  website?: string;
   createdAt: string;
 }
 
@@ -104,6 +117,33 @@ export interface AuthTokens {
 export interface AuthorApplicationInput {
   field: string;
   bio: string;
+  kind?: ApplicationKind;
+}
+
+/** 话题帖 */
+export interface TopicSummary {
+  id: string;
+  title: string;
+  body: string;
+  kind: 'discussion' | 'question' | 'opinion';
+  status: string;
+  articleId?: string | null;
+  article?: { id: string; slug: string; title: string } | null;
+  author: { id: string; name: string };
+  replyCount: number;
+  createdAt: string;
+}
+
+export interface AnnotationItem {
+  id: string;
+  articleId: string;
+  userId: string;
+  user?: { id: string; name: string };
+  anchorText: string;
+  body: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewBy: 'author' | 'agent' | 'admin' | null;
+  createdAt: string;
 }
 
 /** 文章内动画嵌入语法前缀 */

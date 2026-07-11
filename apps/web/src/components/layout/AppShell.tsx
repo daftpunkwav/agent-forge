@@ -8,6 +8,7 @@ const nav = [
   { to: '/', label: '首页', end: true },
   { to: '/knowledge', label: 'Agent知识' },
   { to: '/llm', label: 'LLM基础' },
+  { to: '/topics', label: '话题' },
   { to: '/news', label: '前沿资讯' },
 ];
 
@@ -308,14 +309,35 @@ export function AppShell() {
               <Link to="/llm" style={{ textDecoration: 'none' }}>
                 LLM基础
               </Link>
+              <Link to="/topics" style={{ textDecoration: 'none' }}>
+                话题
+              </Link>
               <Link to="/profile" style={{ textDecoration: 'none' }}>
                 个人中心
               </Link>
             </div>
           </div>
           <div>
-            <p style={{ fontSize: 12, color: 'var(--muted-foreground)', lineHeight: 1.6 }}>
-              精美动画 · 系统化知识 · 作者共创
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--muted-foreground)',
+                marginBottom: 12,
+              }}
+            >
+              联系我们
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--muted-foreground)', lineHeight: 1.7, margin: 0 }}>
+              <a href="mailto:daftpunk.wav@outlook.com" style={{ color: 'inherit' }}>
+                daftpunk.wav@outlook.com
+              </a>
+              <br />
+              <a href="mailto:daftpunkwav@gmail.com" style={{ color: 'inherit' }}>
+                daftpunkwav@gmail.com
+              </a>
             </p>
           </div>
         </div>

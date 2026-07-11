@@ -85,6 +85,9 @@ export function ArticlePage() {
     <ArticleLayout
       title={article.title}
       summary={article.summary}
+      articleSlug={article.slug}
+      articleId={article.id}
+      isArticleAuthor={Boolean(user && article.author?.id === user.id)}
       tags={
         <ArticleTags
           category={article.category}

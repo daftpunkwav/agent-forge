@@ -127,8 +127,8 @@
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
   --header-h: 64px;
-  /* 略加宽，减少两侧留白 */
-  --page-max: 1560px;
+  /* 内容区宽度（约为原 1560 的 0.9） */
+  --page-max: 1400px;
 }
 
 /* 深色：近黑微灰 */

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
@@ -15,12 +16,16 @@ import {
   AGENT_MODE_META,
   buildDeepSystem,
   buildHoverSystem,
+  extractHoverAnswer,
   extractVisibleAnswer,
   formatMemoryBlock,
 } from '../lib/llm/agentPrompt.js';
 import type { ByokConfig } from '../lib/llm/types.js';
 
 export const agentRouter = Router();
+
+/** 悬停缓存 TTL：7 天 */
+const HOVER_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const explainSchemaFixed = z.object({
   mode: z.enum(['hover', 'click']),
@@ -37,6 +42,7 @@ const explainSchemaFixed = z.object({
 
 const chatSchema = z.object({
   message: z.string().min(1).max(4000),
+  conversationId: z.string().max(64).optional(),
   context: z
     .object({
       route: z.string().max(300).optional(),
@@ -47,6 +53,113 @@ const chatSchema = z.object({
   style: z.string().max(40).optional(),
   mode: z.enum(['fast', 'deep']).optional(),
 });
+
+function hoverCacheKey(topic: string, style: string): string {
+  const norm = topic.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 400);
+  return createHash('sha256').update(`${style}::${norm}`).digest('hex').slice(0, 48);
+}
+
+async function getHoverCache(topic: string, style: string): Promise<string | null> {
+  const key = hoverCacheKey(topic, style);
+  const row = await prisma.hoverExplainCache.findUnique({ where: { cacheKey: key } });
+  if (!row) return null;
+  if (Date.now() - row.updatedAt.getTime() > HOVER_CACHE_TTL_MS) return null;
+  void prisma.hoverExplainCache
+    .update({ where: { cacheKey: key }, data: { hits: { increment: 1 } } })
+    .catch(() => undefined);
+  return row.answer;
+}
+
+async function setHoverCache(topic: string, style: string, answer: string) {
+  if (!answer.trim() || answer.length < 8) return;
+  const key = hoverCacheKey(topic, style);
+  await prisma.hoverExplainCache.upsert({
+    where: { cacheKey: key },
+    create: { cacheKey: key, topic: topic.slice(0, 200), answer: answer.slice(0, 2000) },
+    update: { answer: answer.slice(0, 2000), topic: topic.slice(0, 200) },
+  });
+}
+
+async function ensureConversation(userId: string | undefined, conversationId?: string) {
+  if (conversationId) {
+    const existing = await prisma.agentConversation.findUnique({ where: { id: conversationId } });
+    if (existing && (!userId || existing.userId === userId || !existing.userId)) {
+      return existing;
+    }
+  }
+  return prisma.agentConversation.create({
+    data: {
+      userId: userId || null,
+      title: '对话',
+    },
+  });
+}
+
+async function loadRecentMessages(conversationId: string, take = 12) {
+  return prisma.agentMessage.findMany({
+    where: { conversationId },
+    orderBy: { createdAt: 'desc' },
+    take,
+  });
+}
+
+async function persistTurn(
+  conversationId: string,
+  userMsg: string,
+  assistant: { content: string; thinking?: string },
+) {
+  await prisma.agentMessage.createMany({
+    data: [
+      { conversationId, role: 'user', content: userMsg.slice(0, 4000) },
+      {
+        conversationId,
+        role: 'assistant',
+        content: assistant.content.slice(0, 8000),
+        thinking: (assistant.thinking || '').slice(0, 4000),
+      },
+    ],
+  });
+  // 滚动摘要：超过 20 条时压缩最旧事实
+  const count = await prisma.agentMessage.count({ where: { conversationId } });
+  if (count > 24) {
+    const old = await prisma.agentMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'asc' },
+      take: 8,
+    });
+    const snippet = old
+      .map((m) => `${m.role}: ${m.content.slice(0, 80)}`)
+      .join(' | ')
+      .slice(0, 500);
+    await prisma.agentConversation.update({
+      where: { id: conversationId },
+      data: { summary: snippet, updatedAt: new Date() },
+    });
+  } else {
+    await prisma.agentConversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: new Date() },
+    });
+  }
+}
+
+async function maybeSaveImportantMemory(userId: string | undefined, userMsg: string, answer: string) {
+  if (!userId) return;
+  // 用户明确要求记住 / 偏好
+  if (/请记住|记住：|我的偏好|以后.*用/.test(userMsg)) {
+    const key = `pref:${userMsg.slice(0, 40)}`;
+    await prisma.agentMemory.upsert({
+      where: { userId_key: { userId, key } },
+      create: {
+        userId,
+        key,
+        value: `${userMsg.slice(0, 120)} → ${answer.slice(0, 200)}`,
+        kind: 'preference',
+      },
+      update: { value: `${userMsg.slice(0, 120)} → ${answer.slice(0, 200)}` },
+    });
+  }
+}
 
 function parsePrefs(raw?: string | null): Record<string, unknown> {
   try {
@@ -226,12 +339,30 @@ agentRouter.post('/explain', optionalAuth, validate(explainSchemaFixed), async (
   try {
     const body = req.body as z.infer<typeof explainSchemaFixed>;
     const prep = await runExplain(body, req.user?.id);
+
+    if (prep.isHover) {
+      const cached = await getHoverCache(prep.topic, prep.style);
+      if (cached) {
+        res.json({
+          explanation: cached,
+          mode: body.mode,
+          model: 'cache',
+          format: 'cache',
+          style: prep.style,
+          providerId: 'hover-cache',
+          cached: true,
+          meta: AGENT_MODE_META.fast,
+        });
+        return;
+      }
+    }
+
     let result;
     try {
       result = await callLlm(
         {
           mode: prep.isHover ? 'fast' : 'deep',
-          maxTokens: prep.isHover ? 700 : 2048,
+          maxTokens: prep.isHover ? 500 : 2048,
           messages: [
             { role: 'system', content: prep.system },
             { role: 'user', content: prep.userMsg },
@@ -242,14 +373,19 @@ agentRouter.post('/explain', optionalAuth, validate(explainSchemaFixed), async (
     } catch (e) {
       throw llmError(e);
     }
+    const explanation = prep.isHover
+      ? extractHoverAnswer(result.thinking || '', result.text || '')
+      : extractVisibleAnswer(result.thinking || '', result.text || '').answer;
+    if (prep.isHover && explanation) void setHoverCache(prep.topic, prep.style, explanation);
     void rememberTopic(req.user?.id, prep.topic, body.mode);
     res.json({
-      explanation: result.text,
+      explanation,
       mode: body.mode,
       model: result.model,
       format: result.format,
       style: prep.style,
       providerId: prep.provider.id,
+      cached: false,
       meta: prep.isHover ? AGENT_MODE_META.fast : AGENT_MODE_META.deep,
     });
   } catch (e) {
@@ -266,6 +402,27 @@ agentRouter.post(
       const body = req.body as z.infer<typeof explainSchemaFixed>;
       const prep = await runExplain(body, req.user?.id);
       initSse(res);
+
+      if (prep.isHover) {
+        const cached = await getHoverCache(prep.topic, prep.style);
+        if (cached) {
+          sseWrite(res, {
+            type: 'meta',
+            model: 'cache',
+            format: 'cache',
+            providerId: 'hover-cache',
+            mode: body.mode,
+            style: prep.style,
+            cached: true,
+            meta: AGENT_MODE_META.fast,
+          });
+          sseWrite(res, { type: 'final', answer: cached, thinking: '' });
+          sseWrite(res, { type: 'done' });
+          res.end();
+          return;
+        }
+      }
+
       sseWrite(res, {
         type: 'meta',
         model: prep.provider.model,
@@ -291,7 +448,7 @@ agentRouter.post(
         )) {
           if (chunk.kind === 'thinking') {
             thinkingAcc += chunk.text;
-            // 悬停模式不把思考内容推给前端，只发状态
+            // 悬停永不推 thinking 正文
             if (prep.isHover) {
               sseWrite(res, { type: 'status', status: 'thinking' });
             } else {
@@ -299,7 +456,6 @@ agentRouter.post(
             }
           } else {
             textAcc += chunk.text;
-            // 悬停：等 final 再给正文，避免半成品/思考泄漏
             if (!prep.isHover) {
               sseWrite(res, { type: 'delta', text: chunk.text });
             } else {
@@ -307,18 +463,13 @@ agentRouter.post(
             }
           }
         }
-        const visible = extractVisibleAnswer(thinkingAcc, textAcc);
-        // 悬停：只推精炼最终答案；助手：推 final 覆盖清洗后的答案
         if (prep.isHover) {
-          if (visible.answer) {
-            sseWrite(res, { type: 'delta', text: visible.answer });
-          }
-          sseWrite(res, {
-            type: 'final',
-            answer: visible.answer,
-            thinking: '', // 悬停永不暴露思考
-          });
+          const answer = extractHoverAnswer(thinkingAcc, textAcc);
+          if (answer) void setHoverCache(prep.topic, prep.style, answer);
+          // 仅 final，不把思考当 delta
+          sseWrite(res, { type: 'final', answer: answer || '暂无讲解', thinking: '' });
         } else {
+          const visible = extractVisibleAnswer(thinkingAcc, textAcc);
           sseWrite(res, {
             type: 'final',
             answer: visible.answer,
@@ -349,10 +500,31 @@ agentRouter.post('/chat', optionalAuth, validate(chatSchema), async (req, res, n
 
     const style = body.style || ctx.style;
     const mode = body.mode || 'deep';
-    const system =
+    const conv = await ensureConversation(req.user?.id, body.conversationId);
+    const recent = await loadRecentMessages(conv.id);
+    const historyBlock = recent
+      .reverse()
+      .map((m) => `${m.role}: ${m.content.slice(0, 400)}`)
+      .join('\n');
+    const systemBase =
       mode === 'fast'
         ? buildHoverSystem(style, ctx.memoryBlock)
         : buildDeepSystem(style, ctx.memoryBlock);
+    const system = [
+      systemBase,
+      conv.summary ? `【会话摘要】\n${conv.summary}` : '',
+      historyBlock ? `【近期对话】\n${historyBlock}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    const userContent = [
+      body.message,
+      body.context?.route ? `（当前路由 ${body.context.route}）` : '',
+      body.context?.articleSlug ? `（文章 ${body.context.articleSlug}）` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     let result;
     try {
@@ -362,16 +534,7 @@ agentRouter.post('/chat', optionalAuth, validate(chatSchema), async (req, res, n
           maxTokens: mode === 'fast' ? 700 : 2048,
           messages: [
             { role: 'system', content: system },
-            {
-              role: 'user',
-              content: [
-                body.message,
-                body.context?.route ? `（当前路由 ${body.context.route}）` : '',
-                body.context?.articleSlug ? `（文章 ${body.context.articleSlug}）` : '',
-              ]
-                .filter(Boolean)
-                .join('\n'),
-            },
+            { role: 'user', content: userContent },
           ],
         },
         provider,
@@ -380,10 +543,18 @@ agentRouter.post('/chat', optionalAuth, validate(chatSchema), async (req, res, n
       throw llmError(e);
     }
 
+    const visible = extractVisibleAnswer(result.thinking || '', result.text || '');
+    await persistTurn(conv.id, body.message, {
+      content: visible.answer,
+      thinking: visible.thinking,
+    });
     void rememberTopic(req.user?.id, body.message, 'chat');
+    void maybeSaveImportantMemory(req.user?.id, body.message, visible.answer);
 
     res.json({
-      reply: result.text,
+      reply: visible.answer,
+      thinking: visible.thinking,
+      conversationId: conv.id,
       model: result.model,
       format: result.format,
       style,
@@ -404,10 +575,31 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
 
     const style = body.style || ctx.style;
     const mode = body.mode || 'deep';
-    const system =
+    const conv = await ensureConversation(req.user?.id, body.conversationId);
+    const recent = await loadRecentMessages(conv.id);
+    const historyBlock = recent
+      .reverse()
+      .map((m) => `${m.role}: ${m.content.slice(0, 400)}`)
+      .join('\n');
+    const systemBase =
       mode === 'fast'
         ? buildHoverSystem(style, ctx.memoryBlock)
         : buildDeepSystem(style, ctx.memoryBlock);
+    const system = [
+      systemBase,
+      conv.summary ? `【会话摘要】\n${conv.summary}` : '',
+      historyBlock ? `【近期对话】\n${historyBlock}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    const userContent = [
+      body.message,
+      body.context?.route ? `（当前路由 ${body.context.route}）` : '',
+      body.context?.articleSlug ? `（文章 ${body.context.articleSlug}）` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     initSse(res);
     sseWrite(res, {
@@ -417,6 +609,7 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
       providerId: provider.id,
       mode,
       style,
+      conversationId: conv.id,
       meta: mode === 'fast' ? AGENT_MODE_META.fast : AGENT_MODE_META.deep,
     });
 
@@ -429,16 +622,7 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
           maxTokens: mode === 'fast' ? 500 : 2048,
           messages: [
             { role: 'system', content: system },
-            {
-              role: 'user',
-              content: [
-                body.message,
-                body.context?.route ? `（当前路由 ${body.context.route}）` : '',
-                body.context?.articleSlug ? `（文章 ${body.context.articleSlug}）` : '',
-              ]
-                .filter(Boolean)
-                .join('\n'),
-            },
+            { role: 'user', content: userContent },
           ],
         },
         provider,
@@ -461,7 +645,6 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
       }
       const visible = extractVisibleAnswer(thinkingAcc, textAcc);
       if (mode === 'fast') {
-        if (visible.answer) sseWrite(res, { type: 'delta', text: visible.answer });
         sseWrite(res, { type: 'final', answer: visible.answer, thinking: '' });
       } else {
         sseWrite(res, {
@@ -471,7 +654,12 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
         });
       }
       sseWrite(res, { type: 'done' });
+      await persistTurn(conv.id, body.message, {
+        content: visible.answer,
+        thinking: visible.thinking,
+      });
       void rememberTopic(req.user?.id, body.message, 'chat');
+      void maybeSaveImportantMemory(req.user?.id, body.message, visible.answer);
     } catch (e) {
       sseWrite(res, {
         type: 'error',

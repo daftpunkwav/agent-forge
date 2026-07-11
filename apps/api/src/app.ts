@@ -9,6 +9,8 @@ import { applicationsRouter } from './routes/applications.js';
 import { agentRouter } from './routes/agent.js';
 import { domainsRouter } from './routes/domains.js';
 import { settingsRouter } from './routes/settings.js';
+import { topicsRouter } from './routes/topics.js';
+import { annotationsRouter } from './routes/annotations.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 export function createApp() {
@@ -54,11 +56,16 @@ export function createApp() {
   app.use('/api/v1/domains', domainsRouter);
   app.use('/api/v1/settings', settingsRouter);
   app.use('/api/v1/agent', agentLimiter, agentRouter);
+  app.use('/api/v1/topics', topicsRouter);
+  app.use('/api/v1/annotations', annotationsRouter);
 
-  // 评论预留
-  app.post('/api/v1/comments', (_req, res) => {
-    res.status(501).json({
-      error: { code: 'NOT_IMPLEMENTED', message: '评论功能即将推出' },
+  // MCP 协议入口预留（未来接 services/mcp）
+  app.get('/api/v1/mcp/status', (_req, res) => {
+    res.json({
+      ok: true,
+      protocol: 'mcp',
+      status: 'reserved',
+      message: 'MCP Server 骨架已预留，详见 services/mcp',
     });
   });
 

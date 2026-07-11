@@ -72,11 +72,24 @@ async function main() {
 
   const admin = await prisma.user.upsert({
     where: { email },
-    update: { role: 'admin', name, passwordHash },
-    create: { email, name, passwordHash, role: 'admin' },
+    update: {
+      role: 'admin',
+      name,
+      passwordHash,
+      adminLevel: 100,
+      authorTier: 'elite',
+    },
+    create: {
+      email,
+      name,
+      passwordHash,
+      role: 'admin',
+      adminLevel: 100,
+      authorTier: 'elite',
+    },
   });
 
-  console.log(`[seed] admin: ${admin.email}`);
+  console.log(`[seed] super admin (level 100): ${admin.email}`);
 
   const domainMap = new Map<string, string>();
   for (const d of DOMAIN_DEFS) {

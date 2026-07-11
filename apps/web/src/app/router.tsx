@@ -16,6 +16,7 @@ import { ArticleEditorPage } from '@/pages/author/ArticleEditorPage';
 import { AnimationEditorPage } from '@/pages/author/AnimationEditorPage';
 import { ApplyAuthorPage } from '@/pages/author/ApplyAuthorPage';
 import { ApplicationsAdminPage } from '@/pages/author/ApplicationsAdminPage';
+import { TopicDetailPage, TopicsPage } from '@/pages/TopicsPage';
 
 export const router = createBrowserRouter([
   {
@@ -30,6 +31,8 @@ export const router = createBrowserRouter([
       { path: 'domains/:slug', element: <DomainDetailPage /> },
       { path: 'search', element: <SearchPage /> },
       { path: 'news', element: <NewsPage /> },
+      { path: 'topics', element: <TopicsPage /> },
+      { path: 'topics/:id', element: <TopicDetailPage /> },
       { path: 'login', element: <LoginPage /> },
       { path: 'register', element: <RegisterPage /> },
       { path: 'profile', element: <ProfilePage /> },

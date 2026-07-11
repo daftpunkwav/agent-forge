@@ -75,6 +75,8 @@ export const api = {
     q?: string;
     page?: number;
     pageSize?: number;
+    sort?: 'latest' | 'popular';
+    exclude?: string[];
   }) => {
     const q = new URLSearchParams();
     if (params?.status) q.set('status', params.status);
@@ -86,6 +88,8 @@ export const api = {
     if (params?.q) q.set('q', params.q);
     if (params?.page) q.set('page', String(params.page));
     if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+    if (params?.sort) q.set('sort', params.sort);
+    if (params?.exclude?.length) q.set('exclude', params.exclude.join(','));
     const qs = q.toString();
     return request<PageResult<ArticleSummary>>(`/articles${qs ? `?${qs}` : ''}`);
   },
@@ -129,11 +133,75 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  applyAuthor: (body: { field: string; bio: string }) =>
+  applyAuthor: (body: { field: string; bio: string; kind?: 'author' | 'elite' }) =>
     request<{ application: unknown }>('/author-applications', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  updateProfile: (body: Record<string, unknown>) =>
+    request<{ user: PublicUser; accessToken?: string }>('/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  listTopics: (params?: { page?: number; pageSize?: number; articleId?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+    if (params?.articleId) q.set('articleId', params.articleId);
+    const qs = q.toString();
+    return request<PageResult<import('@agentforge/shared').TopicSummary>>(
+      `/topics${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  getTopic: (id: string) =>
+    request<{
+      topic: import('@agentforge/shared').TopicSummary;
+      replies: { id: string; body: string; createdAt: string; author: { id: string; name: string } }[];
+    }>(`/topics/${id}`),
+
+  createTopic: (body: {
+    title: string;
+    body: string;
+    kind?: string;
+    articleId?: string;
+    articleSlug?: string;
+  }) =>
+    request<{ topic: import('@agentforge/shared').TopicSummary }>('/topics', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  replyTopic: (id: string, body: string) =>
+    request<{ reply: unknown }>(`/topics/${id}/replies`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
+
+  listAnnotations: (slugOrId: string) =>
+    request<{ items: import('@agentforge/shared').AnnotationItem[]; articleId: string }>(
+      `/annotations/article/${slugOrId}`,
+    ),
+
+  createAnnotation: (body: {
+    articleId?: string;
+    articleSlug?: string;
+    anchorText?: string;
+    sectionId?: string;
+    body: string;
+  }) =>
+    request<{ annotation: import('@agentforge/shared').AnnotationItem }>('/annotations', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  reviewAnnotation: (id: string, status: 'approved' | 'rejected', note?: string) =>
+    request<{ annotation: import('@agentforge/shared').AnnotationItem }>(
+      `/annotations/${id}/review`,
+      { method: 'PATCH', body: JSON.stringify({ status, note }) },
+    ),
 
   listApplications: () => request<{ items: unknown[] }>('/author-applications'),
 
@@ -241,11 +309,19 @@ export const api = {
 
   agentChat: (body: {
     message: string;
+    conversationId?: string;
     context?: { route?: string; articleSlug?: string; sectionId?: string };
     style?: string;
     mode?: 'fast' | 'deep';
   }) =>
-    request<{ reply: string; model: string; format: string; style: string }>('/agent/chat', {
+    request<{
+      reply: string;
+      thinking?: string;
+      conversationId?: string;
+      model: string;
+      format: string;
+      style: string;
+    }>('/agent/chat', {
       method: 'POST',
       body: JSON.stringify(body),
     }),

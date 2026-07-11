@@ -9,9 +9,12 @@ const SKIP_CLOSEST =
   '.agent-float, .agent-hover-tip, .agent-panel, header, footer, nav, .anim-controls, .anim-shell-header, .anim-btn';
 
 export function isKnowledgeRoute(pathname: string): boolean {
+  if (pathname === '/' || pathname === '') return true; // 首页热门/最新卡片
   if (pathname === '/knowledge' || pathname.startsWith('/knowledge/')) return true;
   if (pathname === '/llm' || pathname.startsWith('/llm/')) return true;
   if (pathname.startsWith('/domains/')) return true;
+  if (pathname === '/search' || pathname.startsWith('/search')) return true;
+  if (pathname === '/topics' || pathname.startsWith('/topics/')) return true;
   return false;
 }
 

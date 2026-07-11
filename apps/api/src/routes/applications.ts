@@ -9,26 +9,41 @@ import { param } from '../lib/params.js';
 const applySchema = z.object({
   field: z.string().min(1).max(120),
   bio: z.string().min(10, '请至少写 10 字自我介绍').max(2000),
+  kind: z.enum(['author', 'elite']).optional(),
 });
 
 export const applicationsRouter = Router();
 
 applicationsRouter.post('/', requireAuth, validate(applySchema), async (req, res, next) => {
   try {
-    if (req.user!.role === 'author' || req.user!.role === 'admin') {
-      throw badRequest('你已经是作者或管理员');
-    }
-    const pending = await prisma.authorApplication.findFirst({
-      where: { userId: req.user!.id, status: 'pending' },
-    });
-    if (pending) throw conflict('你已有待审核的申请');
-
     const body = req.body as z.infer<typeof applySchema>;
+    const kind = body.kind || 'author';
+
+    if (kind === 'author') {
+      if (req.user!.role === 'author' || req.user!.role === 'admin') {
+        throw badRequest('你已经是作者或管理员');
+      }
+    } else {
+      // 优秀作者：必须已是作者且未 elite
+      if (req.user!.role !== 'author') {
+        throw badRequest('请先成为作者后再申请优秀作者');
+      }
+      if (req.user!.authorTier === 'elite') {
+        throw badRequest('你已是优秀作者');
+      }
+    }
+
+    const pending = await prisma.authorApplication.findFirst({
+      where: { userId: req.user!.id, status: 'pending', kind },
+    });
+    if (pending) throw conflict('你已有待审核的同类申请');
+
     const app = await prisma.authorApplication.create({
       data: {
         userId: req.user!.id,
         field: body.field,
         bio: body.bio,
+        kind,
       },
     });
     res.status(201).json({ application: app });
@@ -37,22 +52,21 @@ applicationsRouter.post('/', requireAuth, validate(applySchema), async (req, res
   }
 });
 
-applicationsRouter.get(
-  '/',
-  requireAuth,
-  requireRole('admin'),
-  async (_req, res, next) => {
-    try {
-      const items = await prisma.authorApplication.findMany({
-        orderBy: { createdAt: 'desc' },
-        include: { user: { select: { id: true, email: true, name: true, role: true } } },
-      });
-      res.json({ items });
-    } catch (e) {
-      next(e);
-    }
-  },
-);
+applicationsRouter.get('/', requireAuth, requireRole('admin'), async (_req, res, next) => {
+  try {
+    const items = await prisma.authorApplication.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: { id: true, email: true, name: true, role: true, authorTier: true },
+        },
+      },
+    });
+    res.json({ items });
+  } catch (e) {
+    next(e);
+  }
+});
 
 applicationsRouter.patch(
   '/:id',
@@ -80,10 +94,17 @@ applicationsRouter.patch(
           data: { status, reviewedAt: new Date() },
         });
         if (status === 'approved') {
-          await tx.user.update({
-            where: { id: existing.userId },
-            data: { role: 'author' },
-          });
+          if (existing.kind === 'elite') {
+            await tx.user.update({
+              where: { id: existing.userId },
+              data: { role: 'author', authorTier: 'elite' },
+            });
+          } else {
+            await tx.user.update({
+              where: { id: existing.userId },
+              data: { role: 'author', authorTier: 'standard' },
+            });
+          }
         }
         return updated;
       });

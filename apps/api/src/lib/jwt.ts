@@ -1,10 +1,12 @@
 import jwt from 'jsonwebtoken';
-import type { UserRole } from '@agentforge/shared';
+import type { AuthorTier, UserRole } from '@agentforge/shared';
 
 export interface JwtPayload {
   sub: string;
   email: string;
   role: UserRole;
+  authorTier?: AuthorTier;
+  adminLevel?: number;
 }
 
 function secret(): string {

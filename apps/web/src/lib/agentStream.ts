@@ -10,6 +10,8 @@ export type StreamEvent =
       providerId?: string;
       mode?: string;
       style?: string;
+      conversationId?: string;
+      cached?: boolean;
       meta?: unknown;
     }
   | { type: 'status'; status: 'thinking' | 'answering' }

@@ -1,13 +1,15 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError } from '@/lib/api';
 import { Field, Select, TextArea } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 
 export function ApplyAuthorPage() {
-  const { user, isAuthor, loading } = useAuth();
+  const { user, isAuthor, isEliteAuthor, isAdmin, loading } = useAuth();
   const navigate = useNavigate();
+  const [sp] = useSearchParams();
+  const kind = sp.get('kind') === 'elite' ? 'elite' : 'author';
   const [field, setField] = useState('');
   const [bio, setBio] = useState('');
   const [error, setError] = useState('');
@@ -20,8 +22,12 @@ export function ApplyAuthorPage() {
     setOk('');
     setSubmitting(true);
     try {
-      await api.applyAuthor({ field, bio });
-      setOk('申请已提交，管理员审核通过后你将获得作者权限。');
+      await api.applyAuthor({ field, bio, kind });
+      setOk(
+        kind === 'elite'
+          ? '优秀作者申请已提交，管理员审核中。'
+          : '申请已提交，管理员审核通过后你将获得作者权限。',
+      );
       setTimeout(() => navigate('/profile'), 1500);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '提交失败');
@@ -43,7 +49,7 @@ export function ApplyAuthorPage() {
     );
   }
 
-  if (isAuthor) {
+  if (kind === 'author' && (isAuthor || isAdmin)) {
     return (
       <div className="container" style={{ padding: 64, textAlign: 'center' }}>
         <h2 style={{ fontFamily: 'var(--font-serif)' }}>你已是作者</h2>
@@ -54,12 +60,29 @@ export function ApplyAuthorPage() {
     );
   }
 
+  if (kind === 'elite' && (!isAuthor || isEliteAuthor || isAdmin)) {
+    return (
+      <div className="container" style={{ padding: 64, textAlign: 'center' }}>
+        <h2 style={{ fontFamily: 'var(--font-serif)' }}>
+          {isEliteAuthor || isAdmin ? '你已是优秀作者/管理员' : '请先成为作者'}
+        </h2>
+        <Link to="/profile" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+          返回个人中心
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 560, margin: '0 auto', padding: '64px 24px' }}>
       <div style={{ textAlign: 'center', marginBottom: 28 }}>
-        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 28, margin: '0 0 8px' }}>申请成为作者</h1>
+        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 28, margin: '0 0 8px' }}>
+          {kind === 'elite' ? '申请优秀作者' : '申请成为作者'}
+        </h1>
         <p style={{ margin: 0, color: 'var(--muted-foreground)', fontSize: 14 }}>
-          分享高质量 Agent 知识，使用 Markdown 与动画工具
+          {kind === 'elite'
+            ? '优秀作者可获得更高内容权重，并参与协作审核'
+            : '分享高质量 Agent 知识，使用 Markdown 与动画工具'}
         </p>
       </div>
       <div className="card" style={{ padding: 28 }}>
@@ -83,14 +106,6 @@ export function ApplyAuthorPage() {
             {submitting ? '提交中…' : '提交申请'}
           </Button>
         </form>
-      </div>
-      <div className="card" style={{ marginTop: 20, background: 'var(--muted)' }}>
-        <h3 style={{ fontSize: 15, marginTop: 0 }}>作者权益</h3>
-        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, lineHeight: 1.9 }}>
-          <li>发布高质量技术文章</li>
-          <li>模板化动画步骤编辑与文章嵌入</li>
-          <li>Markdown 编辑与预览</li>
-        </ul>
       </div>
     </div>
   );

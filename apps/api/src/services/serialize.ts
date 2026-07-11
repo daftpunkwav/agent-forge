@@ -1,12 +1,27 @@
-import type { Article, AnimationDef, User } from '@prisma/client';
-import type { PublicUser, ArticleSummary, ArticleDetail, AnimationDef as AnimDTO } from '@agentforge/shared';
+import type { Article, AnimationDef, User, Topic, Annotation } from '@prisma/client';
+import type {
+  PublicUser,
+  ArticleSummary,
+  ArticleDetail,
+  AnimationDef as AnimDTO,
+  TopicSummary,
+  AnnotationItem,
+  AuthorTier,
+  UserRole,
+} from '@agentforge/shared';
 
 export function toPublicUser(u: User): PublicUser {
   return {
     id: u.id,
     email: u.email,
     name: u.name,
-    role: u.role as PublicUser['role'],
+    role: u.role as UserRole,
+    authorTier: (u.authorTier as AuthorTier) || 'none',
+    adminLevel: u.adminLevel ?? 0,
+    bio: u.bio || undefined,
+    avatarUrl: u.avatarUrl || undefined,
+    headline: u.headline || undefined,
+    website: u.website || undefined,
     createdAt: u.createdAt.toISOString(),
   };
 }
@@ -79,6 +94,43 @@ export function toArticleDetail(
     ...toArticleSummary(a),
     markdown: a.markdown,
     animations: a.animations?.map((x) => toAnimationDef(x.animation)),
+  };
+}
+
+export function toTopicSummary(
+  t: Topic & {
+    author: Pick<User, 'id' | 'name'>;
+    article?: { id: string; slug: string; title: string } | null;
+    _count?: { replies: number };
+  },
+): TopicSummary {
+  return {
+    id: t.id,
+    title: t.title,
+    body: t.body,
+    kind: t.kind as TopicSummary['kind'],
+    status: t.status,
+    articleId: t.articleId,
+    article: t.article ?? null,
+    author: { id: t.author.id, name: t.author.name },
+    replyCount: t._count?.replies ?? 0,
+    createdAt: t.createdAt.toISOString(),
+  };
+}
+
+export function toAnnotationItem(
+  a: Annotation & { user?: Pick<User, 'id' | 'name'> },
+): AnnotationItem {
+  return {
+    id: a.id,
+    articleId: a.articleId,
+    userId: a.userId,
+    user: a.user ? { id: a.user.id, name: a.user.name } : undefined,
+    anchorText: a.anchorText,
+    body: a.body,
+    status: a.status as AnnotationItem['status'],
+    reviewBy: (a.reviewBy as AnnotationItem['reviewBy']) ?? null,
+    createdAt: a.createdAt.toISOString(),
   };
 }
 

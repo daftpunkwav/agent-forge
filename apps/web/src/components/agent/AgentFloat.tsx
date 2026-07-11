@@ -52,9 +52,12 @@ export function AgentFloat() {
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeEl = useRef<HTMLElement | null>(null);
-  const hoverCache = useRef<Map<string, string>>(new Map());
+  /** key → { text, at } 本地复用，TTL 与服务端一致 */
+  const hoverCache = useRef<Map<string, { text: string; at: number }>>(new Map());
+  const HOVER_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const abortRef = useRef<AbortController | null>(null);
   const tipPinned = useRef(false);
+  const conversationIdRef = useRef<string | null>(null);
   /** 当前会话：后台已预取，是否已过 2s 可展示 */
   const sessionRef = useRef<{
     gen: number;
@@ -222,13 +225,37 @@ export function AgentFloat() {
     }, HOVER_LEAVE_KEEP_MS);
   }
 
+  function readCache(key: string): string | null {
+    const hit = hoverCache.current.get(key);
+    if (!hit) return null;
+    if (Date.now() - hit.at > HOVER_CACHE_TTL_MS) {
+      hoverCache.current.delete(key);
+      return null;
+    }
+    return hit.text;
+  }
+
   function pushCache(key: string, text: string) {
     if (!text.trim()) return;
-    hoverCache.current.set(key, text);
-    if (hoverCache.current.size > 60) {
+    // 过滤误把思考草稿当答案的缓存
+    if (/思考过程|我需要：|结构如下|###\s*Thought/i.test(text.slice(0, 80))) return;
+    hoverCache.current.set(key, { text, at: Date.now() });
+    if (hoverCache.current.size > 80) {
       const first = hoverCache.current.keys().next().value;
       if (first) hoverCache.current.delete(first);
     }
+  }
+
+  function sanitizeHoverAnswer(raw: string): string {
+    const s = (raw || '').trim();
+    if (!s) return '';
+    if (/思考过程|写作计划|我需要：|结构如下/i.test(s.slice(0, 60))) {
+      const parts = s.split(/\n{2,}/).filter((p) => p.trim().length > 12);
+      const last = parts[parts.length - 1]?.trim() || '';
+      if (last && !/思考过程|我需要/.test(last.slice(0, 40))) return last.slice(0, 480);
+      return '';
+    }
+    return s.slice(0, 480);
   }
 
   function canFireRequest(): { ok: boolean; wait: number } {
@@ -298,7 +325,7 @@ export function AgentFloat() {
 
       const gen = ++genRef.current;
       const topic = info.text.slice(0, 80);
-      const cached = hoverCache.current.get(key);
+      const cached = readCache(key);
 
       // 若已有展示中的 tip，切换时先渐出旧的
       if (sessionRef.current?.revealed) {
@@ -391,7 +418,7 @@ export function AgentFloat() {
             }
 
             if (ev.type === 'final' && ev.answer != null) {
-              acc = ev.answer;
+              acc = sanitizeHoverAnswer(ev.answer) || sanitizeHoverAnswer(acc) || '暂无讲解';
               s.buffer = acc;
               s.loading = false;
               pushCache(key, acc);
@@ -400,15 +427,13 @@ export function AgentFloat() {
               return;
             }
 
-            // 悬停不展示流式 delta，只缓存
+            // 悬停：忽略 delta 正文（防止思考泄漏）；仅 final 采用
             if (ev.type === 'delta' && ev.text) {
-              acc = ev.text;
-              s.buffer = acc;
               return;
             }
 
             if (ev.type === 'done') {
-              s.buffer = acc || s.buffer;
+              s.buffer = sanitizeHoverAnswer(acc || s.buffer) || s.buffer || '暂无讲解';
               s.loading = false;
               if (s.buffer) pushCache(key, s.buffer);
               if (inflightKeyRef.current === key) inflightKeyRef.current = null;
@@ -679,12 +704,16 @@ export function AgentFloat() {
           message: msg,
           style,
           mode: 'deep',
+          conversationId: conversationIdRef.current || undefined,
           context: { route: location.pathname },
         },
         (ev) => {
+          if (ev.type === 'meta' && (ev as { conversationId?: string }).conversationId) {
+            conversationIdRef.current = (ev as { conversationId?: string }).conversationId || null;
+          }
           if (ev.type === 'thinking' && ev.text) {
             thinking += ev.text;
-            patchLastAssistant({ thinking, streaming: true });
+            patchLastAssistant({ thinking, streaming: true, thinkingOpen: false });
           }
           if (ev.type === 'delta' && ev.text) {
             answer += ev.text;
@@ -782,7 +811,7 @@ export function AgentFloat() {
         <div className={`agent-panel${open ? ' open' : ''}`}>
           <div className="agent-panel-header">
             <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, letterSpacing: '0.05em' }}>
-              AGENT 助手
+              AGENT
             </span>
             <div style={{ display: 'flex', gap: 4 }}>
               <button
@@ -867,55 +896,64 @@ export function AgentFloat() {
                   </div>
                   {m.role === 'assistant' ? (
                     <>
-                      {(m.thinking || (m.streaming && !m.text)) && (
-                        <details
-                          open={m.thinkingOpen}
-                          style={{ marginBottom: 8 }}
-                          onToggle={(e) => {
-                            const open = (e.target as HTMLDetailsElement).open;
-                            setMessages((list) =>
-                              list.map((msg, idx) =>
-                                idx === i ? { ...msg, thinkingOpen: open } : msg,
-                              ),
-                            );
+                      {/* 发送后即展示「思考过程」字样，默认收起 */}
+                      <details
+                        open={Boolean(m.thinkingOpen)}
+                        style={{ marginBottom: 8 }}
+                        onToggle={(e) => {
+                          const open = (e.target as HTMLDetailsElement).open;
+                          setMessages((list) =>
+                            list.map((msg, idx) =>
+                              idx === i ? { ...msg, thinkingOpen: open } : msg,
+                            ),
+                          );
+                        }}
+                      >
+                        <summary
+                          style={{
+                            cursor: 'pointer',
+                            fontSize: 12,
+                            color: 'var(--muted-foreground)',
+                            userSelect: 'none',
                           }}
                         >
-                          <summary
+                          思考过程
+                        </summary>
+                        {m.thinking ? (
+                          <div
                             style={{
-                              cursor: 'pointer',
-                              fontSize: 12,
+                              marginTop: 6,
+                              padding: 8,
+                              borderRadius: 8,
+                              background: 'var(--muted)',
+                              fontSize: 11,
+                              lineHeight: 1.45,
                               color: 'var(--muted-foreground)',
-                              userSelect: 'none',
+                              maxHeight: 160,
+                              overflow: 'auto',
+                              whiteSpace: 'pre-wrap',
                             }}
                           >
-                            {m.streaming && !m.text ? '…' : '推理细节'}
-                          </summary>
-                          {m.thinking ? (
-                            <div
-                              style={{
-                                marginTop: 6,
-                                padding: 8,
-                                borderRadius: 8,
-                                background: 'var(--muted)',
-                                fontSize: 11,
-                                lineHeight: 1.45,
-                                color: 'var(--muted-foreground)',
-                                maxHeight: 160,
-                                overflow: 'auto',
-                                whiteSpace: 'pre-wrap',
-                              }}
-                            >
-                              {m.thinking}
-                            </div>
-                          ) : (
-                            <div className="agent-thinking-indicator" style={{ marginTop: 6 }}>
-                              <span className="agent-thinking-dot" />
-                              <span className="agent-thinking-dot" style={{ animationDelay: '0.2s' }} />
-                              <span className="agent-thinking-dot" style={{ animationDelay: '0.4s' }} />
-                            </div>
-                          )}
-                        </details>
-                      )}
+                            {m.thinking}
+                          </div>
+                        ) : m.streaming ? (
+                          <div className="agent-thinking-indicator" style={{ marginTop: 6 }}>
+                            <span className="agent-thinking-dot" />
+                            <span className="agent-thinking-dot" style={{ animationDelay: '0.2s' }} />
+                            <span className="agent-thinking-dot" style={{ animationDelay: '0.4s' }} />
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              marginTop: 6,
+                              fontSize: 11,
+                              color: 'var(--muted-foreground)',
+                            }}
+                          >
+                            （无额外推理内容）
+                          </div>
+                        )}
+                      </details>
                       {m.text ? (
                         <MarkdownView source={m.text} compact />
                       ) : m.streaming ? null : (
@@ -949,14 +987,14 @@ export function AgentFloat() {
         <button
           type="button"
           className="agent-float-btn"
-          aria-label="Agent助手"
+          aria-label="Agent"
           onClick={(e) => {
             e.stopPropagation();
             setOpen((v) => !v);
           }}
         >
           <span className="agent-float-dot" />
-          <span>Agent 助手</span>
+          <span>Agent</span>
         </button>
       </div>
     </>

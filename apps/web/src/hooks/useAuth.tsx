@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { PublicUser } from '@agentforge/shared';
+import { can, isAdminLike, isAuthorLike, roleLabel } from '@agentforge/shared';
 import { api, setToken } from '@/lib/api';
 
 interface AuthCtx {
@@ -17,8 +18,13 @@ interface AuthCtx {
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  /** 作者或管理员 */
   isAuthor: boolean;
   isAdmin: boolean;
+  isEliteAuthor: boolean;
+  isGuest: boolean;
+  roleLabel: string;
+  can: (perm: Parameters<typeof can>[1]) => boolean;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -68,6 +74,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const principal = useMemo(
+    () =>
+      user
+        ? {
+            role: user.role,
+            authorTier: user.authorTier || 'none',
+            adminLevel: user.adminLevel ?? 0,
+          }
+        : { role: 'guest' as const },
+    [user],
+  );
+
   const value = useMemo(
     () => ({
       user,
@@ -76,10 +94,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       logout,
       refresh,
-      isAuthor: user?.role === 'author' || user?.role === 'admin',
-      isAdmin: user?.role === 'admin',
+      isAuthor: isAuthorLike(principal),
+      isAdmin: isAdminLike(principal, 1),
+      isEliteAuthor: user?.role === 'author' && user?.authorTier === 'elite',
+      isGuest: !user,
+      roleLabel: roleLabel(
+        user ? user.role : 'guest',
+        user?.authorTier,
+        user?.adminLevel,
+      ),
+      can: (perm: Parameters<typeof can>[1]) => can(principal, perm),
     }),
-    [user, loading, login, register, logout, refresh],
+    [user, loading, login, register, logout, refresh, principal],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

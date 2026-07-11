@@ -84,12 +84,26 @@ articlesRouter.get('/', optionalAuth, async (req, res, next) => {
       ];
     }
 
+    const sort = String(req.query.sort || 'latest');
+    const excludeIds = String(req.query.exclude || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (excludeIds.length) {
+      where.id = { notIn: excludeIds };
+    }
+
+    const orderBy =
+      sort === 'popular'
+        ? ([{ viewCount: 'desc' as const }, { publishedAt: 'desc' as const }] as const)
+        : ([{ publishedAt: 'desc' as const }, { updatedAt: 'desc' as const }] as const);
+
     const [total, items] = await Promise.all([
       prisma.article.count({ where }),
       prisma.article.findMany({
         where,
         include: { author: { select: { id: true, name: true } }, domain: true },
-        orderBy: [{ publishedAt: 'desc' }, { updatedAt: 'desc' }],
+        orderBy: [...orderBy],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

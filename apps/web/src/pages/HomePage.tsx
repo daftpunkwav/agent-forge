@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import type { ArticleSummary } from '@agentforge/shared';
@@ -41,23 +41,144 @@ const DOMAINS = [
   },
 ];
 
+const PAGE_SIZE = 6;
+
+function ArticleFeedCard({ a, agentIntro }: { a: ArticleSummary; agentIntro?: boolean }) {
+  const intro = agentIntro
+    ? `「${a.title}」· ${a.level} · ${a.readMinutes} 分钟。${(a.summary || '').slice(0, 80)}`
+    : a.summary;
+
+  return (
+    <Link
+      to={`/knowledge/${a.slug}`}
+      className="card card-hover article-feed-card"
+      data-agent-zone="knowledge"
+      data-agent-term={a.title}
+      data-agent-text={intro}
+      data-agent-topic
+      data-agent-hint={a.summary?.slice(0, 100)}
+      style={{ textDecoration: 'none', display: 'block', opacity: 0, animation: 'feed-in 0.45s ease forwards' }}
+    >
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <Tag variant="primary">{a.category}</Tag>
+        <Tag>{a.level}</Tag>
+        <Tag>{a.readMinutes} min</Tag>
+        {typeof a.viewCount === 'number' && a.viewCount > 0 ? <Tag>{a.viewCount} 阅</Tag> : null}
+      </div>
+      <div style={{ fontFamily: 'var(--font-serif)', fontSize: 17, fontWeight: 600 }}>{a.title}</div>
+      <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--muted-foreground)', lineHeight: 1.55 }}>
+        {intro}
+      </p>
+    </Link>
+  );
+}
+
+function InfiniteColumn({
+  title,
+  eyebrow,
+  sort,
+  excludeIds,
+  onIds,
+}: {
+  title: string;
+  eyebrow: string;
+  sort: 'latest' | 'popular';
+  excludeIds: string[];
+  onIds: (ids: string[]) => void;
+}) {
+  const [items, setItems] = useState<ArticleSummary[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [boot, setBoot] = useState(true);
+  const sentinel = useRef<HTMLDivElement>(null);
+  const excludeKey = excludeIds.join(',');
+
+  const load = useCallback(
+    async (p: number, replace: boolean) => {
+      setLoading(true);
+      try {
+        const r = await api.listArticles({
+          status: 'published',
+          page: p,
+          pageSize: PAGE_SIZE,
+          sort,
+          exclude: excludeIds.length ? excludeIds : undefined,
+        });
+        setItems((prev) => (replace ? r.items : [...prev, ...r.items]));
+        setTotalPages(r.totalPages || 1);
+        setPage(p);
+        const all = replace ? r.items : [...items, ...r.items];
+        onIds(all.map((x) => x.id));
+      } catch {
+        if (replace) setItems([]);
+      } finally {
+        setLoading(false);
+        setBoot(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sort, excludeKey],
+  );
+
+  useEffect(() => {
+    void load(1, true);
+  }, [load]);
+
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting) && !loading && page < totalPages) {
+          void load(page + 1, false);
+        }
+      },
+      { rootMargin: '120px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [load, loading, page, totalPages]);
+
+  return (
+    <section style={{ minWidth: 0 }}>
+      <div className="eyebrow" style={{ marginBottom: 10 }}>
+        {eyebrow}
+      </div>
+      <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 24, margin: '0 0 16px' }}>{title}</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {boot && items.length === 0 ? (
+          Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="card skeleton-card" style={{ height: 110 }} />
+          ))
+        ) : items.length === 0 ? (
+          <p style={{ color: 'var(--muted-foreground)', fontSize: 14 }}>暂无文章</p>
+        ) : (
+          items.map((a, i) => (
+            <div key={a.id} style={{ animationDelay: `${Math.min(i, 6) * 0.05}s` }}>
+              <ArticleFeedCard a={a} agentIntro />
+            </div>
+          ))
+        )}
+        {loading && !boot ? (
+          <div className="card skeleton-card" style={{ height: 72 }} aria-hidden />
+        ) : null}
+        <div ref={sentinel} style={{ height: 8 }} />
+      </div>
+    </section>
+  );
+}
+
 export function HomePage() {
   const [mode, setMode] = useState<ViewMode>(() => {
     const s = localStorage.getItem('agentforge-view-mode');
     return s === 'list' ? 'list' : 'grid';
   });
-  const [articles, setArticles] = useState<ArticleSummary[]>([]);
+  const [latestIds, setLatestIds] = useState<string[]>([]);
 
   useEffect(() => {
     localStorage.setItem('agentforge-view-mode', mode);
   }, [mode]);
-
-  useEffect(() => {
-    api
-      .listArticles({ status: 'published' })
-      .then((r) => setArticles(r.items.slice(0, 6)))
-      .catch(() => setArticles([]));
-  }, []);
 
   const gridStyle = useMemo(
     () =>
@@ -65,7 +186,7 @@ export function HomePage() {
         ? {
             display: 'grid',
             gap: 20,
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
           }
         : {
             display: 'flex',
@@ -77,7 +198,7 @@ export function HomePage() {
 
   return (
     <div className="container" style={{ paddingBottom: 64 }}>
-      <section style={{ padding: '72px 0 48px' }}>
+      <section style={{ padding: '64px 0 40px' }}>
         <div className="eyebrow" style={{ marginBottom: 20 }}>
           LEARN · BUILD · MASTER
         </div>
@@ -86,10 +207,10 @@ export function HomePage() {
             fontFamily: 'var(--font-serif)',
             fontWeight: 600,
             letterSpacing: '-0.025em',
-            fontSize: 'clamp(36px, 4.5vw, 56px)',
+            fontSize: 'clamp(34px, 4.2vw, 52px)',
             lineHeight: 1.1,
             margin: 0,
-            maxWidth: 720,
+            maxWidth: 680,
           }}
         >
           掌握 Agent 开发的
@@ -98,9 +219,9 @@ export function HomePage() {
         </h1>
         <p
           style={{
-            marginTop: 20,
-            maxWidth: 540,
-            fontSize: 17,
+            marginTop: 18,
+            maxWidth: 520,
+            fontSize: 16,
             lineHeight: 1.7,
             color: 'var(--muted-foreground)',
           }}
@@ -108,12 +229,12 @@ export function HomePage() {
           从 ReAct 到 MCP，从 Prompt 工程到记忆系统——以可交互动画可视化抽象概念，系统化知识帮助你从零到一成为
           Agent 开发者。
         </p>
-        <div style={{ marginTop: 32, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ marginTop: 28, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
           <Link to="/knowledge" className="btn btn-primary btn-lg" style={{ textDecoration: 'none' }}>
             开始学习
           </Link>
-          <Link to="/knowledge/react" className="btn btn-ghost btn-lg" style={{ textDecoration: 'none' }}>
-            查看 ReAct 动画 →
+          <Link to="/topics" className="btn btn-ghost btn-lg" style={{ textDecoration: 'none' }}>
+            社区话题 →
           </Link>
         </div>
       </section>
@@ -137,7 +258,7 @@ export function HomePage() {
               style={{
                 fontFamily: 'var(--font-serif)',
                 fontWeight: 600,
-                fontSize: 'clamp(26px, 3vw, 36px)',
+                fontSize: 'clamp(24px, 3vw, 34px)',
                 margin: 0,
               }}
             >
@@ -221,29 +342,47 @@ export function HomePage() {
         </div>
       </section>
 
-      {articles.length > 0 && (
-        <section style={{ marginTop: 64 }}>
-          <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 28, marginBottom: 20 }}>最新文章</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {articles.map((a) => (
-              <Link
-                key={a.id}
-                to={`/knowledge/${a.slug}`}
-                className="card card-hover"
-                style={{ textDecoration: 'none', display: 'block' }}
-              >
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                  <Tag variant="primary">{a.category}</Tag>
-                  <Tag>{a.level}</Tag>
-                  <Tag>{a.readMinutes} min</Tag>
-                </div>
-                <div style={{ fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 600 }}>{a.title}</div>
-                <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--muted-foreground)' }}>{a.summary}</p>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* 左热门 · 右最新；最新优先，热门排除最新已出现 */}
+      <section
+        style={{
+          marginTop: 56,
+          display: 'grid',
+          gap: 32,
+          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+        }}
+      >
+        <InfiniteColumn
+          title="热门文章"
+          eyebrow="POPULAR"
+          sort="popular"
+          excludeIds={latestIds}
+          onIds={() => undefined}
+        />
+        <InfiniteColumn
+          title="最新文章"
+          eyebrow="LATEST"
+          sort="latest"
+          excludeIds={[]}
+          onIds={setLatestIds}
+        />
+      </section>
+
+      <style>{`
+        @keyframes feed-in {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .skeleton-card {
+          background: linear-gradient(90deg, var(--muted) 25%, var(--card) 50%, var(--muted) 75%);
+          background-size: 200% 100%;
+          animation: shimmer 1.2s ease infinite;
+          border: 1px solid var(--border);
+        }
+        @keyframes shimmer {
+          0% { background-position: 100% 0; }
+          100% { background-position: -100% 0; }
+        }
+      `}</style>
     </div>
   );
 }

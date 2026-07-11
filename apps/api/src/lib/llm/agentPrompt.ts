@@ -29,9 +29,11 @@ export function buildHoverSystem(style?: string, memoryBlock?: string): string {
     '【推理模式】Fast Direct：内部思考用户不可见，对外只给结论。',
     '【硬性输出规则】',
     '- 只输出最终讲解，禁止输出写作计划、提纲、检查清单、自我提醒',
-    '- 禁止「我需要」「首先得」「结构如下」等元叙述',
+    '- 禁止「我需要」「首先得」「结构如下」「思考过程」等元叙述',
+    '- 禁止输出 Thought/Explain 标题或任何内部推理轨迹',
     '- 中文，精炼：最多 3 句或 4 个短 bullet',
     '- 1 个类比即可，不要展开成长文',
+    '- 适合卡片快览，不要长段落',
     styleInstruction(style),
     memoryBlock
       ? `【用户记忆】\n${memoryBlock}\n已掌握的少讲。`
@@ -72,12 +74,63 @@ export function buildDeepSystem(style?: string, memoryBlock?: string): string {
  * 从「思考草稿 + 正文」中拆出用户可见答案。
  * StepFun 常把策划全文放在 thinking 里，真正结构从 ### Thought 开始。
  */
+const PLANNING_HINT =
+  /我需要|结构如下|写作计划|检查清单|首先得|语气：|当前学习|内部思考|推理过程|Thought\s*[:：]|###\s*Thought|自我提醒|策划/;
+
+/**
+ * 悬停专用：只允许短讲解，拒绝把模型「思考草稿」当正文。
+ */
+export function extractHoverAnswer(thinking: string, text: string): string {
+  const t = (text || '').trim();
+  const th = (thinking || '').trim();
+
+  // 优先干净正文
+  if (t && !PLANNING_HINT.test(t.slice(0, 80)) && t.length <= 600) {
+    return trimHover(t);
+  }
+  if (t && t.length > 0) {
+    const cleaned = stripPlanningPreamble(t);
+    if (cleaned.answer && !PLANNING_HINT.test(cleaned.answer.slice(0, 40))) {
+      return trimHover(cleaned.answer);
+    }
+  }
+
+  // thinking 里若有像讲解的短段落（非策划）
+  if (th) {
+    const parts = th.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+    const good = [...parts].reverse().find(
+      (p) =>
+        p.length >= 12 &&
+        p.length <= 400 &&
+        !PLANNING_HINT.test(p.slice(0, 60)) &&
+        !/^[-*]\s*(需要|禁止|结构)/.test(p),
+    );
+    if (good) return trimHover(good);
+  }
+
+  if (t) return trimHover(t.slice(0, 400));
+  return '';
+}
+
+function trimHover(s: string): string {
+  const lines = s
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !PLANNING_HINT.test(l));
+  return lines.join('\n').slice(0, 480).trim();
+}
+
 export function extractVisibleAnswer(thinking: string, text: string): { answer: string; thinking: string } {
   const t = (text || '').trim();
   const th = (thinking || '').trim();
 
   // 正文已有结构标题：优先正文
   if (t && (/^#{1,3}\s*Thought/im.test(t) || t.length > 40)) {
+    // 若正文其实是策划稿，仍拆分
+    if (PLANNING_HINT.test(t.slice(0, 100)) && th) {
+      const cleaned = stripPlanningPreamble(t);
+      if (cleaned.thinking) return cleaned;
+    }
     return { answer: t, thinking: th };
   }
 
@@ -104,7 +157,9 @@ export function extractVisibleAnswer(thinking: string, text: string): { answer: 
   if (cleaned.answer) return cleaned;
 
   if (t) return { answer: t, thinking: th };
-  if (th) return { answer: th, thinking: '' };
+  // 悬停/深度均不应把原始 thinking 当唯一答案时误暴露全过程
+  if (th && !PLANNING_HINT.test(th.slice(0, 40))) return { answer: th, thinking: '' };
+  if (th) return { answer: '', thinking: th };
   return { answer: '', thinking: '' };
 }
 
