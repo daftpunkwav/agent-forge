@@ -13,7 +13,6 @@ export function ProfilePage() {
   const [headline, setHeadline] = useState('');
   const [bio, setBio] = useState('');
   const [website, setWebsite] = useState('');
-  const [allowAgent, setAllowAgent] = useState(false);
   const [msg, setMsg] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -50,7 +49,6 @@ export function ProfilePage() {
         headline,
         bio,
         website,
-        allowAgentAnnotationReview: allowAgent,
       });
       if (r.accessToken) setToken(r.accessToken);
       await refresh();
@@ -93,16 +91,6 @@ export function ProfilePage() {
           <Field label="网站">
             <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
           </Field>
-          {isAuthor && (
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14 }}>
-              <input
-                type="checkbox"
-                checked={allowAgent}
-                onChange={(e) => setAllowAgent(e.target.checked)}
-              />
-              允许 Agent 审核文章批注（需你本人同意）
-            </label>
-          )}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Button disabled={saving} onClick={() => void saveProfile()}>
               保存资料

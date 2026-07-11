@@ -1,106 +1,68 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useState, type FormEvent } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { TopicSummary } from '@agentforge/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select, TextArea } from '@/components/ui/Input';
 
+/** 话题列表：以浏览为主，发布入口独立 */
 export function TopicsPage() {
   const { can, user } = useAuth();
   const [items, setItems] = useState<TopicSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [kind, setKind] = useState<'discussion' | 'question' | 'opinion'>('discussion');
-  const [articleSlug, setArticleSlug] = useState('');
-  const [err, setErr] = useState('');
-
-  async function reload() {
-    setLoading(true);
-    try {
-      const r = await api.listTopics({ pageSize: 30 });
-      setItems(r.items);
-    } catch {
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   useEffect(() => {
-    void reload();
+    setLoading(true);
+    api
+      .listTopics({ pageSize: 40 })
+      .then((r) => setItems(r.items))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
   }, []);
-
-  async function create() {
-    setErr('');
-    try {
-      await api.createTopic({
-        title,
-        body,
-        kind,
-        articleSlug: articleSlug.trim() || undefined,
-      });
-      setTitle('');
-      setBody('');
-      setArticleSlug('');
-      await reload();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : '发布失败');
-    }
-  }
 
   return (
     <div className="container" style={{ padding: '40px 24px 80px', maxWidth: 880 }}>
-      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 36, marginBottom: 8 }}>社区话题</h1>
-      <p style={{ color: 'var(--muted-foreground)', marginTop: 0 }}>
-        讨论、提问与观点；可附带文章 slug。登录读者及以上可发帖。
-      </p>
-
-      {can('topic.post') ? (
-        <section className="card" style={{ marginBottom: 28 }}>
-          <h2 style={{ fontSize: 16, marginTop: 0 }}>发帖</h2>
-          <div style={{ display: 'grid', gap: 10 }}>
-            <Field label="标题">
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-            </Field>
-            <Field label="类型">
-              <Select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
-                <option value="discussion">讨论</option>
-                <option value="question">提问</option>
-                <option value="opinion">观点</option>
-              </Select>
-            </Field>
-            <Field label="关联文章 slug（可选）">
-              <Input
-                value={articleSlug}
-                onChange={(e) => setArticleSlug(e.target.value)}
-                placeholder="react"
-              />
-            </Field>
-            <Field label="正文">
-              <TextArea value={body} onChange={(e) => setBody(e.target.value)} rows={5} />
-            </Field>
-            {err ? <span style={{ color: 'var(--destructive)', fontSize: 13 }}>{err}</span> : null}
-            <Button disabled={!title.trim() || !body.trim()} onClick={() => void create()}>
-              发布
-            </Button>
-          </div>
-        </section>
-      ) : (
-        <p style={{ fontSize: 14, color: 'var(--muted-foreground)' }}>
-          {user ? '当前身份无法发帖' : (
-            <>
-              <Link to="/login">登录</Link> 后可以发帖
-            </>
-          )}
-        </p>
-      )}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          gap: 16,
+          marginBottom: 8,
+        }}
+      >
+        <div>
+          <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 36, margin: '0 0 8px' }}>社区话题</h1>
+          <p style={{ color: 'var(--muted-foreground)', margin: 0 }}>
+            浏览讨论、提问与观点；可附带知识文章展开交流。
+          </p>
+        </div>
+        {can('topic.post') ? (
+          <Link to="/topics/new" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
+            发布话题
+          </Link>
+        ) : (
+          <Link to="/login" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>
+            {user ? '无发帖权限' : '登录后发布'}
+          </Link>
+        )}
+      </div>
 
       {loading ? (
-        <p>加载中…</p>
+        <p style={{ color: 'var(--muted-foreground)', marginTop: 32 }}>加载中…</p>
+      ) : items.length === 0 ? (
+        <div className="card" style={{ marginTop: 28 }}>
+          <p style={{ margin: 0 }}>还没有话题。</p>
+          {can('topic.post') ? (
+            <Link to="/topics/new" style={{ fontSize: 14 }}>
+              成为第一个发帖的人 →
+            </Link>
+          ) : null}
+        </div>
       ) : (
-        <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'grid', gap: 12, marginTop: 28 }}>
           {items.map((t) => (
             <Link
               key={t.id}
@@ -114,6 +76,7 @@ export function TopicsPage() {
               <div style={{ fontWeight: 600, fontSize: 17 }}>{t.title}</div>
               <p style={{ margin: '8px 0 0', fontSize: 14, color: 'var(--muted-foreground)' }}>
                 {t.body.slice(0, 160)}
+                {t.body.length > 160 ? '…' : ''}
               </p>
               {t.article ? (
                 <div style={{ marginTop: 8, fontSize: 12, color: 'var(--primary)' }}>
@@ -124,6 +87,95 @@ export function TopicsPage() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** 发布话题（独立入口） */
+export function TopicNewPage() {
+  const { can, user } = useAuth();
+  const navigate = useNavigate();
+  const [sp] = useSearchParams();
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [kind, setKind] = useState<'discussion' | 'question' | 'opinion'>('discussion');
+  const [articleSlug, setArticleSlug] = useState(sp.get('article') || '');
+  const [err, setErr] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  if (!user) {
+    return (
+      <div className="container" style={{ padding: 64, textAlign: 'center' }}>
+        <h2 style={{ fontFamily: 'var(--font-serif)' }}>请先登录</h2>
+        <Link to="/login" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+          去登录
+        </Link>
+      </div>
+    );
+  }
+
+  if (!can('topic.post')) {
+    return (
+      <div className="container" style={{ padding: 64, textAlign: 'center' }}>
+        <h2 style={{ fontFamily: 'var(--font-serif)' }}>当前身份无法发帖</h2>
+        <Link to="/topics" style={{ fontSize: 14 }}>
+          返回话题列表
+        </Link>
+      </div>
+    );
+  }
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setErr('');
+    setSubmitting(true);
+    try {
+      const r = await api.createTopic({
+        title: title.trim(),
+        body: body.trim(),
+        kind,
+        articleSlug: articleSlug.trim() || undefined,
+      });
+      navigate(`/topics/${r.topic.id}`);
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : '发布失败');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="container" style={{ padding: '40px 24px 80px', maxWidth: 640 }}>
+      <Link to="/topics" style={{ fontSize: 13 }}>
+        ← 返回话题
+      </Link>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 28, marginTop: 12 }}>发布话题</h1>
+      <form className="card" onSubmit={onSubmit} style={{ marginTop: 20 }}>
+        <Field label="标题">
+          <Input required value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
+        </Field>
+        <Field label="类型">
+          <Select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+            <option value="discussion">讨论</option>
+            <option value="question">提问</option>
+            <option value="opinion">观点</option>
+          </Select>
+        </Field>
+        <Field label="关联文章 slug（可选）">
+          <Input
+            value={articleSlug}
+            onChange={(e) => setArticleSlug(e.target.value)}
+            placeholder="react"
+          />
+        </Field>
+        <Field label="正文">
+          <TextArea required value={body} onChange={(e) => setBody(e.target.value)} rows={8} />
+        </Field>
+        {err ? <p style={{ color: 'var(--destructive)', fontSize: 13 }}>{err}</p> : null}
+        <Button type="submit" disabled={submitting || !title.trim() || !body.trim()}>
+          {submitting ? '发布中…' : '发布'}
+        </Button>
+      </form>
     </div>
   );
 }

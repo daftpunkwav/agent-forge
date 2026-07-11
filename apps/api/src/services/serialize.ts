@@ -1,11 +1,10 @@
-import type { Article, AnimationDef, User, Topic, Annotation } from '@prisma/client';
+import type { Article, AnimationDef, User, Topic } from '@prisma/client';
 import type {
   PublicUser,
   ArticleSummary,
   ArticleDetail,
   AnimationDef as AnimDTO,
   TopicSummary,
-  AnnotationItem,
   AuthorTier,
   UserRole,
 } from '@agentforge/shared';
@@ -115,22 +114,6 @@ export function toTopicSummary(
     author: { id: t.author.id, name: t.author.name },
     replyCount: t._count?.replies ?? 0,
     createdAt: t.createdAt.toISOString(),
-  };
-}
-
-export function toAnnotationItem(
-  a: Annotation & { user?: Pick<User, 'id' | 'name'> },
-): AnnotationItem {
-  return {
-    id: a.id,
-    articleId: a.articleId,
-    userId: a.userId,
-    user: a.user ? { id: a.user.id, name: a.user.name } : undefined,
-    anchorText: a.anchorText,
-    body: a.body,
-    status: a.status as AnnotationItem['status'],
-    reviewBy: (a.reviewBy as AnnotationItem['reviewBy']) ?? null,
-    createdAt: a.createdAt.toISOString(),
   };
 }
 

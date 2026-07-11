@@ -19,13 +19,22 @@ import {
   extractHoverAnswer,
   extractVisibleAnswer,
   formatMemoryBlock,
+  isCompleteHoverAnswer,
 } from '../lib/llm/agentPrompt.js';
 import type { ByokConfig } from '../lib/llm/types.js';
 
 export const agentRouter = Router();
 
-/** 悬停缓存 TTL：7 天 */
-const HOVER_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * 悬停缓存（工业级两层语义，此处为 L2 服务端）
+ * - 默认 TTL 2h：热区会话复用、控制成本
+ * - 高命中（hits≥8）延长至 24h：热点知识点少打 LLM
+ * - 超过 hard cap 一律失效；写库前 isCompleteHoverAnswer 质检
+ * - 仅缓存完整 final，中断/半截永不入库
+ */
+const HOVER_CACHE_TTL_DEFAULT_MS = 2 * 60 * 60 * 1000;
+const HOVER_CACHE_TTL_HOT_MS = 24 * 60 * 60 * 1000;
+const HOVER_CACHE_HOT_HITS = 8;
 
 const explainSchemaFixed = z.object({
   mode: z.enum(['hover', 'click']),
@@ -63,7 +72,14 @@ async function getHoverCache(topic: string, style: string): Promise<string | nul
   const key = hoverCacheKey(topic, style);
   const row = await prisma.hoverExplainCache.findUnique({ where: { cacheKey: key } });
   if (!row) return null;
-  if (Date.now() - row.updatedAt.getTime() > HOVER_CACHE_TTL_MS) return null;
+  // 质检：历史脏数据直接删掉，避免半截答案反复命中
+  if (!isCompleteHoverAnswer(row.answer)) {
+    void prisma.hoverExplainCache.delete({ where: { cacheKey: key } }).catch(() => undefined);
+    return null;
+  }
+  const age = Date.now() - row.updatedAt.getTime();
+  const ttl = row.hits >= HOVER_CACHE_HOT_HITS ? HOVER_CACHE_TTL_HOT_MS : HOVER_CACHE_TTL_DEFAULT_MS;
+  if (age > ttl) return null;
   void prisma.hoverExplainCache
     .update({ where: { cacheKey: key }, data: { hits: { increment: 1 } } })
     .catch(() => undefined);
@@ -71,12 +87,12 @@ async function getHoverCache(topic: string, style: string): Promise<string | nul
 }
 
 async function setHoverCache(topic: string, style: string, answer: string) {
-  if (!answer.trim() || answer.length < 8) return;
+  if (!isCompleteHoverAnswer(answer)) return;
   const key = hoverCacheKey(topic, style);
   await prisma.hoverExplainCache.upsert({
     where: { cacheKey: key },
-    create: { cacheKey: key, topic: topic.slice(0, 200), answer: answer.slice(0, 2000) },
-    update: { answer: answer.slice(0, 2000), topic: topic.slice(0, 200) },
+    create: { cacheKey: key, topic: topic.slice(0, 200), answer: answer.slice(0, 1200) },
+    update: { answer: answer.slice(0, 1200), topic: topic.slice(0, 200) },
   });
 }
 
@@ -362,7 +378,7 @@ agentRouter.post('/explain', optionalAuth, validate(explainSchemaFixed), async (
       result = await callLlm(
         {
           mode: prep.isHover ? 'fast' : 'deep',
-          maxTokens: prep.isHover ? 500 : 2048,
+          maxTokens: prep.isHover ? 700 : 2048,
           messages: [
             { role: 'system', content: prep.system },
             { role: 'user', content: prep.userMsg },
@@ -438,7 +454,7 @@ agentRouter.post(
         for await (const chunk of streamLlm(
           {
             mode: prep.isHover ? 'fast' : 'deep',
-            maxTokens: prep.isHover ? 500 : 2048,
+            maxTokens: prep.isHover ? 700 : 2048,
             messages: [
               { role: 'system', content: prep.system },
               { role: 'user', content: prep.userMsg },
@@ -446,6 +462,10 @@ agentRouter.post(
           },
           prep.provider,
         )) {
+          // 客户端已断开：停止生成，且不写缓存
+          if (res.writableEnded || res.destroyed) {
+            return;
+          }
           if (chunk.kind === 'thinking') {
             thinkingAcc += chunk.text;
             // 悬停永不推 thinking 正文
@@ -463,11 +483,19 @@ agentRouter.post(
             }
           }
         }
+        if (res.writableEnded || res.destroyed) {
+          return;
+        }
         if (prep.isHover) {
           const answer = extractHoverAnswer(thinkingAcc, textAcc);
+          // 仅完整答案才缓存；半截不写库
           if (answer) void setHoverCache(prep.topic, prep.style, answer);
-          // 仅 final，不把思考当 delta
-          sseWrite(res, { type: 'final', answer: answer || '暂无讲解', thinking: '' });
+          sseWrite(res, {
+            type: 'final',
+            answer: answer || '暂无讲解',
+            thinking: '',
+            complete: Boolean(answer),
+          });
         } else {
           const visible = extractVisibleAnswer(thinkingAcc, textAcc);
           sseWrite(res, {

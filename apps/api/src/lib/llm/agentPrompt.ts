@@ -31,7 +31,8 @@ export function buildHoverSystem(style?: string, memoryBlock?: string): string {
     '- 只输出最终讲解，禁止输出写作计划、提纲、检查清单、自我提醒',
     '- 禁止「我需要」「首先得」「结构如下」「思考过程」等元叙述',
     '- 禁止输出 Thought/Explain 标题或任何内部推理轨迹',
-    '- 中文，精炼：最多 3 句或 4 个短 bullet',
+    '- 中文，精炼：2～4 句完整句子，或最多 4 个短 bullet',
+    '- 每句必须写完（以。！？结尾），禁止半截收束',
     '- 1 个类比即可，不要展开成长文',
     '- 适合卡片快览，不要长段落',
     styleInstruction(style),
@@ -79,45 +80,86 @@ const PLANNING_HINT =
 
 /**
  * 悬停专用：只允许短讲解，拒绝把模型「思考草稿」当正文。
+ * 截断优先落在句号，避免「…路线，GoT」这类半截缓存。
  */
 export function extractHoverAnswer(thinking: string, text: string): string {
   const t = (text || '').trim();
   const th = (thinking || '').trim();
 
-  // 优先干净正文
-  if (t && !PLANNING_HINT.test(t.slice(0, 80)) && t.length <= 600) {
-    return trimHover(t);
-  }
-  if (t && t.length > 0) {
+  let candidate = '';
+
+  if (t && !PLANNING_HINT.test(t.slice(0, 80))) {
+    candidate = trimHover(t);
+  } else if (t) {
     const cleaned = stripPlanningPreamble(t);
     if (cleaned.answer && !PLANNING_HINT.test(cleaned.answer.slice(0, 40))) {
-      return trimHover(cleaned.answer);
+      candidate = trimHover(cleaned.answer);
     }
   }
 
-  // thinking 里若有像讲解的短段落（非策划）
-  if (th) {
+  if (!candidate && th) {
     const parts = th.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
     const good = [...parts].reverse().find(
       (p) =>
-        p.length >= 12 &&
-        p.length <= 400 &&
+        p.length >= 24 &&
+        p.length <= 700 &&
         !PLANNING_HINT.test(p.slice(0, 60)) &&
         !/^[-*]\s*(需要|禁止|结构)/.test(p),
     );
-    if (good) return trimHover(good);
+    if (good) candidate = trimHover(good);
   }
 
-  if (t) return trimHover(t.slice(0, 400));
-  return '';
+  if (!candidate && t) candidate = trimHover(t);
+
+  return isCompleteHoverAnswer(candidate) ? candidate : '';
 }
 
-function trimHover(s: string): string {
+/** 句末优先截断，避免硬切半句 */
+function trimHover(s: string, max = 560): string {
   const lines = s
     .split('\n')
     .map((l) => l.trim())
     .filter((l) => l && !PLANNING_HINT.test(l));
-  return lines.join('\n').slice(0, 480).trim();
+  let out = lines.join('\n').trim();
+  if (out.length <= max) return out;
+  const cut = out.slice(0, max);
+  const end = Math.max(
+    cut.lastIndexOf('。'),
+    cut.lastIndexOf('！'),
+    cut.lastIndexOf('？'),
+    cut.lastIndexOf('.\n'),
+    cut.lastIndexOf('!\n'),
+    cut.lastIndexOf('?\n'),
+    cut.lastIndexOf('\n'),
+  );
+  if (end >= Math.floor(max * 0.45)) {
+    return cut.slice(0, end + 1).trim();
+  }
+  // 找不到句号：退到最后一个逗号/分号仍优于硬切英文半词
+  const soft = Math.max(cut.lastIndexOf('，'), cut.lastIndexOf('；'), cut.lastIndexOf(','));
+  if (soft >= Math.floor(max * 0.5)) return cut.slice(0, soft + 1).trim();
+  return cut.replace(/[A-Za-z]{1,12}$/, '').trim();
+}
+
+/**
+ * 缓存质量门：不完整 / 策划稿 / 过短过长 一律不入库。
+ * 工业策略：宁可 miss 再请求，也不缓存半截答案二次毒害。
+ */
+export function isCompleteHoverAnswer(s: string): boolean {
+  const t = (s || '').trim();
+  if (t.length < 24 || t.length > 900) return false;
+  if (PLANNING_HINT.test(t.slice(0, 100))) return false;
+  if (/讲解失败|暂无讲解|暂无输出/.test(t)) return false;
+  // 明显半截：以连词/冒号/顿号收尾
+  if (/[，、：:与和或及的了着]$/.test(t)) return false;
+  // 长文却无句末标点 → 高概率被截断
+  if (t.length > 80 && !/[。！？.!?]["'」』）)\]]*$/.test(t)) {
+    // 允许以完整英文术语/列表项结尾（短尾巴）
+    if (!/[\u4e00-\u9fffA-Za-z0-9）)」』]{2,20}$/.test(t) || t.length > 200) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function extractVisibleAnswer(thinking: string, text: string): { answer: string; thinking: string } {

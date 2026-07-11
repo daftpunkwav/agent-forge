@@ -52,9 +52,17 @@ export function AgentFloat() {
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeEl = useRef<HTMLElement | null>(null);
-  /** key → { text, at } 本地复用，TTL 与服务端一致 */
+  /**
+   * L1 浏览器缓存（工业策略）
+   * - TTL 20 分钟：同会话反复悬停零延迟
+   * - 最多 64 条 LRU
+   * - 仅存「完整 final」；中断/半截绝不写入
+   */
   const hoverCache = useRef<Map<string, { text: string; at: number }>>(new Map());
-  const HOVER_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const HOVER_CACHE_TTL_MS = 20 * 60 * 1000;
+  const HOVER_CACHE_MAX = 64;
+  /** 未完成请求：key → true，离开后禁止把半截当缓存命中 */
+  const incompleteKeys = useRef<Set<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
   const tipPinned = useRef(false);
   const conversationIdRef = useRef<string | null>(null);
@@ -74,6 +82,8 @@ export function AgentFloat() {
     buffer: string;
     revealed: boolean;
     loading: boolean;
+    /** 是否已收到完整 final（未完成禁止缓存/复用） */
+    complete: boolean;
     el: HTMLElement;
   } | null>(null);
   const genRef = useRef(0);
@@ -225,24 +235,47 @@ export function AgentFloat() {
     }, HOVER_LEAVE_KEEP_MS);
   }
 
+  function isCompleteHoverClient(s: string): boolean {
+    const t = (s || '').trim();
+    if (t.length < 24 || t.length > 900) return false;
+    if (/思考过程|写作计划|我需要：|结构如下|###\s*Thought|讲解失败|暂无讲解/i.test(t.slice(0, 100))) {
+      return false;
+    }
+    if (/[，、：:与和或及的了着]$/.test(t)) return false;
+    // 长文本却无句末标点 → 多半半截
+    if (t.length > 80 && !/[。！？.!?]["'」』）)\]]*$/.test(t)) {
+      if (t.length > 200) return false;
+    }
+    return true;
+  }
+
   function readCache(key: string): string | null {
+    if (incompleteKeys.current.has(key)) return null;
     const hit = hoverCache.current.get(key);
     if (!hit) return null;
     if (Date.now() - hit.at > HOVER_CACHE_TTL_MS) {
       hoverCache.current.delete(key);
       return null;
     }
+    if (!isCompleteHoverClient(hit.text)) {
+      hoverCache.current.delete(key);
+      return null;
+    }
+    // LRU：重新插入到末尾
+    hoverCache.current.delete(key);
+    hoverCache.current.set(key, { text: hit.text, at: Date.now() });
     return hit.text;
   }
 
   function pushCache(key: string, text: string) {
-    if (!text.trim()) return;
-    // 过滤误把思考草稿当答案的缓存
-    if (/思考过程|我需要：|结构如下|###\s*Thought/i.test(text.slice(0, 80))) return;
+    if (!isCompleteHoverClient(text)) return;
+    incompleteKeys.current.delete(key);
+    if (hoverCache.current.has(key)) hoverCache.current.delete(key);
     hoverCache.current.set(key, { text, at: Date.now() });
-    if (hoverCache.current.size > 80) {
+    while (hoverCache.current.size > HOVER_CACHE_MAX) {
       const first = hoverCache.current.keys().next().value;
       if (first) hoverCache.current.delete(first);
+      else break;
     }
   }
 
@@ -252,10 +285,20 @@ export function AgentFloat() {
     if (/思考过程|写作计划|我需要：|结构如下/i.test(s.slice(0, 60))) {
       const parts = s.split(/\n{2,}/).filter((p) => p.trim().length > 12);
       const last = parts[parts.length - 1]?.trim() || '';
-      if (last && !/思考过程|我需要/.test(last.slice(0, 40))) return last.slice(0, 480);
+      if (last && !/思考过程|我需要/.test(last.slice(0, 40))) {
+        return smartTruncateClient(last);
+      }
       return '';
     }
-    return s.slice(0, 480);
+    return smartTruncateClient(s);
+  }
+
+  function smartTruncateClient(s: string, max = 560): string {
+    if (s.length <= max) return s.trim();
+    const cut = s.slice(0, max);
+    const end = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('！'), cut.lastIndexOf('？'));
+    if (end >= Math.floor(max * 0.45)) return cut.slice(0, end + 1).trim();
+    return cut.replace(/[A-Za-z]{1,12}$/, '').trim();
   }
 
   function canFireRequest(): { ok: boolean; wait: number } {
@@ -325,7 +368,8 @@ export function AgentFloat() {
 
       const gen = ++genRef.current;
       const topic = info.text.slice(0, 80);
-      const cached = readCache(key);
+      // 未完成的旧请求标记：禁止读半截缓存
+      const cached = incompleteKeys.current.has(key) ? null : readCache(key);
 
       // 若已有展示中的 tip，切换时先渐出旧的
       if (sessionRef.current?.revealed) {
@@ -345,6 +389,7 @@ export function AgentFloat() {
         buffer: cached || '',
         revealed: false,
         loading: !cached,
+        complete: Boolean(cached),
         el: info.el,
       };
 
@@ -388,9 +433,12 @@ export function AgentFloat() {
         }
         requestWindow.current.n += 1;
         inflightKeyRef.current = key;
+        incompleteKeys.current.add(key);
+        // 清掉可能存在的脏缓存，避免中途失败后仍命中旧半截
+        hoverCache.current.delete(key);
         const ac = new AbortController();
         abortRef.current = ac;
-        let acc = '';
+        let gotFinal = false;
 
         streamAgent(
           '/agent/explain/stream',
@@ -398,7 +446,7 @@ export function AgentFloat() {
             mode: 'hover',
             style,
             selection: {
-              text: info.text.slice(0, 800),
+              text: info.text.slice(0, 1200),
               context: info.context || undefined,
               sectionId: info.sectionId,
               route: location.pathname,
@@ -406,53 +454,76 @@ export function AgentFloat() {
           },
           (ev) => {
             const s = sessionRef.current;
+            // 已切换目标：忽略迟到事件，且不写缓存
             if (!s || s.gen !== gen) return;
 
-            // 悬停：忽略 thinking / status 正文，只记 loading
             if (ev.type === 'status' || ev.type === 'thinking') {
               s.loading = true;
-              if (s.revealed && !s.buffer) {
+              if (s.revealed && !s.complete) {
                 showTipForSession(s, true);
               }
               return;
             }
 
             if (ev.type === 'final' && ev.answer != null) {
-              acc = sanitizeHoverAnswer(ev.answer) || sanitizeHoverAnswer(acc) || '暂无讲解';
-              s.buffer = acc;
+              gotFinal = true;
+              const cleaned = sanitizeHoverAnswer(ev.answer);
+              const ok = isCompleteHoverClient(cleaned);
+              s.buffer = cleaned || '暂无讲解';
               s.loading = false;
-              pushCache(key, acc);
+              s.complete = ok;
+              if (ok) {
+                pushCache(key, cleaned);
+              } else {
+                incompleteKeys.current.add(key);
+                hoverCache.current.delete(key);
+              }
               if (inflightKeyRef.current === key) inflightKeyRef.current = null;
-              if (s.revealed) showTipForSession(s, false);
+              if (s.revealed) showTipForSession(s, !ok && !cleaned);
               return;
             }
 
-            // 悬停：忽略 delta 正文（防止思考泄漏）；仅 final 采用
-            if (ev.type === 'delta' && ev.text) {
-              return;
-            }
+            // 悬停：忽略 delta，仅 final
+            if (ev.type === 'delta') return;
 
             if (ev.type === 'done') {
-              s.buffer = sanitizeHoverAnswer(acc || s.buffer) || s.buffer || '暂无讲解';
-              s.loading = false;
-              if (s.buffer) pushCache(key, s.buffer);
+              if (!gotFinal) {
+                // 无 final 的 done → 不完整，禁止缓存
+                s.loading = false;
+                s.complete = false;
+                incompleteKeys.current.add(key);
+                hoverCache.current.delete(key);
+                if (!s.buffer) s.buffer = '暂无讲解';
+              }
               if (inflightKeyRef.current === key) inflightKeyRef.current = null;
               if (s.revealed) showTipForSession(s, false);
             }
             if (ev.type === 'error') {
               s.buffer = `讲解失败：${ev.message}`;
               s.loading = false;
+              s.complete = false;
+              incompleteKeys.current.add(key);
+              hoverCache.current.delete(key);
               if (inflightKeyRef.current === key) inflightKeyRef.current = null;
               if (s.revealed) showTipForSession(s, false);
             }
           },
           ac.signal,
         ).catch((err: Error) => {
-          if (err.name === 'AbortError') return;
+          if (err.name === 'AbortError') {
+            // 中断：标记 incomplete，绝不清掉「已 complete」的旧缓存以外的写入
+            incompleteKeys.current.add(key);
+            hoverCache.current.delete(key);
+            if (inflightKeyRef.current === key) inflightKeyRef.current = null;
+            return;
+          }
           const s = sessionRef.current;
           if (!s || s.gen !== gen) return;
           s.buffer = `讲解失败：${err.message}`;
           s.loading = false;
+          s.complete = false;
+          incompleteKeys.current.add(key);
+          hoverCache.current.delete(key);
           if (inflightKeyRef.current === key) inflightKeyRef.current = null;
           if (s.revealed) showTipForSession(s, false);
         });
@@ -553,7 +624,12 @@ export function AgentFloat() {
       clearRevealTimer();
 
       if (!wasRevealed) {
-        // 未满 2s：中止后台请求，不展示
+        // 未满 2s / 未完成：中止请求，标记 incomplete，禁止下次复用半截
+        const k = sessionRef.current?.key;
+        if (k) {
+          incompleteKeys.current.add(k);
+          hoverCache.current.delete(k);
+        }
         abortRef.current?.abort();
         abortRef.current = null;
         inflightKeyRef.current = null;
@@ -562,6 +638,11 @@ export function AgentFloat() {
         activeEl.current = null;
         hardHideTip();
         return;
+      }
+
+      // 已展示但仍在生成：允许后台跑完再缓存；离开时不清 buffer
+      if (sessionRef.current && !sessionRef.current.complete) {
+        incompleteKeys.current.add(sessionRef.current.key);
       }
 
       // 已展示：保留 3s

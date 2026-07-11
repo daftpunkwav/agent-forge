@@ -16,7 +16,7 @@ import { ArticleEditorPage } from '@/pages/author/ArticleEditorPage';
 import { AnimationEditorPage } from '@/pages/author/AnimationEditorPage';
 import { ApplyAuthorPage } from '@/pages/author/ApplyAuthorPage';
 import { ApplicationsAdminPage } from '@/pages/author/ApplicationsAdminPage';
-import { TopicDetailPage, TopicsPage } from '@/pages/TopicsPage';
+import { TopicDetailPage, TopicNewPage, TopicsPage } from '@/pages/TopicsPage';
 
 export const router = createBrowserRouter([
   {
@@ -32,6 +32,7 @@ export const router = createBrowserRouter([
       { path: 'search', element: <SearchPage /> },
       { path: 'news', element: <NewsPage /> },
       { path: 'topics', element: <TopicsPage /> },
+      { path: 'topics/new', element: <TopicNewPage /> },
       { path: 'topics/:id', element: <TopicDetailPage /> },
       { path: 'login', element: <LoginPage /> },
       { path: 'register', element: <RegisterPage /> },

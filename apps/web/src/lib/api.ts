@@ -180,28 +180,6 @@ export const api = {
       body: JSON.stringify({ body }),
     }),
 
-  listAnnotations: (slugOrId: string) =>
-    request<{ items: import('@agentforge/shared').AnnotationItem[]; articleId: string }>(
-      `/annotations/article/${slugOrId}`,
-    ),
-
-  createAnnotation: (body: {
-    articleId?: string;
-    articleSlug?: string;
-    anchorText?: string;
-    sectionId?: string;
-    body: string;
-  }) =>
-    request<{ annotation: import('@agentforge/shared').AnnotationItem }>('/annotations', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-
-  reviewAnnotation: (id: string, status: 'approved' | 'rejected', note?: string) =>
-    request<{ annotation: import('@agentforge/shared').AnnotationItem }>(
-      `/annotations/${id}/review`,
-      { method: 'PATCH', body: JSON.stringify({ status, note }) },
-    ),
 
   listApplications: () => request<{ items: unknown[] }>('/author-applications'),
 

@@ -44,10 +44,10 @@ const DOMAINS = [
 /** 热门 / 最新 各最多展示条数（无无限滚动） */
 const FEED_LIMIT = 10;
 
-function ArticleFeedCard({ a, agentIntro }: { a: ArticleSummary; agentIntro?: boolean }) {
-  const intro = agentIntro
-    ? `「${a.title}」· ${a.level} · ${a.readMinutes} 分钟。${(a.summary || '').slice(0, 80)}`
-    : a.summary;
+function ArticleFeedCard({ a }: { a: ArticleSummary }) {
+  /** 悬停讲解用完整标题+摘要，避免截断导致 Agent 半截复读 */
+  const explainText = `${a.title}。${a.summary || ''}`.trim();
+  const preview = (a.summary || '').slice(0, 120);
 
   return (
     <Link
@@ -55,9 +55,9 @@ function ArticleFeedCard({ a, agentIntro }: { a: ArticleSummary; agentIntro?: bo
       className="card card-hover article-feed-card"
       data-agent-zone="knowledge"
       data-agent-term={a.title}
-      data-agent-text={intro}
+      data-agent-text={explainText}
       data-agent-topic
-      data-agent-hint={a.summary?.slice(0, 100)}
+      data-agent-hint={`${a.level} · ${a.readMinutes} 分钟`}
       style={{ textDecoration: 'none', display: 'block', opacity: 0, animation: 'feed-in 0.45s ease forwards' }}
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
@@ -68,7 +68,8 @@ function ArticleFeedCard({ a, agentIntro }: { a: ArticleSummary; agentIntro?: bo
       </div>
       <div style={{ fontFamily: 'var(--font-serif)', fontSize: 17, fontWeight: 600 }}>{a.title}</div>
       <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--muted-foreground)', lineHeight: 1.55 }}>
-        {intro}
+        {preview}
+        {(a.summary || '').length > 120 ? '…' : ''}
       </p>
     </Link>
   );
@@ -139,7 +140,7 @@ function FeedColumn({
         ) : (
           items.map((a, i) => (
             <div key={a.id} style={{ animationDelay: `${Math.min(i, 6) * 0.05}s` }}>
-              <ArticleFeedCard a={a} agentIntro />
+              <ArticleFeedCard a={a} />
             </div>
           ))
         )}

@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Tag } from '@/components/ui/Tag';
 import { TableOfContents } from './TableOfContents';
-import { AnnotationPanel } from './AnnotationPanel';
-import { Link } from 'react-router-dom';
 
 export function ArticleLayout({
   tags,
@@ -11,8 +10,6 @@ export function ArticleLayout({
   meta,
   children,
   articleSlug,
-  articleId,
-  isArticleAuthor,
 }: {
   tags?: ReactNode;
   title: string;
@@ -34,7 +31,7 @@ export function ArticleLayout({
       }}
     >
       <TableOfContents />
-      <article style={{ flex: 1, minWidth: 0, maxWidth: 720 }}>
+      <article style={{ flex: 1, minWidth: 0, maxWidth: 760 }}>
         <header style={{ marginBottom: 40 }}>
           {tags ? (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>{tags}</div>
@@ -84,11 +81,11 @@ export function ArticleLayout({
           </p>
           {articleSlug ? (
             <Link
-              to={`/topics?article=${encodeURIComponent(articleSlug)}`}
+              to={`/topics/new?article=${encodeURIComponent(articleSlug)}`}
               className="btn btn-secondary btn-sm"
               style={{ textDecoration: 'none' }}
             >
-              去话题讨论 →
+              就本文发帖 →
             </Link>
           ) : (
             <Link to="/topics" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>
@@ -97,14 +94,6 @@ export function ArticleLayout({
           )}
         </section>
       </article>
-      {/* 批注为视口右侧固定抽屉，不占用文档流宽度 */}
-      {articleSlug ? (
-        <AnnotationPanel
-          articleSlug={articleSlug}
-          articleId={articleId}
-          isArticleAuthor={isArticleAuthor}
-        />
-      ) : null}
     </div>
   );
 }

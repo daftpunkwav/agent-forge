@@ -10,7 +10,6 @@ import { agentRouter } from './routes/agent.js';
 import { domainsRouter } from './routes/domains.js';
 import { settingsRouter } from './routes/settings.js';
 import { topicsRouter } from './routes/topics.js';
-import { annotationsRouter } from './routes/annotations.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 export function createApp() {
@@ -57,7 +56,6 @@ export function createApp() {
   app.use('/api/v1/settings', settingsRouter);
   app.use('/api/v1/agent', agentLimiter, agentRouter);
   app.use('/api/v1/topics', topicsRouter);
-  app.use('/api/v1/annotations', annotationsRouter);
 
   // MCP 协议入口预留（未来接 services/mcp）
   app.get('/api/v1/mcp/status', (_req, res) => {
