@@ -1,0 +1,25 @@
+{
+  "name": "agentforge",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AgentForge — Agent/LLM 学习平台",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "echo Run dev:web and dev:api in two terminals",
+    "dev:web": "npm run dev --workspace=@agentforge/web",
+    "dev:api": "npm run dev --workspace=@agentforge/api",
+    "build": "npm run build --workspace=@agentforge/shared && npm run build --workspace=@agentforge/web && npm run build --workspace=@agentforge/api",
+    "build:web": "npm run build --workspace=@agentforge/web",
+    "build:api": "npm run build --workspace=@agentforge/api",
+    "db:generate": "npm run db:generate --workspace=@agentforge/api",
+    "db:migrate": "npm run db:migrate --workspace=@agentforge/api",
+    "db:seed": "npm run db:seed --workspace=@agentforge/api",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

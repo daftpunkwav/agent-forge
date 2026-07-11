@@ -1,0 +1,189 @@
+/* 动画引擎样式 */
+
+.viz-stage {
+  position: relative;
+  min-height: 360px;
+  width: 100%;
+  user-select: none;
+}
+
+.viz-svg {
+  width: 100%;
+  height: 360px;
+  display: block;
+  overflow: visible;
+}
+
+/* 节点可命中；文字不挡事件，方便整块 g 悬停 */
+.viz-svg g[data-agent-term],
+.viz-svg g[data-node-id] {
+  pointer-events: all;
+  cursor: help;
+}
+.viz-svg .viz-edge,
+.viz-svg .viz-packet {
+  pointer-events: none;
+}
+
+.viz-caption {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+  min-height: 2.8em;
+}
+
+.viz-log {
+  margin-top: 12px;
+  max-height: 120px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--muted);
+  padding: 8px 12px;
+  font: 500 12px/1.5 var(--font-mono);
+}
+
+.viz-log-line {
+  color: var(--muted-foreground);
+  opacity: 0.55;
+  padding: 2px 0;
+}
+
+.viz-log-line.active {
+  color: var(--foreground);
+  opacity: 1;
+  font-weight: 600;
+}
+
+.viz-log-line.done {
+  opacity: 0.75;
+}
+
+/* SVG 节点 */
+.viz-node-circle {
+  transition: fill 0.35s ease, stroke 0.35s ease, stroke-width 0.35s ease, filter 0.35s ease,
+    transform 0.35s ease;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.viz-node-circle.active {
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--node-color, var(--primary)) 55%, transparent));
+}
+
+.viz-node-circle.pulse {
+  animation: viz-pulse 1.2s ease-in-out infinite;
+}
+
+.viz-node-label {
+  font: 700 12px/1.2 var(--font-sans);
+  fill: var(--foreground);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.viz-node-sub {
+  font: 500 10px/1.2 var(--font-mono);
+  fill: var(--muted-foreground);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.viz-edge {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 2;
+  transition: stroke 0.35s ease, stroke-width 0.35s ease, opacity 0.35s ease;
+}
+
+.viz-edge.active {
+  stroke: var(--edge-color, var(--primary));
+  stroke-width: 2.5;
+}
+
+.viz-edge.done {
+  stroke: color-mix(in srgb, var(--edge-color, var(--primary)) 45%, var(--border));
+  opacity: 0.85;
+}
+
+.viz-edge-flow {
+  stroke-dasharray: 6 8;
+  animation: viz-dash 0.9s linear infinite;
+}
+
+.viz-packet {
+  transition: cx 0.45s ease, cy 0.45s ease;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--primary) 60%, transparent));
+}
+
+.viz-ring-arc {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 2;
+  opacity: 0.5;
+}
+
+.viz-ring-arc.active {
+  stroke: var(--primary);
+  opacity: 1;
+  stroke-dasharray: 8 6;
+  animation: viz-dash 1s linear infinite;
+}
+
+.viz-center-title {
+  font: 700 14px/1.3 var(--font-sans);
+  fill: var(--foreground);
+  text-anchor: middle;
+}
+
+.viz-center-sub {
+  font: 500 11px/1.3 var(--font-mono);
+  fill: var(--muted-foreground);
+  text-anchor: middle;
+}
+
+.viz-badge {
+  font: 700 10px/1 var(--font-mono);
+  fill: var(--primary-foreground);
+}
+
+@keyframes viz-dash {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+@keyframes viz-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes viz-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.viz-fade-in {
+  animation: viz-fade-in 0.35s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viz-edge-flow,
+  .viz-ring-arc.active,
+  .viz-node-circle.pulse {
+    animation: none !important;
+  }
+}

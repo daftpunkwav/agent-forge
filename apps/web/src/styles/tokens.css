@@ -1,0 +1,172 @@
+/* AgentForge 设计令牌 */
+
+:root,
+[data-accent='orange'] {
+  --brand-50: #fff4ee;
+  --brand-100: #ffe6dc;
+  --brand-200: #ffc8b5;
+  --brand-300: #ffab8f;
+  --brand-400: #ff845f;
+  --brand-500: #f7663c;
+  --brand-600: #f1481e;
+  --brand-700: #d63a14;
+  --brand-800: #ad2f13;
+  --brand-900: #8a2914;
+}
+
+[data-accent='blue'] {
+  --brand-50: #eff6ff;
+  --brand-100: #dbeafe;
+  --brand-200: #bfdbfe;
+  --brand-300: #93c5fd;
+  --brand-400: #60a5fa;
+  --brand-500: #3b82f6;
+  --brand-600: #2563eb;
+  --brand-700: #1d4ed8;
+  --brand-800: #1e40af;
+  --brand-900: #1e3a8a;
+}
+
+[data-accent='violet'] {
+  --brand-50: #f5f3ff;
+  --brand-100: #ede9fe;
+  --brand-200: #ddd6fe;
+  --brand-300: #c4b5fd;
+  --brand-400: #a78bfa;
+  --brand-500: #8b5cf6;
+  --brand-600: #7c3aed;
+  --brand-700: #6d28d9;
+  --brand-800: #5b21b6;
+  --brand-900: #4c1d95;
+}
+
+[data-accent='green'] {
+  --brand-50: #ecfdf5;
+  --brand-100: #d1fae5;
+  --brand-200: #a7f3d0;
+  --brand-300: #6ee7b7;
+  --brand-400: #34d399;
+  --brand-500: #10b981;
+  --brand-600: #059669;
+  --brand-700: #047857;
+  --brand-800: #065f46;
+  --brand-900: #064e3b;
+}
+
+[data-accent='rose'] {
+  --brand-50: #fff1f2;
+  --brand-100: #ffe4e6;
+  --brand-200: #fecdd3;
+  --brand-300: #fda4af;
+  --brand-400: #fb7185;
+  --brand-500: #f43f5e;
+  --brand-600: #e11d48;
+  --brand-700: #be123c;
+  --brand-800: #9f1239;
+  --brand-900: #881337;
+}
+
+[data-accent='cyan'] {
+  --brand-50: #ecfeff;
+  --brand-100: #cffafe;
+  --brand-200: #a5f3fc;
+  --brand-300: #67e8f9;
+  --brand-400: #22d3ee;
+  --brand-500: #06b6d4;
+  --brand-600: #0891b2;
+  --brand-700: #0e7490;
+  --brand-800: #155e75;
+  --brand-900: #164e63;
+}
+
+:root {
+  --background: #f5f3ef;
+  --muted: #eae7e1;
+  --card: #fdfcf9;
+  --popover: #ffffff;
+
+  --foreground: #1a1714;
+  --muted-foreground: #6b645c;
+  --card-foreground: #1a1714;
+  --popover-foreground: #1a1714;
+  --accent-foreground: #1a1714;
+  --secondary-foreground: #ffffff;
+
+  --primary: var(--brand-600);
+  --primary-foreground: #fff7f3;
+  --accent: #e0dad3;
+  --input: #f0ebe4;
+  --border: #ccc5bd;
+  --secondary: #1d1e20;
+  --ring: var(--brand-500);
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --chart-1: var(--brand-500);
+  --chart-2: #aea4fd;
+  --chart-3: #13b15a;
+  --chart-4: #84776e;
+  --chart-5: #fe9a45;
+
+  --sidebar: #e8e4de;
+  --sidebar-foreground: #1a1714;
+
+  --font-sans: 'DM Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: 'Noto Serif SC', 'Playfair Display', ui-serif, serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --radius: 16px;
+  --spacing: 4px;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 8px 24px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.08), 0 16px 48px rgba(0, 0, 0, 0.06);
+
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --header-h: 64px;
+  /* 略加宽，减少两侧留白 */
+  --page-max: 1560px;
+}
+
+/* 深色：近黑微灰 */
+.dark {
+  --background: #0a0a0b;
+  --muted: #141416;
+  --card: #111113;
+  --popover: #161618;
+
+  --foreground: #ececef;
+  --muted-foreground: #9b9ba3;
+  --card-foreground: #ececef;
+  --popover-foreground: #ececef;
+  --accent-foreground: #ececef;
+  --secondary-foreground: #f4f4f5;
+
+  --primary: var(--brand-500);
+  --primary-foreground: #0a0a0b;
+  --accent: #1c1c1f;
+  --input: #1a1a1d;
+  --border: #2a2a2e;
+  --secondary: #3f3f46;
+  --ring: var(--brand-400);
+
+  --destructive: #ff6b57;
+  --destructive-foreground: #fff5f2;
+
+  --chart-1: var(--brand-400);
+  --chart-2: #c4b5fd;
+  --chart-3: #34d399;
+  --chart-4: #a1a1aa;
+  --chart-5: #fbbf24;
+
+  --sidebar: #0e0e10;
+  --sidebar-foreground: #ececef;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.55), 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.6), 0 16px 48px rgba(0, 0, 0, 0.5);
+}

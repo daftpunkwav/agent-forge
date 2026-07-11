@@ -1,0 +1,67 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { authRouter } from './routes/auth.js';
+import { articlesRouter } from './routes/articles.js';
+import { animationsRouter } from './routes/animations.js';
+import { applicationsRouter } from './routes/applications.js';
+import { agentRouter } from './routes/agent.js';
+import { domainsRouter } from './routes/domains.js';
+import { settingsRouter } from './routes/settings.js';
+import { errorHandler } from './middleware/errorHandler.js';
+
+export function createApp() {
+  const app = express();
+
+  app.use(helmet());
+  app.use(
+    cors({
+      origin: (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map((s) => s.trim()),
+      credentials: true,
+    }),
+  );
+  app.use(express.json({ limit: '1mb' }));
+
+  const generalLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  const authLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 20,
+    message: { error: { code: 'RATE_LIMIT', message: '请求过于频繁，请稍后再试' } },
+  });
+
+  app.use(generalLimiter);
+
+  app.get('/health', (_req, res) => {
+    res.json({ ok: true, service: 'agentforge-api', ts: new Date().toISOString() });
+  });
+
+  const agentLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 40,
+    message: { error: { code: 'RATE_LIMIT', message: 'Agent 请求过于频繁' } },
+  });
+
+  app.use('/api/v1/auth', authLimiter, authRouter);
+  app.use('/api/v1/articles', articlesRouter);
+  app.use('/api/v1/animations', animationsRouter);
+  app.use('/api/v1/author-applications', applicationsRouter);
+  app.use('/api/v1/domains', domainsRouter);
+  app.use('/api/v1/settings', settingsRouter);
+  app.use('/api/v1/agent', agentLimiter, agentRouter);
+
+  // 评论预留
+  app.post('/api/v1/comments', (_req, res) => {
+    res.status(501).json({
+      error: { code: 'NOT_IMPLEMENTED', message: '评论功能即将推出' },
+    });
+  });
+
+  app.use(errorHandler);
+  return app;
+}

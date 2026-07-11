@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("reader") // reader | author | admin
+  /// JSON: { agentStyle, ... }
+  preferences  String   @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  articles       Article[]
+  animations     AnimationDef[]
+  applications   AuthorApplication[]
+  progress       LearningProgress[]
+  agentMemories  AgentMemory[]
+  domainsCreated Domain[]            @relation("DomainCreator")
+}
+
+model Domain {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String   @default("")
+  /// agent | llm
+  track       String
+  sortOrder   Int      @default(0)
+  color       String   @default("var(--chart-1)")
+  published   Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User?     @relation("DomainCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  articles  Article[]
+
+  @@index([track, sortOrder])
+}
+
+model AuthorApplication {
+  id         String    @id @default(cuid())
+  userId     String
+  field      String
+  bio        String
+  status     String    @default("pending")
+  reviewedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Article {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  title       String
+  summary     String    @default("")
+  markdown    String    @default("")
+  category    String
+  level       String    @default("入门")
+  status      String    @default("draft")
+  tags        String    @default("[]")
+  readMinutes Int       @default(5)
+  publishedAt DateTime?
+  viewCount   Int       @default(0)
+  authorId    String
+  domainId    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  author     User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  domain     Domain?            @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  animations ArticleAnimation[]
+  progress   LearningProgress[]
+
+  @@index([status, category])
+  @@index([status, domainId])
+  @@index([authorId])
+}
+
+model AnimationDef {
+  id        String   @id @default(cuid())
+  name      String
+  template  String
+  steps     String   @default("[]")
+  config    String   @default("{}")
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author   User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  articles ArticleAnimation[]
+
+  @@index([authorId])
+  @@index([template])
+}
+
+model ArticleAnimation {
+  id          String @id @default(cuid())
+  articleId   String
+  animationId String
+  sortOrder   Int    @default(0)
+
+  article   Article      @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  animation AnimationDef @relation(fields: [animationId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, animationId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  articleId String
+  userId    String
+  body      String
+  createdAt DateTime @default(now())
+}
+
+/// 用户级 Agent 记忆（会/不会、偏好、摘要）
+model AgentMemory {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  value     String
+  /// fact | skill | preference | summary
+  kind      String   @default("fact")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId, kind])
+}
+
+model LearningProgress {
+  id        String   @id @default(cuid())
+  userId    String
+  articleId String
+  progress  Float    @default(0)
+  /// not_started | learning | mastered
+  mastery   String   @default("learning")
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+}
