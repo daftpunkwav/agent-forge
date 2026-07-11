@@ -36,19 +36,22 @@ npm run dev:web
 
 ## 功能
 
-- **读者**：首页 Grid/List、知识/LLM 文章、TOC、动画播放、登录注册、申请作者
-- **作者**：工作台、Markdown 编辑+预览、动画模板步骤编辑、发布
-- **管理**：作者申请审批
-- **预留**：评论、站内 Agent 对话（API 501）
+- **读者**：首页、知识/LLM 文章、话题、悬停快讲与行内卡片 Agent、登录注册
+- **作者**：工作台、Markdown 编辑、动画编辑、发布；可申请优秀作者
+- **管理**：领域管理、申请审批（分级 adminLevel）
+- **双 Agent**（详见 `docs/agent-modes.md`）  
+  - **悬停 Agent**：速度优先，Fast Direct，记忆/上下文注入 + 缓存  
+  - **Agent 面板**：目标为完整智能体（工具循环、会话、记忆、推理模式）；当前已有会话与记忆，工具 loop 建设中  
+- **预留**：MCP（`services/mcp`）、独立 Agent Runtime（`services/agent`）
 
 ## 目录
 
 ```
 apps/web          前端
 apps/api          后端与 Prisma
-packages/shared   共享类型
-docs/             架构与安全
-services/         未来 Agent/MCP
+packages/shared   共享类型与权限
+docs/             架构 · Agent 模式 · 身份权限 · 安全
+services/         Agent Runtime / MCP 占位
 ```
 
-详见 `PLAN.md` 与 `docs/architecture.md`。
+详见 `docs/architecture.md`、`docs/agent-modes.md`、`PLAN.md`。
