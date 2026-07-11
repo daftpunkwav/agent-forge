@@ -1,0 +1,506 @@
+/* ═══════════════════════════════════════════════════════════════
+   animations.css — AgentForge 动画系统专用样式
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 动画画布通用 ── */
+.anim-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+}
+
+.anim-node {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--foreground);
+  font: 500 13px/1.4 var(--font-sans);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.4s ease;
+  opacity: 0;
+  transform: scale(0.8);
+}
+.anim-node.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+.anim-node.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 15%, transparent), var(--shadow-md);
+  z-index: 2;
+}
+.anim-node.done {
+  border-color: var(--chart-3);
+  background: color-mix(in srgb, var(--chart-3) 8%, var(--card));
+}
+.anim-node.error {
+  border-color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 8%, var(--card));
+}
+
+/* ── 连线 ── */
+.anim-edge {
+  stroke: var(--border);
+  stroke-width: 2;
+  fill: none;
+  stroke-dasharray: 8 4;
+  transition: stroke 0.4s ease, stroke-width 0.4s ease;
+}
+.anim-edge.active {
+  stroke: var(--primary);
+  stroke-width: 2.5;
+  animation: flow-dash 0.8s linear infinite;
+}
+.anim-edge.done {
+  stroke: var(--chart-3);
+  stroke-dasharray: none;
+}
+
+/* ── ReAct 专用 ── */
+.react-layout {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.react-thought-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.react-action-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 8px;
+}
+.react-arrow {
+  font-size: 24px;
+  color: var(--muted-foreground);
+  transition: all 0.3s ease;
+}
+.react-arrow.active {
+  color: var(--primary);
+  animation: float 1s ease-in-out infinite;
+}
+
+.react-bubble {
+  padding: 10px 16px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 280px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.4s ease;
+}
+.react-bubble.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.react-bubble.thought {
+  background: var(--muted);
+  color: var(--foreground);
+  border-bottom-left-radius: 4px;
+  align-self: flex-start;
+}
+.react-bubble.action {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-bottom-right-radius: 4px;
+  align-self: flex-end;
+  margin-left: auto;
+}
+.react-bubble.observation {
+  background: color-mix(in srgb, var(--chart-2) 12%, var(--card));
+  color: var(--foreground);
+  border-left: 3px solid var(--chart-2);
+  align-self: flex-start;
+}
+.react-bubble.answer {
+  background: color-mix(in srgb, var(--chart-3) 12%, var(--card));
+  color: var(--foreground);
+  border: 2px solid var(--chart-3);
+  font-weight: 500;
+}
+.react-typing::after {
+  content: '|';
+  animation: blink-caret 0.8s steps(2) infinite;
+}
+
+/* ── CoT 专用 ── */
+.cot-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+  padding-left: 32px;
+}
+.cot-chain::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+.cot-step {
+  position: relative;
+  padding: 12px 16px 12px 24px;
+  margin-bottom: 4px;
+  opacity: 0;
+  transform: translateX(-12px);
+  transition: all 0.5s ease;
+}
+.cot-step.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+.cot-step::before {
+  content: '';
+  position: absolute;
+  left: -25px;
+  top: 16px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--card);
+  transition: all 0.4s ease;
+  z-index: 1;
+}
+.cot-step.visible::before {
+  border-color: var(--primary);
+  background: var(--primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.cot-step.done::before {
+  border-color: var(--chart-3);
+  background: var(--chart-3);
+}
+.cot-step-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--foreground);
+}
+.cot-step-number {
+  font: 700 11px/1 var(--font-mono);
+  letter-spacing: 0.05em;
+  color: var(--primary);
+  margin-bottom: 4px;
+}
+
+/* ── ToT 专用 ── */
+.tot-tree {
+  position: relative;
+  min-height: 400px;
+}
+.tot-node {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  max-width: 140px;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.tot-node.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+.tot-node.root {
+  border-color: var(--chart-2);
+  background: color-mix(in srgb, var(--chart-2) 10%, var(--card));
+  font-weight: 600;
+  max-width: 180px;
+  padding: 12px 18px;
+  font-size: 14px;
+}
+.tot-node.candidate {
+  border-color: var(--chart-4);
+}
+.tot-node.evaluated {
+  border-color: var(--chart-5);
+}
+.tot-node.pruned {
+  opacity: 0.25;
+  filter: grayscale(1);
+  transform: scale(0.85);
+}
+.tot-node.selected {
+  border-color: var(--chart-3);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--chart-3) 20%, transparent);
+  font-weight: 500;
+}
+.tot-score {
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--chart-5);
+  color: #1a1714;
+  font: 700 10px/1 var(--font-mono);
+  opacity: 0;
+  transform: scale(0);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.tot-score.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+.tot-edge {
+  stroke: var(--border);
+  stroke-width: 1.5;
+  fill: none;
+  transition: all 0.4s ease;
+}
+.tot-edge.active {
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+.tot-edge.selected {
+  stroke: var(--chart-3);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+}
+.tot-edge.pruned {
+  stroke: var(--destructive);
+  stroke-dasharray: 4 4;
+  opacity: 0.4;
+}
+
+/* ── GoT 专用 ── */
+.got-graph {
+  position: relative;
+  min-height: 380px;
+}
+.got-entity {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  background: var(--card);
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0;
+  transform: scale(0.3);
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  cursor: pointer;
+}
+.got-entity.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+.got-entity.highlighted {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 15%, transparent), var(--shadow-md);
+  z-index: 2;
+}
+.got-entity-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+}
+.got-relation {
+  stroke: var(--muted-foreground);
+  stroke-width: 1.5;
+  fill: none;
+  opacity: 0.5;
+  transition: all 0.3s ease;
+}
+.got-relation.highlighted {
+  stroke: var(--primary);
+  stroke-width: 2.5;
+  opacity: 1;
+}
+.got-label {
+  font: 500 10px/1 var(--font-mono);
+  fill: var(--muted-foreground);
+  text-anchor: middle;
+}
+
+/* ── Agent Loop 专用 ── */
+.loop-diagram {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 340px;
+}
+.loop-cycle {
+  position: relative;
+  width: 280px;
+  height: 280px;
+}
+.loop-step {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  font: 600 13px/1 var(--font-sans);
+  color: var(--foreground);
+  text-align: center;
+  opacity: 0;
+  transform: scale(0.7);
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.loop-step.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+.loop-step.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 15%, transparent), var(--shadow-lg);
+  transform: scale(1.08);
+}
+.loop-step.done {
+  border-color: var(--chart-3);
+  background: color-mix(in srgb, var(--chart-3) 8%, var(--card));
+}
+.loop-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--muted);
+  font-size: 14px;
+}
+.loop-arrow-path {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.loop-particle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 8px var(--primary);
+  opacity: 0;
+  z-index: 3;
+}
+.loop-particle.moving {
+  opacity: 1;
+}
+
+/* ── MCP 专用 ── */
+.mcp-layout {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 20px;
+  align-items: center;
+}
+.mcp-host {
+  padding: 20px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  text-align: center;
+}
+.mcp-host-title {
+  font: 700 14px/1 var(--font-mono);
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+.mcp-resource-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+}
+.mcp-resource-list li {
+  padding: 6px 10px;
+  margin: 4px 0;
+  border-radius: 8px;
+  background: var(--muted);
+  font-size: 12px;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: all 0.3s ease;
+}
+.mcp-resource-list li.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+.mcp-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.mcp-line {
+  width: 2px;
+  height: 40px;
+  background: var(--border);
+  position: relative;
+}
+.mcp-line::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.mcp-line.active {
+  background: var(--primary);
+}
+.mcp-line.active::after {
+  background: var(--primary);
+  box-shadow: 0 0 8px var(--primary);
+}
+.mcp-packet {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 6px var(--primary);
+  left: -2px;
+  opacity: 0;
+}
+.mcp-packet.moving {
+  opacity: 1;
+  animation: mcp-packet-flow 0.6s ease-in forwards;
+}
+@keyframes mcp-packet-flow {
+  from { top: 0; }
+  to   { top: 100%; }
+}

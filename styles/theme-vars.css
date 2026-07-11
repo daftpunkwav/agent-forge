@@ -1,0 +1,204 @@
+/* ═══════════════════════════════════════════════════════════════
+   theme-vars.css — AgentForge 设计令牌
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 品牌色 ── */
+--brand-50: #fff4ee;
+--brand-100: #ffe6dc;
+--brand-200: #ffc8b5;
+--brand-300: #ffab8f;
+--brand-400: #ff845f;
+--brand-500: #f7663c;
+--brand-600: #f1481e;
+--brand-700: #d63a14;
+--brand-800: #ad2f13;
+--brand-900: #8a2914;
+
+/* ── 表面色 ── */
+--background: #f5f3ef;
+--muted: #eae7e1;
+--card: #fdfcf9;
+--popover: #ffffff;
+
+/* ── 文字 ── */
+--foreground: #1a1714;
+--muted-foreground: #6b645c;
+--card-foreground: #1a1714;
+--popover-foreground: #1a1714;
+--accent-foreground: #1a1714;
+--secondary-foreground: #ffffff;
+
+/* ── 动作色 ── */
+--primary: var(--brand-600);
+--primary-foreground: #fff7f3;
+--accent: #e0dad3;
+--input: #d4cdc5;
+--border: #ccc5bd;
+--secondary: #1d1e20;
+--ring: var(--brand-500);
+
+/* ── 反馈色 ── */
+--destructive: #ef4444;
+--destructive-foreground: #ffffff;
+
+/* ── 图表色 ── */
+--chart-1: #f7663c;
+--chart-2: #aea4fd;
+--chart-3: #13b15a;
+--chart-4: #84776e;
+--chart-5: #fe9a45;
+
+/* ── 侧边栏 ── */
+--sidebar: #e8e4de;
+--sidebar-foreground: #1a1714;
+--sidebar-primary: var(--primary);
+--sidebar-primary-foreground: var(--primary-foreground);
+--sidebar-accent: #212121;
+--sidebar-accent-foreground: #ffffff;
+--sidebar-border: #d6cec6;
+--sidebar-ring: var(--ring);
+
+/* ── 兼容别名 ── */
+--vibe-background: var(--background);
+--vibe-foreground: var(--foreground);
+--vibe-card: var(--card);
+--vibe-card-foreground: var(--card-foreground);
+--vibe-popover: var(--popover);
+--vibe-popover-foreground: var(--popover-foreground);
+--vibe-primary: var(--primary);
+--vibe-primary-foreground: var(--primary-foreground);
+--vibe-secondary: var(--secondary);
+--vibe-secondary-foreground: var(--secondary-foreground);
+--vibe-muted: var(--muted);
+--vibe-muted-foreground: var(--muted-foreground);
+--vibe-accent: var(--accent);
+--vibe-accent-foreground: var(--accent-foreground);
+--vibe-destructive: var(--destructive);
+--vibe-destructive-foreground: var(--destructive-foreground);
+--vibe-border: var(--border);
+--vibe-input: var(--input);
+--vibe-ring: var(--ring);
+--vibe-chart-1: var(--chart-1);
+--vibe-chart-2: var(--chart-2);
+--vibe-chart-3: var(--chart-3);
+--vibe-chart-4: var(--chart-4);
+--vibe-chart-5: var(--chart-5);
+--vibe-sidebar: var(--sidebar);
+--vibe-sidebar-foreground: var(--sidebar-foreground);
+--vibe-sidebar-primary: var(--sidebar-primary);
+--vibe-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+--vibe-sidebar-accent: var(--sidebar-accent);
+--vibe-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+
+/* ── 兼容别名（旧版） ── */
+--bg-background: var(--background);
+--bg-card: var(--card);
+--bg-popover: var(--popover);
+--bg-muted: var(--muted);
+--text-foreground: var(--foreground);
+--text-card-foreground: var(--card-foreground);
+--text-popover-foreground: var(--popover-foreground);
+--text-primary-foreground: var(--primary-foreground);
+--text-secondary-foreground: var(--secondary-foreground);
+--text-muted-foreground: var(--muted-foreground);
+--text-accent-foreground: var(--accent-foreground);
+--text-destructive-foreground: var(--destructive-foreground);
+--accent-primary: var(--primary);
+--accent-secondary: var(--secondary);
+--accent-input: var(--input);
+--accent-ring: var(--ring);
+--status-destructive: var(--destructive);
+
+/* ── 字体 ── */
+--font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+--font-serif: 'Playfair Display', ui-serif, 'Noto Serif SC', serif;
+--font-mono: 'JetBrains Mono', 'Roboto Mono', 'Fira Code', monospace;
+--tracking-normal: 0em;
+
+/* ── 圆角 ── */
+--radius: 16px;
+
+/* ── 间距 ── */
+--spacing: 4px;
+
+/* ── 阴影 ── */
+--shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
+--shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+--shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
+--shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 8px 24px rgba(0,0,0,0.05);
+--shadow-lg: 0 8px 16px rgba(0,0,0,0.08), 0 16px 48px rgba(0,0,0,0.06);
+--shadow-xl: 0 12px 24px rgba(0,0,0,0.1), 0 24px 64px rgba(0,0,0,0.08);
+
+/* ── 过渡 ── */
+--transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+--transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+--transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+
+/* ============================================================
+   Dark Theme
+   ============================================================ */
+.dark {
+  /* 表面色 */
+  --background: #1a1714;
+  --muted: #211d19;
+  --card: #262220;
+  --popover: #2c2825;
+
+  /* 文字 */
+  --foreground: #f2ede7;
+  --muted-foreground: #b4aba2;
+  --card-foreground: #f2ede7;
+  --popover-foreground: #f2ede7;
+  --accent-foreground: #f2ede7;
+  --secondary-foreground: #f2ede7;
+
+  /* 动作色 */
+  --primary: var(--brand-600);
+  --primary-foreground: #31150d;
+  --accent: #38322d;
+  --input: #33302b;
+  --border: #3a352f;
+  --secondary: #4a413a;
+  --ring: var(--brand-500);
+
+  /* 反馈色 */
+  --destructive: #ff6b57;
+  --destructive-foreground: #fff5f2;
+
+  /* 图表色 */
+  --chart-1: #ff845f;
+  --chart-2: #f4b366;
+  --chart-3: #3ccf8e;
+  --chart-4: #b3a6ff;
+  --chart-5: #f0d2a6;
+
+  /* 侧边栏 */
+  --sidebar: #221e1a;
+  --sidebar-foreground: #f2ede7;
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: #38322d;
+  --sidebar-accent-foreground: #f2ede7;
+  --sidebar-border: #332e29;
+  --sidebar-ring: var(--ring);
+
+  /* 阴影 */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.2);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
+  --shadow-lg: 0 8px 16px rgba(0,0,0,0.5), 0 16px 48px rgba(0,0,0,0.4);
+  --shadow-xl: 0 12px 24px rgba(0,0,0,0.6), 0 24px 64px rgba(0,0,0,0.5);
+}
+
+/* ── 品牌色渐变（装饰用） ── */
+.brand-gradient {
+  background: linear-gradient(135deg, var(--brand-500), var(--brand-700));
+}
+
+.brand-gradient-text {
+  background: linear-gradient(135deg, var(--brand-500), var(--brand-700));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
