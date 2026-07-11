@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import type { ArticleSummary } from '@agentforge/shared';
@@ -41,7 +41,8 @@ const DOMAINS = [
   },
 ];
 
-const PAGE_SIZE = 6;
+/** 热门 / 最新 各最多展示条数（无无限滚动） */
+const FEED_LIMIT = 10;
 
 function ArticleFeedCard({ a, agentIntro }: { a: ArticleSummary; agentIntro?: boolean }) {
   const intro = agentIntro
@@ -73,7 +74,7 @@ function ArticleFeedCard({ a, agentIntro }: { a: ArticleSummary; agentIntro?: bo
   );
 }
 
-function InfiniteColumn({
+function FeedColumn({
   title,
   eyebrow,
   sort,
@@ -87,58 +88,40 @@ function InfiniteColumn({
   onIds: (ids: string[]) => void;
 }) {
   const [items, setItems] = useState<ArticleSummary[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [boot, setBoot] = useState(true);
-  const sentinel = useRef<HTMLDivElement>(null);
+  const [loading, setLoading] = useState(true);
   const excludeKey = excludeIds.join(',');
 
-  const load = useCallback(
-    async (p: number, replace: boolean) => {
-      setLoading(true);
-      try {
-        const r = await api.listArticles({
-          status: 'published',
-          page: p,
-          pageSize: PAGE_SIZE,
-          sort,
-          exclude: excludeIds.length ? excludeIds : undefined,
-        });
-        setItems((prev) => (replace ? r.items : [...prev, ...r.items]));
-        setTotalPages(r.totalPages || 1);
-        setPage(p);
-        const all = replace ? r.items : [...items, ...r.items];
-        onIds(all.map((x) => x.id));
-      } catch {
-        if (replace) setItems([]);
-      } finally {
-        setLoading(false);
-        setBoot(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sort, excludeKey],
-  );
-
   useEffect(() => {
-    void load(1, true);
-  }, [load]);
-
-  useEffect(() => {
-    const el = sentinel.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting) && !loading && page < totalPages) {
-          void load(page + 1, false);
+    let cancelled = false;
+    setLoading(true);
+    api
+      .listArticles({
+        status: 'published',
+        page: 1,
+        pageSize: FEED_LIMIT,
+        sort,
+        exclude: excludeIds.length ? excludeIds : undefined,
+      })
+      .then((r) => {
+        if (cancelled) return;
+        const list = r.items.slice(0, FEED_LIMIT);
+        setItems(list);
+        onIds(list.map((x) => x.id));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setItems([]);
+          onIds([]);
         }
-      },
-      { rootMargin: '120px' },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [load, loading, page, totalPages]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sort, excludeKey]);
 
   return (
     <section style={{ minWidth: 0 }}>
@@ -147,7 +130,7 @@ function InfiniteColumn({
       </div>
       <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 24, margin: '0 0 16px' }}>{title}</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {boot && items.length === 0 ? (
+        {loading && items.length === 0 ? (
           Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="card skeleton-card" style={{ height: 110 }} />
           ))
@@ -160,10 +143,6 @@ function InfiniteColumn({
             </div>
           ))
         )}
-        {loading && !boot ? (
-          <div className="card skeleton-card" style={{ height: 72 }} aria-hidden />
-        ) : null}
-        <div ref={sentinel} style={{ height: 8 }} />
       </div>
     </section>
   );
@@ -351,14 +330,14 @@ export function HomePage() {
           gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
         }}
       >
-        <InfiniteColumn
+        <FeedColumn
           title="热门文章"
           eyebrow="POPULAR"
           sort="popular"
           excludeIds={latestIds}
           onIds={() => undefined}
         />
-        <InfiniteColumn
+        <FeedColumn
           title="最新文章"
           eyebrow="LATEST"
           sort="latest"

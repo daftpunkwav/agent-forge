@@ -97,6 +97,7 @@ export function ArticleLayout({
           )}
         </section>
       </article>
+      {/* 批注为视口右侧固定抽屉，不占用文档流宽度 */}
       {articleSlug ? (
         <AnnotationPanel
           articleSlug={articleSlug}

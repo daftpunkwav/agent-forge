@@ -170,10 +170,14 @@ textarea {
 }
 
 .container {
-  width: 100%;
-  max-width: var(--page-max, 1400px);
-  margin: 0 auto;
-  padding: 0 22px;
+  /* 始终按视口 90% 收窄；勿仅用 max-width，窄屏上看不出变化 */
+  width: var(--page-width, min(90vw, 1260px));
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 16px;
+  padding-right: 16px;
+  box-sizing: border-box;
 }
 
 .eyebrow {

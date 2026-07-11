@@ -127,8 +127,13 @@
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
   --header-h: 64px;
-  /* 内容区宽度（约为原 1560 的 0.9） */
-  --page-max: 1400px;
+  /**
+   * 内容区宽度：
+   * - 默认占视口 90%（两侧各约 5% 留白，任何分辨率都可见）
+   * - 超宽屏上限 1260px，避免一行过长
+   */
+  --page-max: 1260px;
+  --page-width: min(90vw, var(--page-max));
 }
 
 /* 深色：近黑微灰 */
