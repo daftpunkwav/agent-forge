@@ -6,15 +6,16 @@
  */
 
 const SKIP_CLOSEST =
-  '.agent-float, .agent-hover-tip, .agent-panel, header, footer, nav, .anim-controls, .anim-shell-header, .anim-btn';
+  '.agent-float, .agent-hover-tip, .agent-panel, header, footer, nav, .anim-controls, .anim-shell-header, .anim-btn, [data-agent-inline], .article-card-inline';
 
+/**
+ * 文章内（正文/动画）才用悬停对话框。
+ * 首页/列表卡片使用行内 Agent，不走对话框。
+ */
 export function isKnowledgeRoute(pathname: string): boolean {
-  if (pathname === '/' || pathname === '') return true; // 首页热门/最新卡片
-  if (pathname === '/knowledge' || pathname.startsWith('/knowledge/')) return true;
-  if (pathname === '/llm' || pathname.startsWith('/llm/')) return true;
-  if (pathname.startsWith('/domains/')) return true;
-  if (pathname === '/search' || pathname.startsWith('/search')) return true;
-  if (pathname === '/topics' || pathname.startsWith('/topics/')) return true;
+  // 文章详情：/knowledge/:slug 或 /llm/:slug（排除总览页）
+  if (/^\/knowledge\/[^/]+/.test(pathname)) return true;
+  if (/^\/llm\/[^/]+/.test(pathname)) return true;
   return false;
 }
 

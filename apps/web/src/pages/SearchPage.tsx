@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import type { ArticleSummary, DomainSummary } from '@agentforge/shared';
 import { api } from '@/lib/api';
-import { Tag } from '@/components/ui/Tag';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select } from '@/components/ui/Input';
+import { ArticleCardInlineAgent } from '@/components/article/ArticleCardInlineAgent';
 
 export function SearchPage() {
   const [sp, setSp] = useSearchParams();
@@ -112,22 +112,12 @@ export function SearchPage() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {items.map((a) => (
-          <Link
+          <ArticleCardInlineAgent
             key={a.id}
-            to={`/knowledge/${a.slug}`}
-            className="card card-hover"
-            style={{ textDecoration: 'none' }}
-            data-agent-zone="knowledge"
-            data-agent-term
-            data-agent-text={`${a.title}。${a.summary}`}
-          >
-            <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-              <Tag variant="primary">{a.domain?.name || a.category}</Tag>
-              <Tag>{a.level}</Tag>
-            </div>
-            <div style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 17 }}>{a.title}</div>
-            <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--muted-foreground)' }}>{a.summary}</p>
-          </Link>
+            article={a}
+            layout="list"
+            to={a.category === 'LLM基础' || a.domain?.slug?.includes('llm') ? `/llm/${a.slug}` : `/knowledge/${a.slug}`}
+          />
         ))}
         {!items.length ? <p style={{ color: 'var(--muted-foreground)' }}>无匹配文章</p> : null}
       </div>

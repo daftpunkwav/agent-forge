@@ -4,14 +4,24 @@ import type { DomainSummary } from '@agentforge/shared';
 import { api } from '@/lib/api';
 import { DomainSection } from '@/components/domain/DomainSection';
 
+type ViewMode = 'grid' | 'list';
+
 /**
- * 信息架构：赛道芯片 + 领域横滑导航 + 领域内 8 篇分页
- * 避免百级分区竖向树爆炸
+ * Agent 知识 / 全站知识地图
+ * 全局 grid|list 视图 + 领域内自动轮换
  */
 export function KnowledgeOverviewPage() {
   const [track, setTrack] = useState<'agent' | 'llm' | 'all'>('agent');
   const [domains, setDomains] = useState<DomainSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const s = localStorage.getItem('agentforge-domain-view');
+    return s === 'list' ? 'list' : 'grid';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('agentforge-domain-view', viewMode);
+  }, [viewMode]);
 
   useEffect(() => {
     setLoading(true);
@@ -35,19 +45,19 @@ export function KnowledgeOverviewPage() {
 
   return (
     <div className="container" style={{ padding: '40px 24px 80px' }}>
-      <div style={{ marginBottom: 28 }}>
+      <div style={{ marginBottom: 24 }}>
         <h1
           style={{
             fontFamily: 'var(--font-serif)',
             fontWeight: 700,
-            fontSize: 'clamp(28px, 4vw, 44px)',
-            margin: '0 0 10px',
+            fontSize: 'clamp(28px, 4vw, 40px)',
+            margin: '0 0 8px',
           }}
         >
           知识地图
         </h1>
-        <p style={{ margin: 0, color: 'var(--muted-foreground)', maxWidth: 640, lineHeight: 1.7 }}>
-          以「赛道 → 领域 → 文章」扁平组织。每个领域默认 2×4 共 8 篇文章，可上下翻页或进入领域页筛选检索。
+        <p style={{ margin: 0, color: 'var(--muted-foreground)', maxWidth: 640, lineHeight: 1.65, fontSize: 15 }}>
+          以「赛道 → 领域 → 文章」扁平组织。支持网格 / 列表视图；领域内文章过多时自动轮换展示。
         </p>
       </div>
 
@@ -57,11 +67,11 @@ export function KnowledgeOverviewPage() {
           flexWrap: 'wrap',
           gap: 12,
           alignItems: 'center',
-          marginBottom: 28,
+          marginBottom: 24,
           position: 'sticky',
           top: 72,
           zIndex: 20,
-          padding: '12px 0',
+          padding: '10px 0',
           background: 'color-mix(in srgb, var(--background) 92%, transparent)',
           backdropFilter: 'blur(8px)',
         }}
@@ -83,11 +93,25 @@ export function KnowledgeOverviewPage() {
             </button>
           ))}
         </div>
-        <Link
-          to="/search"
-          className="btn btn-ghost btn-sm"
-          style={{ textDecoration: 'none', marginLeft: 'auto' }}
+
+        <div
+          className="domain-view-toggle"
+          role="group"
+          aria-label="文章视图"
+          style={{ marginLeft: 'auto' }}
         >
+          {(['grid', 'list'] as ViewMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={`domain-view-btn${viewMode === m ? ' is-active' : ''}`}
+              onClick={() => setViewMode(m)}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+        <Link to="/search" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>
           高级筛选
         </Link>
       </div>
@@ -99,7 +123,7 @@ export function KnowledgeOverviewPage() {
             gap: 8,
             overflowX: 'auto',
             paddingBottom: 12,
-            marginBottom: 24,
+            marginBottom: 20,
           }}
         >
           {domains.map((d) => (
@@ -128,7 +152,7 @@ export function KnowledgeOverviewPage() {
       ) : (
         domains.map((d) => (
           <div key={d.id} id={`domain-${d.slug}`}>
-            <DomainSection domain={d} />
+            <DomainSection domain={d} viewMode={viewMode} />
           </div>
         ))
       )}

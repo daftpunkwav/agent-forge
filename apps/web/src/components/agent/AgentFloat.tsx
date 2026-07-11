@@ -84,6 +84,8 @@ export function AgentFloat() {
     loading: boolean;
     /** 是否已收到完整 final（未完成禁止缓存/复用） */
     complete: boolean;
+    /** 气泡首次展示时间戳，用于最短「思考中」展示 */
+    revealAt: number;
     el: HTMLElement;
   } | null>(null);
   const genRef = useRef(0);
@@ -95,11 +97,17 @@ export function AgentFloat() {
   const requestWindow = useRef<{ t0: number; n: number }>({ t0: 0, n: 0 });
 
   const HOVER_SETTLE_MS = 80;
-  /** 悬停满 2s 才显示内容（后台 0s 起就开始思考） */
+  /** 悬停满 2s 才显示气泡（后台 0s 起就开始思考/读缓存） */
   const HOVER_REVEAL_MS = 2000;
+  /**
+   * 气泡出现后至少展示「思考中」的时长（含缓存命中）。
+   * 避免缓存瞬间出字，体验过于突兀。
+   */
+  const HOVER_MIN_THINK_MS = 420;
   /** 移出后保留 3s；指针在对话框内不消失 */
   const HOVER_LEAVE_KEEP_MS = 3000;
   const FADE_MS = 220;
+  const cacheRevealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 新目标请求最小间隔 */
   const REQUEST_COOLDOWN_MS = 400;
   /** 10s 内最多 N 次新请求 */
@@ -120,19 +128,46 @@ export function AgentFloat() {
       .catch(() => undefined);
   }, [user]);
 
+  /**
+   * 视口坐标放置（position:fixed）。
+   * 位置只在锚定瞬间计算一次，之后冻结，不随鼠标移动/页面滚动改写。
+   */
   const placeTip = useCallback((x: number, y: number, contentLen: number) => {
     const maxW = Math.min(420, window.innerWidth - 24);
     const minW = Math.min(280, maxW);
     const estH = Math.min(360, Math.max(120, 80 + Math.ceil(contentLen / 40) * 18));
-    let left = x + 14;
-    let top = y + 14;
+    let left = x + 12;
+    let top = y + 12;
     if (left + maxW > window.innerWidth - 8) left = Math.max(8, x - maxW - 12);
     if (top + estH > window.innerHeight - 8) top = Math.max(8, window.innerHeight - estH - 12);
+    if (left < 8) left = 8;
+    if (top < 8) top = 8;
     return { left, top, maxW, minW, maxH: Math.min(360, window.innerHeight - 24) };
   }, []);
 
+  /** 相对悬停目标元素计算锚定点（视口坐标） */
+  function anchorNearTarget(
+    el: HTMLElement | null,
+    pointerX: number,
+    pointerY: number,
+  ): { x: number; y: number } {
+    if (el && el.isConnected) {
+      const r = el.getBoundingClientRect();
+      // 优先目标右下方；窄元素用指针附近但仍贴目标
+      const x = r.left + Math.min(Math.max(r.width * 0.55, 24), Math.max(r.width - 4, 24));
+      const y = r.bottom + 4;
+      // 目标已滚出视口时退回指针位置
+      if (r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth) {
+        return { x: pointerX, y: pointerY };
+      }
+      return { x, y };
+    }
+    return { x: pointerX, y: pointerY };
+  }
+
   const tipBox = useMemo(() => {
     if (!hoverTip) return null;
+    // 使用冻结的 x/y（锚定后不再改）
     return placeTip(hoverTip.x, hoverTip.y, hoverTip.text.length);
   }, [hoverTip, placeTip]);
 
@@ -170,6 +205,13 @@ export function AgentFloat() {
     if (revealTimer.current) {
       clearTimeout(revealTimer.current);
       revealTimer.current = null;
+    }
+  }
+
+  function clearCacheRevealTimer() {
+    if (cacheRevealTimer.current) {
+      clearTimeout(cacheRevealTimer.current);
+      cacheRevealTimer.current = null;
     }
   }
 
@@ -213,6 +255,7 @@ export function AgentFloat() {
   function abortHoverWork(reason: 'switch' | 'leave' | 'unmount') {
     clearSettleTimer();
     clearRevealTimer();
+    clearCacheRevealTimer();
     clearCooldownTimer();
     abortRef.current?.abort();
     abortRef.current = null;
@@ -235,17 +278,18 @@ export function AgentFloat() {
     }, HOVER_LEAVE_KEEP_MS);
   }
 
+  function looksLikePlanningClient(s: string): boolean {
+    return /思考过程|写作计划|我需要：|结构如下|###\s*Thought|推理过程|内部思考|让我先|首先分析/i.test(
+      (s || '').trim().slice(0, 120),
+    );
+  }
+
   function isCompleteHoverClient(s: string): boolean {
     const t = (s || '').trim();
-    if (t.length < 24 || t.length > 900) return false;
-    if (/思考过程|写作计划|我需要：|结构如下|###\s*Thought|讲解失败|暂无讲解/i.test(t.slice(0, 100))) {
-      return false;
-    }
-    if (/[，、：:与和或及的了着]$/.test(t)) return false;
-    // 长文本却无句末标点 → 多半半截
-    if (t.length > 80 && !/[。！？.!?]["'」』）)\]]*$/.test(t)) {
-      if (t.length > 200) return false;
-    }
+    if (t.length < 12 || t.length > 900) return false;
+    if (looksLikePlanningClient(t)) return false;
+    if (/讲解失败|暂无讲解|暂无输出/i.test(t)) return false;
+    if (/[，、：:与和或及]$/.test(t)) return false;
     return true;
   }
 
@@ -282,12 +326,10 @@ export function AgentFloat() {
   function sanitizeHoverAnswer(raw: string): string {
     const s = (raw || '').trim();
     if (!s) return '';
-    if (/思考过程|写作计划|我需要：|结构如下/i.test(s.slice(0, 60))) {
+    if (looksLikePlanningClient(s)) {
       const parts = s.split(/\n{2,}/).filter((p) => p.trim().length > 12);
-      const last = parts[parts.length - 1]?.trim() || '';
-      if (last && !/思考过程|我需要/.test(last.slice(0, 40))) {
-        return smartTruncateClient(last);
-      }
+      const last = [...parts].reverse().find((p) => !looksLikePlanningClient(p)) || '';
+      if (last.length >= 12) return smartTruncateClient(last);
       return '';
     }
     return smartTruncateClient(s);
@@ -318,14 +360,48 @@ export function AgentFloat() {
 
   function showTipForSession(s: NonNullable<typeof sessionRef.current>, forceLoading?: boolean) {
     const loading = forceLoading ?? (s.loading && !s.buffer);
-    setHoverTip({
-      x: s.x,
-      y: s.y,
-      text: loading ? '' : s.buffer || '暂无讲解',
-      loading,
-      topic: s.topic,
-      anim: 'visible',
+    // 首次展示时若尚未锚定，按目标元素钉住位置；之后只更新文案，不改 x/y
+    setHoverTip((prev) => {
+      if (prev && prev.topic === s.topic && prev.anim !== 'leaving') {
+        return {
+          ...prev,
+          text: loading ? '' : s.buffer || '暂无讲解',
+          loading,
+          anim: 'visible',
+          // 保持 prev.x / prev.y 冻结
+        };
+      }
+      const pt = anchorNearTarget(s.el, s.x, s.y);
+      // 会话也锁死锚定坐标，后续 show 不再漂
+      s.x = pt.x;
+      s.y = pt.y;
+      return {
+        x: pt.x,
+        y: pt.y,
+        text: loading ? '' : s.buffer || '暂无讲解',
+        loading,
+        topic: s.topic,
+        anim: 'visible',
+      };
     });
+  }
+
+  /**
+   * 答案就绪后展示：保证自 reveal 起至少 HOVER_MIN_THINK_MS 的「思考中」，
+   * 缓存命中与秒回网络结果同样适用。
+   */
+  function scheduleAnswerReveal(s: NonNullable<typeof sessionRef.current>, gen: number) {
+    if (!s.revealed) return;
+    if (!s.buffer || s.loading) return;
+    clearCacheRevealTimer();
+    const elapsed = s.revealAt ? Date.now() - s.revealAt : 0;
+    const wait = Math.max(0, HOVER_MIN_THINK_MS - elapsed);
+    cacheRevealTimer.current = setTimeout(() => {
+      const cur = sessionRef.current;
+      if (!cur || cur.gen !== gen || !cur.revealed) return;
+      if (!cur.buffer || cur.loading) return;
+      showTipForSession(cur, false);
+    }, wait);
   }
 
   /**
@@ -348,11 +424,9 @@ export function AgentFloat() {
     }) {
       const key = info.text.slice(0, 200);
 
-      // 同一稳定目标已在飞：只更新坐标 / el
+      // 同一稳定目标已在飞：只刷新 el，不改锚定坐标
       if (sessionRef.current?.stableKey === info.stableKey) {
         sessionRef.current.el = info.el;
-        sessionRef.current.x = info.x;
-        sessionRef.current.y = info.y;
         if (activeEl.current !== info.el) {
           highlightTarget(activeEl.current, false);
           activeEl.current = info.el;
@@ -386,10 +460,12 @@ export function AgentFloat() {
         topic,
         x: info.x,
         y: info.y,
+        // 缓存也先放进 buffer，但 loading 仍为 true，用于最短思考展示
         buffer: cached || '',
         revealed: false,
-        loading: !cached,
+        loading: true,
         complete: Boolean(cached),
+        revealAt: 0,
         el: info.el,
       };
 
@@ -399,21 +475,25 @@ export function AgentFloat() {
         highlightTarget(info.el, true);
       }
 
-      // 2s 后才允许展示
+      // 2s 后出气泡：一律先显示思考中；答案（含缓存/已返回）再延迟一小段
       revealTimer.current = setTimeout(() => {
         const s = sessionRef.current;
         if (!s || s.gen !== gen) return;
         s.revealed = true;
+        s.revealAt = Date.now();
+        // 缓存命中：答案已在 buffer，但先装作仍在思考
+        if (cached && s.buffer) {
+          s.loading = false;
+        }
+        showTipForSession(s, true);
+        // 答案已就绪（缓存或 2s 内网络已返回）→ 最短思考后再揭晓
         if (s.buffer && !s.loading) {
-          showTipForSession(s, false);
-        } else {
-          showTipForSession(s, true);
+          scheduleAnswerReveal(s, gen);
         }
       }, HOVER_REVEAL_MS);
 
-      // 有缓存：只等 2s 展示，不再请求
+      // 有缓存：不再请求 LLM
       if (cached) {
-        sessionRef.current.loading = false;
         return;
       }
 
@@ -434,11 +514,12 @@ export function AgentFloat() {
         requestWindow.current.n += 1;
         inflightKeyRef.current = key;
         incompleteKeys.current.add(key);
-        // 清掉可能存在的脏缓存，避免中途失败后仍命中旧半截
         hoverCache.current.delete(key);
         const ac = new AbortController();
         abortRef.current = ac;
         let gotFinal = false;
+        let streamBuf = '';
+        let streamingShown = false;
 
         streamAgent(
           '/agent/explain/stream',
@@ -454,49 +535,81 @@ export function AgentFloat() {
           },
           (ev) => {
             const s = sessionRef.current;
-            // 已切换目标：忽略迟到事件，且不写缓存
             if (!s || s.gen !== gen) return;
 
             if (ev.type === 'status' || ev.type === 'thinking') {
-              s.loading = true;
-              if (s.revealed && !s.complete) {
-                showTipForSession(s, true);
+              // 思考通道：只维持 loading，绝不写入 buffer
+              if (!streamingShown) {
+                s.loading = true;
+                if (s.revealed && !s.complete) showTipForSession(s, true);
               }
+              return;
+            }
+
+            // 悬停流式正文
+            if (ev.type === 'delta' && ev.text) {
+              streamBuf += ev.text;
+              if (looksLikePlanningClient(streamBuf)) {
+                // 仍像策划：继续当思考中
+                if (s.revealed && !streamingShown) showTipForSession(s, true);
+                return;
+              }
+              s.buffer = smartTruncateClient(streamBuf, 600);
+              s.loading = false;
+              streamingShown = true;
+              if (s.revealed) showTipForSession(s, false);
               return;
             }
 
             if (ev.type === 'final' && ev.answer != null) {
               gotFinal = true;
-              const cleaned = sanitizeHoverAnswer(ev.answer);
-              const ok = isCompleteHoverClient(cleaned);
-              s.buffer = cleaned || '暂无讲解';
+              const cleaned =
+                sanitizeHoverAnswer(ev.answer) ||
+                sanitizeHoverAnswer(streamBuf) ||
+                (ev.answer.trim() && !looksLikePlanningClient(ev.answer)
+                  ? smartTruncateClient(ev.answer.trim())
+                  : '');
+              const ok = isCompleteHoverClient(cleaned) || cleaned.length >= 12;
+              s.buffer = cleaned || streamBuf.trim() || '讲解生成失败，请再试一次';
               s.loading = false;
-              s.complete = ok;
-              if (ok) {
-                pushCache(key, cleaned);
-              } else {
+              s.complete = ok && !looksLikePlanningClient(s.buffer);
+              if (s.complete) pushCache(key, s.buffer);
+              else {
                 incompleteKeys.current.add(key);
                 hoverCache.current.delete(key);
               }
               if (inflightKeyRef.current === key) inflightKeyRef.current = null;
-              if (s.revealed) showTipForSession(s, !ok && !cleaned);
+              if (s.revealed) {
+                // 已在流式展示则直接覆盖为清洗后的 final
+                if (streamingShown) showTipForSession(s, false);
+                else {
+                  showTipForSession(s, true);
+                  scheduleAnswerReveal(s, gen);
+                }
+              }
               return;
             }
 
-            // 悬停：忽略 delta，仅 final
-            if (ev.type === 'delta') return;
-
             if (ev.type === 'done') {
               if (!gotFinal) {
-                // 无 final 的 done → 不完整，禁止缓存
+                const fallback = sanitizeHoverAnswer(streamBuf);
+                s.buffer = fallback || streamBuf.trim() || '讲解生成失败，请再试一次';
                 s.loading = false;
-                s.complete = false;
-                incompleteKeys.current.add(key);
-                hoverCache.current.delete(key);
-                if (!s.buffer) s.buffer = '暂无讲解';
+                s.complete = isCompleteHoverClient(s.buffer);
+                if (s.complete) pushCache(key, s.buffer);
+                else {
+                  incompleteKeys.current.add(key);
+                  hoverCache.current.delete(key);
+                }
+                if (s.revealed) {
+                  if (streamingShown) showTipForSession(s, false);
+                  else {
+                    showTipForSession(s, true);
+                    scheduleAnswerReveal(s, gen);
+                  }
+                }
               }
               if (inflightKeyRef.current === key) inflightKeyRef.current = null;
-              if (s.revealed) showTipForSession(s, false);
             }
             if (ev.type === 'error') {
               s.buffer = `讲解失败：${ev.message}`;
@@ -511,7 +624,6 @@ export function AgentFloat() {
           ac.signal,
         ).catch((err: Error) => {
           if (err.name === 'AbortError') {
-            // 中断：标记 incomplete，绝不清掉「已 complete」的旧缓存以外的写入
             incompleteKeys.current.add(key);
             hoverCache.current.delete(key);
             if (inflightKeyRef.current === key) inflightKeyRef.current = null;
@@ -553,21 +665,16 @@ export function AgentFloat() {
       setHoverTip((prev) => (prev && prev.anim === 'leaving' ? { ...prev, anim: 'visible' } : prev));
 
       // 同一稳定目标（含动画重绘后的新 DOM）：续会话
+      // 注意：不更新 tip 的 x/y，避免鼠标微动/滚动时对话框跟着飘
       if (sessionRef.current && sessionRef.current.stableKey === info.stableKey) {
         sessionRef.current.el = info.el;
-        sessionRef.current.x = e.clientX;
-        sessionRef.current.y = e.clientY;
         if (activeEl.current !== info.el) {
           highlightTarget(activeEl.current, false);
           activeEl.current = info.el;
           highlightTarget(info.el, true);
         }
         if (sessionRef.current.revealed) {
-          setHoverTip((prev) =>
-            prev
-              ? { ...prev, x: e.clientX, y: e.clientY, anim: 'visible' }
-              : prev,
-          );
+          setHoverTip((prev) => (prev ? { ...prev, anim: 'visible' } : prev));
         }
         return;
       }
@@ -581,8 +688,8 @@ export function AgentFloat() {
         sessionRef.current = null;
       }
 
-      const x = e.clientX;
-      const y = e.clientY;
+      // 锚定点：优先目标元素几何，指针仅作回退
+      const pt = anchorNearTarget(info.el, e.clientX, e.clientY);
       clearSettleTimer();
       settleTimer.current = setTimeout(() => {
         startPrefetch({
@@ -591,8 +698,8 @@ export function AgentFloat() {
           context: info.context,
           sectionId: info.sectionId,
           stableKey: info.stableKey,
-          x,
-          y,
+          x: pt.x,
+          y: pt.y,
         });
       }, HOVER_SETTLE_MS);
     }
@@ -877,10 +984,11 @@ export function AgentFloat() {
           }}
         >
           {hoverTip.loading || !hoverTip.text ? (
-            <div className="agent-thinking-indicator" aria-label="加载中">
+            <div className="agent-thinking-indicator" aria-label="思考中">
               <span className="agent-thinking-dot" />
               <span className="agent-thinking-dot" style={{ animationDelay: '0.2s' }} />
               <span className="agent-thinking-dot" style={{ animationDelay: '0.4s' }} />
+              <span>思考中…</span>
             </div>
           ) : (
             <MarkdownView source={hoverTip.text} compact />

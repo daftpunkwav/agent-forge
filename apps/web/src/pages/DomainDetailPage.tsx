@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import type { ArticleSummary, DomainSummary } from '@agentforge/shared';
 import { api } from '@/lib/api';
-import { Tag } from '@/components/ui/Tag';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select } from '@/components/ui/Input';
+import { ArticleCardInlineAgent } from '@/components/article/ArticleCardInlineAgent';
 
 export function DomainDetailPage() {
   const { slug = '' } = useParams();
@@ -127,22 +127,12 @@ export function DomainDetailPage() {
         }}
       >
         {items.map((a) => (
-          <Link
+          <ArticleCardInlineAgent
             key={a.id}
-            to={`/knowledge/${a.slug}`}
-            className="card card-hover"
-            data-agent-zone="knowledge"
-            data-agent-term
-            data-agent-text={`${a.title}。${a.summary}`}
-            style={{ textDecoration: 'none', minHeight: 140 }}
-          >
-            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-              <Tag>{a.level}</Tag>
-              <Tag variant="outline">{a.readMinutes}m</Tag>
-            </div>
-            <div style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 15 }}>{a.title}</div>
-            <p style={{ fontSize: 12, color: 'var(--muted-foreground)', lineHeight: 1.5 }}>{a.summary}</p>
-          </Link>
+            article={a}
+            layout="grid"
+            to={domain?.track === 'llm' ? `/llm/${a.slug}` : `/knowledge/${a.slug}`}
+          />
         ))}
       </div>
 

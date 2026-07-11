@@ -20,6 +20,7 @@ import {
   extractVisibleAnswer,
   formatMemoryBlock,
   isCompleteHoverAnswer,
+  looksLikeHoverPlanning,
 } from '../lib/llm/agentPrompt.js';
 import type { ByokConfig } from '../lib/llm/types.js';
 
@@ -468,7 +469,7 @@ agentRouter.post(
           }
           if (chunk.kind === 'thinking') {
             thinkingAcc += chunk.text;
-            // 悬停永不推 thinking 正文
+            // 悬停：思考通道只作状态，绝不推思考正文
             if (prep.isHover) {
               sseWrite(res, { type: 'status', status: 'thinking' });
             } else {
@@ -476,10 +477,15 @@ agentRouter.post(
             }
           } else {
             textAcc += chunk.text;
-            if (!prep.isHover) {
-              sseWrite(res, { type: 'delta', text: chunk.text });
+            if (prep.isHover) {
+              // 悬停流式：仅推送看起来像正文的分片
+              if (!looksLikeHoverPlanning(textAcc)) {
+                sseWrite(res, { type: 'delta', text: chunk.text });
+              } else {
+                sseWrite(res, { type: 'status', status: 'thinking' });
+              }
             } else {
-              sseWrite(res, { type: 'status', status: 'thinking' });
+              sseWrite(res, { type: 'delta', text: chunk.text });
             }
           }
         }
@@ -487,13 +493,18 @@ agentRouter.post(
           return;
         }
         if (prep.isHover) {
-          const answer = extractHoverAnswer(thinkingAcc, textAcc);
-          // 仅完整答案才缓存；半截不写库
-          if (answer) void setHoverCache(prep.topic, prep.style, answer);
+          let answer = extractHoverAnswer(thinkingAcc, textAcc);
+          // 仍空：从 text 做最后兜底（已滤策划）
+          if (!answer && textAcc.trim() && !looksLikeHoverPlanning(textAcc)) {
+            answer = textAcc.trim().slice(0, 560);
+          }
+          if (answer && isCompleteHoverAnswer(answer)) {
+            void setHoverCache(prep.topic, prep.style, answer);
+          }
           sseWrite(res, {
             type: 'final',
-            answer: answer || '暂无讲解',
-            thinking: '',
+            answer: answer || '',
+            thinking: '', // 悬停永不暴露 thinking
             complete: Boolean(answer),
           });
         } else {
