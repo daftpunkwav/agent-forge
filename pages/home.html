@@ -46,12 +46,9 @@
         <div style="display: grid; gap: 20px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">
             <!-- 卡片1: 推理模式 -->
             <a href="#/knowledge/react" class="card" style="text-decoration: none; display: block; transition: transform 0.3s ease, box-shadow 0.3s ease;">
-                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
-                    <div style="width: 40px; height: 40px; border-radius: 10px; background: color-mix(in srgb, var(--chart-1) 12%, var(--card)); display: flex; align-items: center; justify-content: center; font-size: 20px;">脑</div>
-                    <div>
-                        <div style="font: 700 13px/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--primary);">推理模式</div>
-                        <div style="font-size: 11px; color: var(--muted-foreground);">Reasoning Patterns</div>
-                    </div>
+                <div style="margin-bottom: 14px; display: flex; flex-direction: column; gap: 2px;">
+                    <span style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-1);">推理模式</span>
+                    <span style="font-size: 11px; color: var(--muted-foreground); letter-spacing: 0.02em;">Reasoning Patterns</span>
                 </div>
                 <h3 style="font-family: var(--font-serif); font-weight: 600; font-size: 18px; color: var(--foreground); margin-bottom: 8px;">ReAct · CoT · GoT · ToT</h3>
                 <p style="font-size: 14px; line-height: 1.6; color: var(--muted-foreground);">四种核心推理模式的原理、对比和动画演示。理解Agent如何"思考"和"行动"。</p>
@@ -65,12 +62,9 @@
 
             <!-- 卡片2: 框架 -->
             <a href="#/knowledge/frameworks/langchain" class="card" style="text-decoration: none; display: block; transition: transform 0.3s ease, box-shadow 0.3s ease;">
-                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
-                    <div style="width: 40px; height: 40px; border-radius: 10px; background: color-mix(in srgb, var(--chart-2) 12%, var(--card)); display: flex; align-items: center; justify-content: center; font-size: 20px;">工</div>
-                    <div>
-                        <div style="font: 700 13px/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--chart-2);">框架</div>
-                        <div style="font-size: 11px; color: var(--muted-foreground);">Frameworks</div>
-                    </div>
+                <div style="margin-bottom: 14px; display: flex; flex-direction: column; gap: 2px;">
+                    <span style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-2);">框架</span>
+                    <span style="font-size: 11px; color: var(--muted-foreground); letter-spacing: 0.02em;">Frameworks</span>
                 </div>
                 <h3 style="font-family: var(--font-serif); font-weight: 600; font-size: 18px; color: var(--foreground); margin-bottom: 8px;">LangChain · AutoGen · CrewAI</h3>
                 <p style="font-size: 14px; line-height: 1.6; color: var(--muted-foreground);">主流Agent框架的架构设计、核心组件和适用场景对比。</p>
@@ -81,14 +75,11 @@
                 </div>
             </a>
 
-            <!-- 卡片3: 协议与连接 -->
+            <!-- 卡片3: 协议 -->
             <a href="#/knowledge/mcp" class="card" style="text-decoration: none; display: block; transition: transform 0.3s ease, box-shadow 0.3s ease;">
-                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
-                    <div style="width: 40px; height: 40px; border-radius: 10px; background: color-mix(in srgb, var(--chart-3) 12%, var(--card)); display: flex; align-items: center; justify-content: center; font-size: 20px;">协</div>
-                    <div>
-                        <div style="font: 700 13px/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--chart-3);">协议</div>
-                        <div style="font-size: 11px; color: var(--muted-foreground);">Protocols</div>
-                    </div>
+                <div style="margin-bottom: 14px; display: flex; flex-direction: column; gap: 2px;">
+                    <span style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-3);">协议</span>
+                    <span style="font-size: 11px; color: var(--muted-foreground); letter-spacing: 0.02em;">Protocols</span>
                 </div>
                 <h3 style="font-family: var(--font-serif); font-weight: 600; font-size: 18px; color: var(--foreground); margin-bottom: 8px;">MCP 模型上下文协议</h3>
                 <p style="font-size: 14px; line-height: 1.6; color: var(--muted-foreground);">Anthropic推出的开放协议，连接LLM与外部数据源和工具的标准方式。</p>
@@ -99,12 +90,9 @@
 
             <!-- 卡片4: 工程实践 -->
             <a href="#/knowledge/prompt-eng" class="card" style="text-decoration: none; display: block; transition: transform 0.3s ease, box-shadow 0.3s ease;">
-                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
-                    <div style="width: 40px; height: 40px; border-radius: 10px; background: color-mix(in srgb, var(--chart-4) 12%, var(--card)); display: flex; align-items: center; justify-content: center; font-size: 20px;">架</div>
-                    <div>
-                        <div style="font: 700 13px/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--chart-4);">工程实践</div>
-                        <div style="font-size: 11px; color: var(--muted-foreground);">Engineering</div>
-                    </div>
+                <div style="margin-bottom: 14px; display: flex; flex-direction: column; gap: 2px;">
+                    <span style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-4);">工程实践</span>
+                    <span style="font-size: 11px; color: var(--muted-foreground); letter-spacing: 0.02em;">Engineering</span>
                 </div>
                 <h3 style="font-family: var(--font-serif); font-weight: 600; font-size: 18px; color: var(--foreground); margin-bottom: 8px;">Prompt · 上下文 · 记忆 · 评估</h3>
                 <p style="font-size: 14px; line-height: 1.6; color: var(--muted-foreground);">Prompt工程、上下文管理、记忆系统、工具调用、评估体系——构建生产级Agent的必备知识。</p>
@@ -118,12 +106,9 @@
 
             <!-- 卡片5: LLM基础 -->
             <a href="#/llm/basics" class="card" style="text-decoration: none; display: block; transition: transform 0.3s ease, box-shadow 0.3s ease;">
-                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
-                    <div style="width: 40px; height: 40px; border-radius: 10px; background: color-mix(in srgb, var(--chart-5) 12%, var(--card)); display: flex; align-items: center; justify-content: center; font-size: 20px;">智</div>
-                    <div>
-                        <div style="font: 700 13px/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--chart-5);">LLM基础</div>
-                        <div style="font-size: 11px; color: var(--muted-foreground);">Foundations</div>
-                    </div>
+                <div style="margin-bottom: 14px; display: flex; flex-direction: column; gap: 2px;">
+                    <span style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-5);">LLM基础</span>
+                    <span style="font-size: 11px; color: var(--muted-foreground); letter-spacing: 0.02em;">Foundations</span>
                 </div>
                 <h3 style="font-family: var(--font-serif); font-weight: 600; font-size: 18px; color: var(--foreground); margin-bottom: 8px;">Transformer · Tokenization · 微调</h3>
                 <p style="font-size: 14px; line-height: 1.6; color: var(--muted-foreground);">大语言模型的基础原理，从Transformer架构到Prompting技术，为Agent开发打下坚实基础。</p>
@@ -135,12 +120,9 @@
 
             <!-- 卡片6: 前沿资讯 -->
             <a href="#/news" class="card" style="text-decoration: none; display: block; transition: transform 0.3s ease, box-shadow 0.3s ease;">
-                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
-                    <div style="width: 40px; height: 40px; border-radius: 10px; background: color-mix(in srgb, var(--primary) 8%, var(--card)); display: flex; align-items: center; justify-content: center; font-size: 20px;">讯</div>
-                    <div>
-                        <div style="font: 700 13px/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--primary);">前沿资讯</div>
-                        <div style="font-size: 11px; color: var(--muted-foreground);">News & Trends</div>
-                    </div>
+                <div style="margin-bottom: 14px; display: flex; flex-direction: column; gap: 2px;">
+                    <span style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--primary);">前沿资讯</span>
+                    <span style="font-size: 11px; color: var(--muted-foreground); letter-spacing: 0.02em;">News & Trends</span>
                 </div>
                 <h3 style="font-family: var(--font-serif); font-weight: 600; font-size: 18px; color: var(--foreground); margin-bottom: 8px;">Agent 领域最新动态</h3>
                 <p style="font-size: 14px; line-height: 1.6; color: var(--muted-foreground);">追踪最新论文、工具发布和行业趋势，保持技术前沿敏感度。</p>
