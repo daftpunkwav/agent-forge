@@ -35,6 +35,9 @@
     '#/llm/fine-tuning': 'pages/llm/fine-tuning.html',
     '#/llm/prompting': 'pages/llm/prompting.html',
     '#/news': 'pages/news.html',
+    '#/author': 'pages/author/dashboard.html',
+    '#/author/new': 'pages/author/dashboard.html',
+    '#/author/apply': 'pages/author/apply.html',
   };
 
   // 路由→导航key映射
@@ -64,6 +67,9 @@
     '#/llm/fine-tuning': 'llm',
     '#/llm/prompting': 'llm',
     '#/news': 'news',
+    '#/author': 'home',
+    '#/author/new': 'home',
+    '#/author/apply': 'home',
   };
 
   // ── 全局状态 ──

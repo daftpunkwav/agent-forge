@@ -1,0 +1,589 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1200px; margin: 0 auto; padding: 48px 24px;">
+
+    <!-- 页面头部 -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 40px; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <div style="display: inline-flex; align-items: center; gap: 8px; padding: 5px 14px; border: 1px solid var(--border); border-radius: 999px; font: 600 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-foreground); background: var(--muted); margin-bottom: 12px;">
+                AUTHOR DASHBOARD
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 3.5vw, 40px); line-height: 1.2;">
+                作者工作台
+            </h1>
+        </div>
+        <button class="btn btn-primary" onclick="showNewArticleModal()" style="min-height: 44px; padding: 0 24px; font-size: 14px;">
+            + 新建文章
+        </button>
+    </div>
+
+    <!-- 统计面板 -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 40px;">
+        <div style="padding: 24px; border-radius: 14px; background: var(--card); border: 1px solid var(--border);">
+            <div style="font: 700 24px/1 var(--font-mono); color: var(--primary);" id="stat-published">0</div>
+            <div style="font-size: 13px; color: var(--muted-foreground); margin-top: 6px;">已发布</div>
+        </div>
+        <div style="padding: 24px; border-radius: 14px; background: var(--card); border: 1px solid var(--border);">
+            <div style="font: 700 24px/1 var(--font-mono); color: var(--chart-5);" id="stat-draft">0</div>
+            <div style="font-size: 13px; color: var(--muted-foreground); margin-top: 6px;">草稿</div>
+        </div>
+        <div style="padding: 24px; border-radius: 14px; background: var(--card); border: 1px solid var(--border);">
+            <div style="font: 700 24px/1 var(--font-mono); color: var(--chart-2);" id="stat-views">0</div>
+            <div style="font-size: 13px; color: var(--muted-foreground); margin-top: 6px;">总阅读量</div>
+        </div>
+        <div style="padding: 24px; border-radius: 14px; background: var(--card); border: 1px solid var(--border);">
+            <div style="font: 700 24px/1 var(--font-mono); color: var(--chart-3);" id="stat-animations">0</div>
+            <div style="font-size: 13px; color: var(--muted-foreground); margin-top: 6px;">动画数量</div>
+        </div>
+    </div>
+
+    <!-- 文章列表 -->
+    <div style="margin-bottom: 40px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+            <h2 style="font-family: var(--font-serif); font-weight: 600; font-size: 22px;">我的文章</h2>
+            <div style="display: flex; gap: 8px;">
+                <button class="filter-btn active" data-filter="all" onclick="filterArticles('all')" style="padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--foreground); font-size: 12px; cursor: pointer; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em;">ALL</button>
+                <button class="filter-btn" data-filter="published" onclick="filterArticles('published')" style="padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted-foreground); font-size: 12px; cursor: pointer; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em;">PUBLISHED</button>
+                <button class="filter-btn" data-filter="draft" onclick="filterArticles('draft')" style="padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted-foreground); font-size: 12px; cursor: pointer; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em;">DRAFT</button>
+            </div>
+        </div>
+        <div id="articles-list">
+            <!-- 由JS动态填充 -->
+        </div>
+    </div>
+
+    <!-- 动画工具 -->
+    <div>
+        <h2 style="font-family: var(--font-serif); font-weight: 600; font-size: 22px; margin-bottom: 20px;">动画工具</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">
+            <div class="card" style="padding: 24px; cursor: pointer;" onclick="showAnimationTool('react')">
+                <div style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-1); margin-bottom: 8px;">ReAct</div>
+                <div style="font-size: 14px; color: var(--muted-foreground);">推理与行动循环可视化</div>
+            </div>
+            <div class="card" style="padding: 24px; cursor: pointer;" onclick="showAnimationTool('cot')">
+                <div style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-1); margin-bottom: 8px;">CoT</div>
+                <div style="font-size: 14px; color: var(--muted-foreground);">思维链逐步推理演示</div>
+            </div>
+            <div class="card" style="padding: 24px; cursor: pointer;" onclick="showAnimationTool('tot')">
+                <div style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-1); margin-bottom: 8px;">ToT</div>
+                <div style="font-size: 14px; color: var(--muted-foreground);">思维树多路径搜索</div>
+            </div>
+            <div class="card" style="padding: 24px; cursor: pointer;" onclick="showAnimationTool('got')">
+                <div style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-1); margin-bottom: 8px;">GoT</div>
+                <div style="font-size: 14px; color: var(--muted-foreground);">图谱关系构建可视化</div>
+            </div>
+            <div class="card" style="padding: 24px; cursor: pointer;" onclick="showAnimationTool('loop')">
+                <div style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-1); margin-bottom: 8px;">LOOP</div>
+                <div style="font-size: 14px; color: var(--muted-foreground);">Agent核心循环流程</div>
+            </div>
+            <div class="card" style="padding: 24px; cursor: pointer;" onclick="showAnimationTool('mcp')">
+                <div style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-3); margin-bottom: 8px;">MCP</div>
+                <div style="font-size: 14px; color: var(--muted-foreground);">协议通信流程演示</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新建文章弹窗 -->
+<div id="article-modal" style="display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+    <div style="max-width: 1200px; margin: 40px auto; padding: 0 24px;">
+        <div style="background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); max-height: calc(100vh - 80px); overflow: hidden; display: flex; flex-direction: column;">
+            <!-- Modal Header -->
+            <div style="padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;">
+                <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600;">新建文章</h3>
+                <button onclick="closeArticleModal()" style="background: none; border: none; color: var(--muted-foreground); cursor: pointer; font-size: 20px; padding: 4px 8px;">x</button>
+            </div>
+            <!-- Modal Body -->
+            <div style="flex: 1; overflow-y: auto; padding: 24px;">
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--foreground);">文章标题</label>
+                    <input type="text" id="article-title" placeholder="输入文章标题" style="width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--input); color: var(--foreground); font-size: 16px; outline: none; box-sizing: border-box;">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                    <div>
+                        <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--foreground);">分类</label>
+                        <select id="article-category" style="width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--input); color: var(--foreground); font-size: 14px; cursor: pointer; box-sizing: border-box;">
+                            <option value="推理模式">推理模式</option>
+                            <option value="框架">框架</option>
+                            <option value="协议">协议</option>
+                            <option value="工程实践">工程实践</option>
+                            <option value="LLM基础">LLM基础</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--foreground);">难度</label>
+                        <select id="article-level" style="width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--input); color: var(--foreground); font-size: 14px; cursor: pointer; box-sizing: border-box;">
+                            <option value="入门">入门</option>
+                            <option value="中级">中级</option>
+                            <option value="高级">高级</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--foreground);">摘要</label>
+                    <textarea id="article-summary" rows="2" placeholder="文章简要描述..." style="width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--input); color: var(--foreground); font-size: 14px; outline: none; resize: vertical; box-sizing: border-box;"></textarea>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                        <label style="font-size: 13px; font-weight: 500; color: var(--foreground);">文章内容 (Markdown)</label>
+                        <div style="display: flex; gap: 6px;">
+                            <button class="editor-tool-btn" onclick="insertMarkdown('**', '**')" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--muted); color: var(--foreground); font-size: 11px; cursor: pointer; font-family: var(--font-mono);">B</button>
+                            <button class="editor-tool-btn" onclick="insertMarkdown('*', '*')" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--muted); color: var(--foreground); font-size: 11px; cursor: pointer; font-style: italic;">I</button>
+                            <button class="editor-tool-btn" onclick="insertMarkdown('```\n', '\n```')" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--muted); color: var(--foreground); font-size: 11px; cursor: pointer; font-family: var(--font-mono);">&lt;/&gt;</button>
+                            <button class="editor-tool-btn" onclick="insertMarkdown('# ', '')" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--muted); color: var(--foreground); font-size: 11px; cursor: pointer; font-family: var(--font-mono);">H</button>
+                            <button class="editor-tool-btn" onclick="insertMarkdown('[', '](url)')" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--muted); color: var(--foreground); font-size: 11px; cursor: pointer; font-family: var(--font-mono);">L</button>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden;">
+                        <textarea id="article-markdown" rows="20" placeholder="使用 Markdown 编写文章内容..." style="padding: 16px; border: none; border-right: 1px solid var(--border); background: var(--input); color: var(--foreground); font: 13px/1.6 var(--font-mono); outline: none; resize: none; box-sizing: border-box;"></textarea>
+                        <div id="article-preview" style="padding: 16px; background: var(--card); overflow-y: auto; min-height: 400px;">
+                            <p style="color: var(--muted-foreground); font-size: 13px; font-style: italic;">预览区域</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- 动画配置 -->
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 8px; color: var(--foreground);">嵌入动画</label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                        <label style="display: flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 13px;">
+                            <input type="checkbox" class="anim-check" value="react" style="accent-color: var(--chart-5);"> ReAct
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 13px;">
+                            <input type="checkbox" class="anim-check" value="cot" style="accent-color: var(--chart-5);"> CoT
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 13px;">
+                            <input type="checkbox" class="anim-check" value="tot" style="accent-color: var(--chart-5);"> ToT
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 13px;">
+                            <input type="checkbox" class="anim-check" value="got" style="accent-color: var(--chart-5);"> GoT
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 13px;">
+                            <input type="checkbox" class="anim-check" value="loop" style="accent-color: var(--chart-5);"> Loop
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 13px;">
+                            <input type="checkbox" class="anim-check" value="mcp" style="accent-color: var(--chart-5);"> MCP
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <!-- Modal Footer -->
+            <div style="padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px; flex-shrink: 0;">
+                <button onclick="saveArticle('draft')" class="btn btn-secondary" style="padding: 10px 24px;">保存草稿</button>
+                <button onclick="saveArticle('published')" class="btn btn-primary" style="padding: 10px 24px;">发布文章</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 动画预览弹窗 -->
+<div id="animation-preview-modal" style="display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+    <div style="max-width: 800px; margin: 40px auto; padding: 0 24px;">
+        <div style="background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;">
+            <div style="padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+                <h3 style="font-family: var(--font-serif); font-size: 18px; font-weight: 600;" id="anim-preview-title">动画预览</h3>
+                <button onclick="closeAnimationPreview()" style="background: none; border: none; color: var(--muted-foreground); cursor: pointer; font-size: 20px; padding: 4px 8px;">x</button>
+            </div>
+            <div id="animation-preview-container" style="min-height: 400px; max-height: 70vh; overflow-y: auto;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    // 初始化示例数据
+    if (!localStorage.getItem('agentforge_author_demo')) {
+        const demoArticles = [
+            {
+                id: 'a1',
+                title: 'ReAct：推理与行动的交替循环',
+                category: '推理模式',
+                level: '入门',
+                summary: '理解Agent如何交替进行推理(Reasoning)和行动(Acting)，通过交互式动画直观展示。',
+                status: 'published',
+                views: 1247,
+                animations: ['react'],
+                createdAt: '2026-07-10',
+                updatedAt: '2026-07-10'
+            },
+            {
+                id: 'a2',
+                title: 'CoT思维链：让LLM学会逐步推理',
+                category: '推理模式',
+                level: '入门',
+                summary: 'Chain-of-Thought prompting如何让模型展现出类似人类的逐步推理能力。',
+                status: 'published',
+                views: 893,
+                animations: ['cot'],
+                createdAt: '2026-07-08',
+                updatedAt: '2026-07-08'
+            },
+            {
+                id: 'a3',
+                title: 'MCP协议深度解析',
+                category: '协议',
+                level: '中级',
+                summary: 'Model Context Protocol完整解析：架构设计、通信流程和实际应用。',
+                status: 'draft',
+                views: 0,
+                animations: ['mcp'],
+                createdAt: '2026-07-11',
+                updatedAt: '2026-07-11'
+            }
+        ];
+        localStorage.setItem('agentforge_author_demo', JSON.stringify(demoArticles));
+    }
+})();
+
+function renderArticlesList(filter) {
+    const list = document.getElementById('articles-list');
+    if (!list) return;
+
+    let articles = [];
+    try {
+        articles = JSON.parse(localStorage.getItem('agentforge_author_demo') || '[]');
+    } catch(e) { return; }
+
+    if (filter && filter !== 'all') {
+        articles = articles.filter(a => a.status === filter);
+    }
+
+    // Update stats
+    const published = articles.filter(a => a.status === 'published').length;
+    const drafts = articles.filter(a => a.status === 'draft').length;
+    const totalViews = articles.reduce((s, a) => s + (a.views || 0), 0);
+    const totalAnims = articles.reduce((s, a) => s + (a.animations ? a.animations.length : 0), 0);
+
+    const elPublished = document.getElementById('stat-published');
+    const elDraft = document.getElementById('stat-draft');
+    const elViews = document.getElementById('stat-views');
+    const elAnims = document.getElementById('stat-animations');
+    if (elPublished) elPublished.textContent = published;
+    if (elDraft) elDraft.textContent = drafts;
+    if (elViews) elViews.textContent = totalViews.toLocaleString();
+    if (elAnims) elAnims.textContent = totalAnims;
+
+    if (articles.length === 0) {
+        list.innerHTML = '<p style="text-align: center; padding: 40px; color: var(--muted-foreground); font-size: 14px;">暂无文章。点击上方按钮创建第一篇文章。</p>';
+        return;
+    }
+
+    list.innerHTML = articles.map(a => {
+        const statusColor = a.status === 'published' ? 'var(--chart-3)' : 'var(--chart-5)';
+        const statusText = a.status === 'published' ? '已发布' : '草稿';
+        return `
+        <div style="padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 200px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                    <span style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-1);">${a.category}</span>
+                    <span style="font-size: 10px; padding: 2px 8px; border-radius: 4px; background: ${statusColor}; color: #1a1714; font-weight: 600;">${statusText}</span>
+                </div>
+                <h4 style="font-family: var(--font-serif); font-size: 16px; font-weight: 600; margin-bottom: 4px;">${a.title}</h4>
+                <p style="font-size: 13px; color: var(--muted-foreground);">${a.summary || ''}</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--muted-foreground);">
+                <span>${a.views || 0} 阅读</span>
+                <span>${a.animations ? a.animations.length : 0} 动画</span>
+                <span>${a.updatedAt}</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-ghost btn-sm" onclick="editArticle('${a.id}')">编辑</button>
+                ${a.status === 'draft' ? `<button class="btn btn-primary btn-sm" onclick="publishArticle('${a.id}')">发布</button>` : ''}
+                <button class="btn btn-ghost btn-sm" style="color: #ef4444;" onclick="deleteArticle('${a.id}')">删除</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function filterArticles(filter) {
+    document.querySelectorAll('.filter-btn').forEach(function(b) {
+        b.classList.remove('active');
+        b.style.background = 'transparent';
+        b.style.color = 'var(--muted-foreground)';
+    });
+    const activeBtn = document.querySelector('.filter-btn[data-filter="' + filter + '"]');
+    if (activeBtn) {
+        activeBtn.classList.add('active');
+        activeBtn.style.background = 'var(--card)';
+        activeBtn.style.color = 'var(--foreground)';
+    }
+    renderArticlesList(filter);
+}
+
+function showNewArticleModal() {
+    document.getElementById('article-title').value = '';
+    document.getElementById('article-summary').value = '';
+    document.getElementById('article-markdown').value = '';
+    document.getElementById('article-preview').innerHTML = '<p style="color: var(--muted-foreground); font-size: 13px; font-style: italic;">预览区域</p>';
+    document.querySelectorAll('.anim-check').forEach(function(c) { c.checked = false; });
+    document.getElementById('article-modal').style.display = 'block';
+}
+
+function closeArticleModal() {
+    document.getElementById('article-modal').style.display = 'none';
+}
+
+function saveArticle(status) {
+    const title = document.getElementById('article-title').value.trim();
+    const category = document.getElementById('article-category').value;
+    const level = document.getElementById('article-level').value;
+    const summary = document.getElementById('article-summary').value.trim();
+    const markdown = document.getElementById('article-markdown').value;
+
+    if (!title) {
+        alert('请输入文章标题');
+        return;
+    }
+
+    const selectedAnims = [];
+    document.querySelectorAll('.anim-check:checked').forEach(function(c) {
+        selectedAnims.push(c.value);
+    });
+
+    const article = {
+        id: 'a' + Date.now(),
+        title: title,
+        category: category,
+        level: level,
+        summary: summary,
+        status: status,
+        views: 0,
+        animations: selectedAnims,
+        markdown: markdown,
+        createdAt: new Date().toISOString().split('T')[0],
+        updatedAt: new Date().toISOString().split('T')[0]
+    };
+
+    let articles = [];
+    try {
+        articles = JSON.parse(localStorage.getItem('agentforge_author_demo') || '[]');
+    } catch(e) {}
+    articles.push(article);
+    localStorage.setItem('agentforge_author_demo', JSON.stringify(articles));
+
+    closeArticleModal();
+    renderArticlesList('all');
+}
+
+function publishArticle(id) {
+    let articles = [];
+    try {
+        articles = JSON.parse(localStorage.getItem('agentforge_author_demo') || '[]');
+    } catch(e) { return; }
+    const article = articles.find(a => a.id === id);
+    if (article) {
+        article.status = 'published';
+        localStorage.setItem('agentforge_author_demo', JSON.stringify(articles));
+        renderArticlesList('all');
+    }
+}
+
+function deleteArticle(id) {
+    if (!confirm('确定要删除这篇文章吗？')) return;
+    let articles = [];
+    try {
+        articles = JSON.parse(localStorage.getItem('agentforge_author_demo') || '[]');
+    } catch(e) { return; }
+    articles = articles.filter(a => a.id !== id);
+    localStorage.setItem('agentforge_author_demo', JSON.stringify(articles));
+    renderArticlesList('all');
+}
+
+function editArticle(id) {
+    alert('文章编辑功能将在完整版中打开编辑器。\n\n当前为演示模式。');
+}
+
+// Markdown preview
+function updatePreview() {
+    const md = document.getElementById('article-markdown');
+    const preview = document.getElementById('article-preview');
+    if (!md || !preview) return;
+
+    let html = '';
+    const text = md.value;
+    if (!text.trim()) {
+        preview.innerHTML = '<p style="color: var(--muted-foreground); font-size: 13px; font-style: italic;">预览区域</p>';
+        return;
+    }
+
+    // Simple markdown rendering
+    let lines = text.split('\n');
+    let inCodeBlock = false;
+    let codeContent = [];
+    let codeLang = '';
+
+    for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
+
+        if (line.startsWith('```')) {
+            if (inCodeBlock) {
+                html += '<pre style="background: var(--muted); padding: 16px; border-radius: 10px; overflow-x: auto; font: 12px/1.6 var(--font-mono); margin: 12px 0;"><code>' + escapeHtml(codeContent.join('\n')) + '</code></pre>';
+                codeContent = [];
+                inCodeBlock = false;
+            } else {
+                inCodeBlock = true;
+                codeLang = line.slice(3).trim();
+            }
+            continue;
+        }
+
+        if (inCodeBlock) {
+            codeContent.push(line);
+            continue;
+        }
+
+        // Headers
+        if (line.startsWith('### ')) {
+            html += '<h3 style="font-family: var(--font-serif); font-weight: 600; font-size: 18px; margin: 20px 0 8px;">' + line.slice(4) + '</h3>';
+        } else if (line.startsWith('## ')) {
+            html += '<h2 style="font-family: var(--font-serif); font-weight: 600; font-size: 22px; margin: 24px 0 12px;">' + line.slice(3) + '</h2>';
+        } else if (line.startsWith('# ')) {
+            html += '<h1 style="font-family: var(--font-serif); font-weight: 600; font-size: 28px; margin: 24px 0 12px;">' + line.slice(2) + '</h1>';
+        }
+        // Blockquote
+        else if (line.startsWith('> ')) {
+            html += '<blockquote style="border-left: 3px solid var(--chart-5); padding: 8px 16px; margin: 12px 0; background: var(--muted); border-radius: 0 8px 8px 0;">' + line.slice(2) + '</blockquote>';
+        }
+        // Code inline
+        else if (line.startsWith('    ')) {
+            html += '<pre style="background: var(--muted); padding: 12px; border-radius: 8px; font: 12px/1.6 var(--font-mono); margin: 8px 0;">' + escapeHtml(line.slice(4)) + '</pre>';
+        }
+        // List
+        else if (/^[-*] /.test(line)) {
+            html += '<li style="margin-left: 20px; margin-bottom: 4px;">' + parseInline(line.slice(2)) + '</li>';
+        }
+        // Empty line
+        else if (line.trim() === '') {
+            html += '<div style="height: 8px;"></div>';
+        }
+        // Regular paragraph
+        else {
+            html += '<p style="margin: 8px 0; line-height: 1.7; color: var(--foreground);">' + parseInline(line) + '</p>';
+        }
+    }
+
+    preview.innerHTML = html;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function parseInline(text) {
+    // Bold
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Italic
+    text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    // Inline code
+    text = text.replace(/`(.+?)`/g, '<code style="background: var(--muted); padding: 2px 6px; border-radius: 4px; font: 12px/1 var(--font-mono);">$1</code>');
+    // Links
+    text = text.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" style="color: var(--chart-5); text-decoration: none;">$1</a>');
+    return text;
+}
+
+function insertMarkdown(before, after) {
+    const textarea = document.getElementById('article-markdown');
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = textarea.value.substring(start, end);
+    textarea.value = textarea.value.substring(0, start) + before + selected + after + textarea.value.substring(end);
+    textarea.focus();
+    textarea.setSelectionRange(start + before.length, start + before.length + selected.length);
+    updatePreview();
+}
+
+function showAnimationTool(type) {
+    const modal = document.getElementById('animation-preview-modal');
+    const container = document.getElementById('animation-preview-container');
+    const title = document.getElementById('anim-preview-title');
+
+    const names = {
+        react: 'ReAct 模式',
+        cot: 'CoT 思维链',
+        tot: 'ToT 思维树',
+        got: 'GoT 图谱思维',
+        loop: 'Agent Loop',
+        mcp: 'MCP 协议'
+    };
+
+    title.textContent = names[type] || type + ' 动画';
+    container.innerHTML = '<div style="text-align: center; padding: 60px 20px; color: var(--muted-foreground);"><p style="font-size: 14px; margin-bottom: 8px;">动画预览工具</p><p style="font-size: 12px;">在编辑器中嵌入动画后，此处将实时预览动画效果。</p><p style="font-size: 12px; margin-top: 12px; font-family: var(--font-mono);">动画类型: ' + type.toUpperCase() + '</p></div>';
+    modal.style.display = 'block';
+
+    // Try to load actual animation
+    const animClasses = {
+        react: 'ReactAnimation',
+        cot: 'CotAnimation',
+        tot: 'TotAnimation',
+        got: 'GotAnimation',
+        loop: 'LoopAnimation',
+        mcp: 'McpAnimation'
+    };
+
+    const animClass = animClasses[type];
+    if (window[animClass]) {
+        container.innerHTML = '';
+        try {
+            const anim = new window[animClass](container);
+            const player = anim.player;
+            if (player) {
+                const controls = document.createElement('div');
+                controls.className = 'anim-controls';
+                controls.style.cssText = 'display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px 16px; background: var(--muted); border-top: 1px solid var(--border);';
+                controls.innerHTML = `
+                    <button class="anim-btn" onclick="anim.player.play()" style="...">PLAY</button>
+                    <button class="anim-btn" onclick="anim.player.pause()" style="...">PAUSE</button>
+                    <button class="anim-btn" onclick="anim.player.reset()" style="...">RESET</button>
+                `;
+                container.appendChild(controls);
+            }
+        } catch(e) {
+            console.error('Animation load error:', e);
+        }
+    }
+}
+
+function closeAnimationPreview() {
+    document.getElementById('animation-preview-modal').style.display = 'none';
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    renderArticlesList('all');
+
+    // Markdown preview on input
+    const mdTextarea = document.getElementById('article-markdown');
+    if (mdTextarea) {
+        mdTextarea.addEventListener('input', updatePreview);
+    }
+
+    // Close modals on escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeArticleModal();
+            closeAnimationPreview();
+        }
+    });
+
+    // Close modal on backdrop click
+    document.getElementById('article-modal').addEventListener('click', function(e) {
+        if (e.target === this) closeArticleModal();
+    });
+    document.getElementById('animation-preview-modal').addEventListener('click', function(e) {
+        if (e.target === this) closeAnimationPreview();
+    });
+});
+
+// 暴露到全局
+window.showNewArticleModal = showNewArticleModal;
+window.closeArticleModal = closeArticleModal;
+window.saveArticle = saveArticle;
+window.publishArticle = publishArticle;
+window.deleteArticle = deleteArticle;
+window.editArticle = editArticle;
+window.filterArticles = filterArticles;
+window.showAnimationTool = showAnimationTool;
+window.closeAnimationPreview = closeAnimationPreview;
+window.insertMarkdown = insertMarkdown;
+</script>

@@ -42,10 +42,14 @@
                 覆盖Agent开发从理论到实践的全部核心内容，每个知识点配有交互式动画。
             </p>
         </div>
+                <div style="margin-top: 20px; display: flex; gap: 8px;">
+                    <button class="view-mode-btn active" data-view="grid" onclick="setViewMode('grid')" style="padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--foreground); font-size: 12px; font-weight: 500; cursor: pointer; font-family: var(--font-mono); letter-spacing: 0.05em; text-transform: uppercase;">GRID</button>
+                    <button class="view-mode-btn" data-view="list" onclick="setViewMode('list')" style="padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted-foreground); font-size: 12px; font-weight: 500; cursor: pointer; font-family: var(--font-mono); letter-spacing: 0.05em; text-transform: uppercase;">LIST</button>
+                </div>
 
-        <div style="display: grid; gap: 20px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">
+        <div id="knowledge-grid" style="display: grid; gap: 20px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">
             <!-- 卡片1: 推理模式 -->
-            <a href="#/knowledge/react" class="card" style="text-decoration: none; display: block; transition: transform 0.3s ease, box-shadow 0.3s ease;">
+            <a href="#/knowledge" class="card" style="text-decoration: none; display: block; transition: transform 0.3s ease, box-shadow 0.3s ease;">
                 <div style="margin-bottom: 14px; display: flex; flex-direction: column; gap: 2px;">
                     <span style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-1);">推理模式</span>
                     <span style="font-size: 11px; color: var(--muted-foreground); letter-spacing: 0.02em;">Reasoning Patterns</span>
@@ -151,7 +155,7 @@
 
         <div style="display: grid; gap: 20px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
             <!-- 文章1 -->
-            <a href="#/knowledge/react" class="card" style="text-decoration: none; display: block;">
+            <a href="#/knowledge" class="card" style="text-decoration: none; display: block;">
                 <div style="padding: 8px 0 12px;">
                     <span class="tag tag-primary" style="margin-bottom: 10px; display: inline-flex;">ReAct</span>
                     <h3 style="font-family: var(--font-serif); font-weight: 600; font-size: 17px; color: var(--foreground); line-height: 1.35; margin-top: 10px;">ReAct：推理与行动的交替循环</h3>
@@ -210,3 +214,41 @@
     </section>
 
 </div>
+    <script>
+    function setViewMode(mode) {
+        var grid = document.getElementById('knowledge-grid');
+        if (!grid) return;
+        var btns = document.querySelectorAll('.view-mode-btn');
+        btns.forEach(function(b) {
+            b.classList.remove('active');
+            b.style.background = 'transparent';
+            b.style.color = 'var(--muted-foreground)';
+        });
+        var activeBtn = document.querySelector('.view-mode-btn[data-view="' + mode + '"]');
+        if (activeBtn) {
+            activeBtn.classList.add('active');
+            activeBtn.style.background = 'var(--card)';
+            activeBtn.style.color = 'var(--foreground)';
+        }
+        if (mode === 'list') {
+            grid.style.gridTemplateColumns = '1fr';
+            grid.querySelectorAll('.card').forEach(function(card) {
+                card.style.display = 'grid';
+                card.style.gridTemplateColumns = '1fr auto';
+                card.style.alignItems = 'center';
+                card.style.gap = '24px';
+            });
+        } else {
+            grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(300px, 1fr))';
+            grid.querySelectorAll('.card').forEach(function(card) {
+                card.style.display = 'block';
+                card.style.gridTemplateColumns = '';
+                card.style.alignItems = '';
+                card.style.gap = '';
+            });
+        }
+    }
+    </script>
+    <style>
+    .view-mode-btn.active { background: var(--card) !important; color: var(--foreground) !important; border-color: var(--primary) !important; }
+    </style>
