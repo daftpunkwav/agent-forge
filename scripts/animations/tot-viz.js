@@ -16,10 +16,10 @@ class TotAnimation {
       { label: '评估A', type: 'evaluate', x: 140, y: 200, text: '效果: 3/5' },
       { label: '评估B', type: 'evaluate', x: 300, y: 200, text: '效果: 4/5' },
       { label: '评估C', type: 'evaluate', x: 460, y: 200, text: '效果: 2/5' },
-      { label: '剪枝C', type: 'prune', x: 460, y: 280, text: '❌ 成本过高' },
+      { label: '剪枝C', type: 'prune', x: 460, y: 280, text: '成本过高' },
       { label: '扩展A', type: 'expand', x: 200, y: 300, text: '长尾关键词' },
       { label: '扩展B', type: 'expand', x: 400, y: 300, text: '个性化推送' },
-      { label: '最优', type: 'selected', x: 300, y: 380, text: '✓ 推送通知 + 个性化' },
+      { label: '最优', type: 'selected', x: 300, y: 380, text: '推送通知 + 个性化' },
     ];
     this._build();
   }
@@ -38,7 +38,7 @@ class TotAnimation {
           </div>
         </div>
         <div style="margin-top:16px; text-align:center; font-size:13px; color:var(--muted-foreground); min-height:20px;" id="tot-desc">
-          点击 ▶ 观看ToT如何探索多种方案并找到最优解
+          点击播放按钮，观看ToT如何探索多种方案并找到最优解
         </div>
       </div>
     `;
@@ -116,12 +116,12 @@ class TotAnimation {
     if (step > 0 && step <= this.steps.length) {
       const data = this.steps[step - 1];
       const messages = {
-        'root': '📌 定义核心问题',
-        'candidate': '💡 生成候选方案',
-        'evaluate': '📊 评估每个方案的效果',
-        'prune': '✂️ 剪枝：淘汰不达标方案C',
-        'expand': '🌿 对优质方案深入展开',
-        'selected': '🏆 找到最优路径！',
+        'root': '定义核心问题',
+        'candidate': '生成候选方案',
+        'evaluate': '评估每个方案的效果',
+        'prune': '剪枝：淘汰不达标方案C',
+        'expand': '对优质方案深入展开',
+        'selected': '找到最优路径！',
       };
       desc.textContent = messages[data.type] || data.label;
     }
@@ -145,7 +145,7 @@ class TotAnimation {
       });
     }
     const desc = this.container.querySelector('#tot-desc');
-    if (desc) desc.textContent = '点击 ▶ 观看ToT如何探索多种方案并找到最优解';
+    if (desc) desc.textContent = '点击播放按钮，观看ToT如何探索多种方案并找到最优解';
     this.player?.reset();
   }
 }

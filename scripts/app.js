@@ -74,6 +74,9 @@
   function init() {
     themeManager = new ThemeManager();
 
+    // 暴露到全局，供settings页面使用
+    window.__THEME_MANAGER__ = themeManager;
+
     // 监听hash变化
     window.addEventListener('hashchange', handleRoute);
 
@@ -83,13 +86,43 @@
     // 初始化Agent浮动按钮
     initAgentFloat();
 
+    // Header主题切换按钮
+    const headerThemeBtn = document.querySelector('[data-theme-toggle]');
+    if (headerThemeBtn) {
+      headerThemeBtn.addEventListener('click', () => {
+        themeManager.toggle();
+        updateThemeIcons(themeManager.get());
+      });
+      updateThemeIcons(themeManager.get());
+    }
+
+    // 移动端菜单
+    const mobileMenuBtn = document.querySelector('#mobile-menu-btn');
+    const mobileNav = document.querySelector('#mobile-nav');
+    if (mobileMenuBtn && mobileNav) {
+      mobileMenuBtn.addEventListener('click', () => {
+        const isOpen = mobileNav.style.maxHeight !== '0px' && mobileNav.style.maxHeight !== '';
+        mobileNav.style.maxHeight = isOpen ? '0px' : '300px';
+      });
+    }
+
     // 监听系统主题偏好变化
     if (window.matchMedia) {
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
         if (!localStorage.getItem('agentforge-theme')) {
           themeManager.set(e.matches ? 'dark' : 'light');
+          updateThemeIcons(themeManager.get());
         }
       });
+    }
+  }
+
+  function updateThemeIcons(theme) {
+    const sunIcon = document.querySelector('#theme-icon-sun');
+    const moonIcon = document.querySelector('#theme-icon-moon');
+    if (sunIcon && moonIcon) {
+      sunIcon.style.display = theme === 'dark' ? 'block' : 'none';
+      moonIcon.style.display = theme === 'light' ? 'block' : 'none';
     }
   }
 
@@ -343,9 +376,10 @@
       themeToggle.dataset.initialized = 'true';
       themeToggle.addEventListener('click', () => {
         themeManager.toggle();
-        themeToggle.textContent = themeManager.get() === 'dark' ? '🌙 当前：深色模式' : '☀️ 当前：浅色模式';
+        updateThemeIcons(themeManager.get());
+        themeToggle.textContent = themeManager.get() === 'dark' ? '当前：深色模式' : '当前：浅色模式';
       });
-      themeToggle.textContent = themeManager.get() === 'dark' ? '🌙 当前：深色模式' : '☀️ 当前：浅色模式';
+      themeToggle.textContent = themeManager.get() === 'dark' ? '当前：深色模式' : '当前：浅色模式';
     }
   }
 
@@ -419,16 +453,16 @@
       </button>
       <div class="agent-panel" id="agent-panel">
         <div class="agent-panel-header">
-          <span class="agent-panel-title">🧠 Agent 学习助手</span>
+          <span class="agent-panel-title" style="font-family:var(--font-mono); font-weight:700; letter-spacing:0.05em;">AGENT</span>
           <button class="agent-panel-close" id="agent-panel-close" aria-label="关闭">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         <div class="agent-panel-body" id="agent-panel-body">
           <div style="text-align:center; padding:40px 20px; color:var(--muted-foreground);">
-            <div style="font-size:40px; margin-bottom:12px;">🤖</div>
-            <p style="font-size:14px; font-weight:500; color:var(--foreground); margin-bottom:8px;">Agent对话功能</p>
-            <p style="font-size:12px; line-height:1.6;">此功能将在后续版本中实现。\n届时你可以：\n• 点击不懂的内容直接提问\n• 悬停获取快速解释\n• Agent记住你的学习进度</p>
+            <div style="font:700 11px/1 var(--font-mono); letter-spacing:0.1em; text-transform:uppercase; color:var(--muted-foreground); margin-bottom:12px;">AGENT ASSISTANT</div>
+            <p style="font-size:14px; font-weight:500; color:var(--foreground); margin-bottom:8px;">对话功能即将推出</p>
+            <p style="font-size:12px; line-height:1.6;">Phase 3 上线后你将可以使用：\n- 点击不懂的内容直接提问\n- Agent 记住你的学习进度\n- 悬停获取快速概念解释</p>
           </div>
         </div>
         <div class="agent-panel-input">

@@ -30,7 +30,7 @@ class McpAnimation {
           <div style="text-align:center;">
             <div style="font:700 13px/1 var(--font-mono); color:var(--primary); margin-bottom:10px;">LLM Client</div>
             <div id="mcp-client-area" style="min-height:200px; border:1.5px dashed var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:6px; align-items:center;">
-              <div style="font-size:32px;">🤖</div>
+              <div style="font:700 13px/1 var(--font-mono); color:var(--primary);">LLM Client</div>
               <div style="font-size:12px; color:var(--muted-foreground);">等待连接...</div>
             </div>
           </div>
@@ -48,13 +48,13 @@ class McpAnimation {
           <div style="text-align:center;">
             <div style="font:700 13px/1 var(--font-mono); color:var(--chart-2); margin-bottom:10px;">MCP Server</div>
             <div id="mcp-server-area" style="min-height:200px; border:1.5px dashed var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:6px; align-items:center;">
-              <div style="font-size:32px;">🔧</div>
+              <div style="font:700 13px/1 var(--font-mono); color:var(--chart-2);">MCP Server</div>
               <div style="font-size:12px; color:var(--muted-foreground);">等待请求...</div>
             </div>
           </div>
         </div>
         <div style="margin-top:16px; text-align:center; font-size:13px; color:var(--muted-foreground); min-height:20px;" id="mcp-desc">
-          点击 ▶ 观看MCP协议如何连接LLM与外部工具
+          点击播放按钮，观看MCP协议如何连接LLM与外部工具
         </div>
       </div>
     `;
@@ -79,11 +79,11 @@ class McpAnimation {
     if (!clientArea || !serverArea) return;
 
     if (step === 0) {
-      clientArea.innerHTML = '<div style="font-size:32px;">🤖</div><div style="font-size:12px; color:var(--muted-foreground);">等待连接...</div>';
-      serverArea.innerHTML = '<div style="font-size:32px;">🔧</div><div style="font-size:12px; color:var(--muted-foreground);">等待请求...</div>';
+      clientArea.innerHTML = '<div style="font:600 11px/1 var(--font-mono); color:var(--primary);">CLIENT</div><div style="font-size:12px; color:var(--muted-foreground);">等待连接...</div>';
+      serverArea.innerHTML = '<div style="font:600 11px/1 var(--font-mono); color:var(--chart-2);">SERVER</div><div style="font-size:12px; color:var(--muted-foreground);">等待请求...</div>';
       line1.style.background = 'var(--border)'; line2.style.background = 'var(--border)';
       pkt1.style.opacity = '0'; pkt2.style.opacity = '0';
-      if (desc) desc.textContent = '点击 ▶ 观看MCP协议如何连接LLM与外部工具';
+      if (desc) desc.textContent = '点击播放按钮，观看MCP协议如何连接LLM与外部工具';
       return;
     }
 
@@ -93,8 +93,8 @@ class McpAnimation {
       case 'connect':
         line1.style.background = 'var(--chart-3)'; line2.style.background = 'var(--chart-3)';
         pkt1.style.opacity = '0.6'; pkt2.style.opacity = '0.6';
-        clientArea.innerHTML = '<div style="font:600 12px/1 var(--font-mono); color:var(--chart-3);">✓ 已连接</div>';
-        serverArea.innerHTML = '<div style="font:600 12px/1 var(--font-mono); color:var(--chart-3);">✓ 就绪</div>';
+        clientArea.innerHTML = '<div style="font:600 12px/1 var(--font-mono); color:var(--chart-3);">已连接</div>';
+        serverArea.innerHTML = '<div style="font:600 12px/1 var(--font-mono); color:var(--chart-3);">就绪</div>';
         break;
       case 'request':
         clientArea.innerHTML += this._msgBubble('→ tools/list', 'outgoing');

@@ -28,8 +28,10 @@ class AnimationPlayer {
 
   play() {
     if (this.isPlaying) return;
+    // If at end, restart
     if (this.currentStep >= this.totalSteps) {
       this.currentStep = 0;
+      this.onStep(0);
     }
     this.isPlaying = true;
     this._tick();
@@ -101,17 +103,21 @@ class AnimationPlayer {
   }
 
   _advance() {
-    this.onStep(this.currentStep);
-    if (this.currentStep >= this.totalSteps - 1) {
+    // Increment first, then fire callback with new step
+    this.currentStep++;
+    if (this.currentStep >= this.totalSteps) {
       if (this.loop) {
         this.currentStep = 0;
+        this.onStep(0);
       } else {
+        this.currentStep = this.totalSteps;
         this.isPlaying = false;
         this.onComplete();
         return;
       }
+    } else {
+      this.onStep(this.currentStep);
     }
-    this.currentStep++;
   }
 }
 

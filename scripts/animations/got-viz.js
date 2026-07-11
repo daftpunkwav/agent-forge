@@ -7,13 +7,13 @@ class GotAnimation {
   constructor(containerEl) {
     this.container = containerEl;
     this.entities = [
-      { id: 'e1', label: 'Alice', type: '人物', x: 120, y: 60, icon: '👤' },
-      { id: 'e2', label: 'Bob', type: '人物', x: 320, y: 40, icon: '👤' },
-      { id: 'e3', label: 'Google', type: '公司', x: 500, y: 80, icon: '🏢' },
-      { id: 'e4', label: 'Python', type: '技术', x: 80, y: 180, icon: '💻' },
-      { id: 'e5', label: 'AI Engineer', type: '职位', x: 240, y: 200, icon: '🧑‍💻' },
-      { id: 'e6', label: 'Machine Learning', type: '领域', x: 400, y: 180, icon: '📊' },
-      { id: 'e7', label: 'OpenAI', type: '公司', x: 560, y: 160, icon: '🏢' },
+      { id: 'e1', label: 'Alice', type: '人物', x: 120, y: 60 },
+      { id: 'e2', label: 'Bob', type: '人物', x: 320, y: 40 },
+      { id: 'e3', label: 'Google', type: '公司', x: 500, y: 80 },
+      { id: 'e4', label: 'Python', type: '技术', x: 80, y: 180 },
+      { id: 'e5', label: 'AI Engineer', type: '职位', x: 240, y: 200 },
+      { id: 'e6', label: 'Machine Learning', type: '领域', x: 400, y: 180 },
+      { id: 'e7', label: 'OpenAI', type: '公司', x: 560, y: 160 },
     ];
     this.relations = [
       { from: 'e1', to: 'e2', label: '同事' },
@@ -38,7 +38,7 @@ class GotAnimation {
           </svg>
         </div>
         <div style="margin-top:16px; text-align:center; font-size:13px; color:var(--muted-foreground); min-height:20px;" id="got-desc">
-          点击 ▶ 观看Agent如何从文本中提取实体并构建关系图谱
+          点击播放按钮，观察Agent如何从文本中提取实体并构建关系图谱
         </div>
       </div>
     `;
@@ -52,7 +52,7 @@ class GotAnimation {
       onStep: (i) => this._renderStep(i),
       onComplete: () => {
         const desc = this.container.querySelector('#got-desc');
-        if (desc) desc.textContent = '🎯 图谱构建完成！Agent从文本中提取了7个实体和6个关系。';
+        if (desc) desc.textContent = '图谱构建完成！Agent从文本中提取了7个实体和6个关系。';
       }
     });
   }
@@ -75,7 +75,6 @@ class GotAnimation {
       line.setAttribute('y2', to.y + 20);
       this.svg.appendChild(line);
 
-      // Relation label
       const midX = (from.x + to.x) / 2 + 25;
       const midY = (from.y + to.y) / 2 + 20;
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -93,7 +92,6 @@ class GotAnimation {
     if (!desc) return;
 
     if (step <= this.entities.length) {
-      // Show entities one by one
       const idx = step - 1;
       if (idx >= 0 && idx < this.entities.length) {
         const ent = this.entities[idx];
@@ -101,22 +99,24 @@ class GotAnimation {
         node.className = 'got-entity';
         node.style.left = ent.x + 'px';
         node.style.top = ent.y + 'px';
-        node.innerHTML = `<span class="got-entity-icon">${ent.icon}</span>${ent.label}`;
+        node.textContent = ent.label;
         node.dataset.id = ent.id;
-        this.container.querySelector('div > div:nth-child(2)').appendChild(node);
-        requestAnimationFrame(() => node.classList.add('visible'));
-        desc.textContent = `🔍 提取实体：${ent.label}（${ent.type}）`;
+        const nodesLayer = this.container.querySelector('div > div:nth-child(2)');
+        if (nodesLayer) {
+          nodesLayer.appendChild(node);
+          requestAnimationFrame(() => node.classList.add('visible'));
+        }
+        desc.textContent = `提取实体：${ent.label}（${ent.type}）`;
       }
     } else if (step <= this.entities.length + this.relations.length) {
-      // Show relations one by one
       const relIdx = step - this.entities.length - 1;
       if (relIdx >= 0 && relIdx < this.relations.length) {
         const rel = this.relations[relIdx];
         const edge = this.container.querySelector(`#got-rel-${relIdx}`);
         const label = this.container.querySelector(`#got-label-${relIdx}`);
-        if (edge) { edge.classList.add('highlighted'); }
+        if (edge) edge.classList.add('highlighted');
         if (label) { label.style.fill = 'var(--primary)'; label.style.fontWeight = '600'; }
-        desc.textContent = `🔗 发现关系：${rel.from} → ${rel.label} → ${rel.to}`;
+        desc.textContent = `发现关系：${rel.from} → ${rel.label} → ${rel.to}`;
       }
     }
   }
@@ -127,15 +127,13 @@ class GotAnimation {
   reset() {
     const nodesLayer = this.container.querySelector('div > div:nth-child(2)');
     if (nodesLayer) nodesLayer.innerHTML = '';
-    this.svg.querySelectorAll('.got-relation').forEach(e => {
-      e.classList.remove('highlighted');
-    });
+    this.svg.querySelectorAll('.got-relation').forEach(e => e.classList.remove('highlighted'));
     this.svg.querySelectorAll('.got-label').forEach(e => {
       e.style.fill = '';
       e.style.fontWeight = '';
     });
     const desc = this.container.querySelector('#got-desc');
-    if (desc) desc.textContent = '点击 ▶ 观看Agent如何从文本中提取实体并构建关系图谱';
+    if (desc) desc.textContent = '点击播放按钮，观察Agent如何从文本中提取实体并构建关系图谱';
     this.player?.reset();
   }
 }

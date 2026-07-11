@@ -82,7 +82,7 @@ class TocManager {
     if (!document.querySelector('.toc-toggle')) {
       const toggle = document.createElement('button');
       toggle.className = 'toc-toggle';
-      toggle.innerHTML = '<span style="font-size:14px;">📋</span>';
+      toggle.textContent = '目录';
       toggle.setAttribute('aria-label', '目录');
       toggle.style.cssText = `
         display: none;

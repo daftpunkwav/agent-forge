@@ -7,10 +7,10 @@ class LoopAnimation {
   constructor(containerEl) {
     this.container = containerEl;
     this.steps = [
-      { label: 'Perceive', sub: '感知环境', icon: '👁', desc: '接收用户输入、传感器数据、上下文信息' },
-      { label: 'Reason', sub: '推理规划', icon: '🧠', desc: '分析当前状态，决定下一步行动' },
-      { label: 'Act', sub: '执行行动', icon: '⚡', desc: '调用工具、发送消息、修改状态' },
-      { label: 'Observe', sub: '观察结果', icon: '📡', desc: '收集行动结果，更新记忆' },
+      { label: 'Perceive', sub: '感知环境', desc: '接收用户输入、传感器数据、上下文信息' },
+      { label: 'Reason', sub: '推理规划', desc: '分析当前状态，决定下一步行动' },
+      { label: 'Act', sub: '执行行动', desc: '调用工具、发送消息、修改状态' },
+      { label: 'Observe', sub: '观察结果', desc: '收集行动结果，更新记忆' },
     ];
     this.cycles = 3; // Show 3 loop iterations
     this.totalSteps = this.steps.length * this.cycles + 1;
@@ -41,8 +41,7 @@ class LoopAnimation {
               return `
                 <div class="loop-step" id="loop-step-${i}"
                   style="left:${x}px; top:${y}px; width:110px; height:56px;">
-                  <div class="loop-icon">${s.icon}</div>
-                  <div style="font:700 12px/1 var(--font-sans);">${s.label}</div>
+                  <div style="font:700 12px/1 var(--font-mono); color:var(--primary);">${s.label}</div>
                   <div style="font:400 10px/1.3 var(--font-mono); color:var(--muted-foreground);">${s.sub}</div>
                 </div>
               `;
@@ -50,7 +49,7 @@ class LoopAnimation {
           </div>
         </div>
         <div style="margin-top:16px; text-align:center; font-size:13px; color:var(--muted-foreground); min-height:20px;" id="loop-desc">
-          点击 ▶ 观看Agent如何在循环中不断演进
+          点击播放按钮，观看Agent如何在循环中不断演进
         </div>
         <div style="margin-top:8px; display:flex; justify-content:center; gap:16px; font-size:12px; color:var(--muted-foreground);">
           <span>循环 1/3</span>
@@ -66,7 +65,7 @@ class LoopAnimation {
       onStep: (i) => this._renderStep(i),
       onComplete: () => {
         const desc = this.container.querySelector('#loop-desc');
-        if (desc) desc.textContent = '🏁 Agent循环演示完成。实际运行中循环会持续直到完成目标。';
+        if (desc) desc.textContent = 'Agent循环演示完成。实际运行中循环会持续直到完成目标。';
       }
     });
   }
@@ -129,7 +128,7 @@ class LoopAnimation {
     }
 
     if (cycleInfo) cycleInfo.textContent = `步骤: ${data.label} — ${data.desc}`;
-    if (desc) desc.textContent = `🔄 循环 #${cycleIdx + 1}：${data.icon} ${data.label} — ${data.desc}`;
+    if (desc) desc.textContent = `循环 #${cycleIdx + 1}：${data.label} — ${data.desc}`;
   }
 
   play() { this.player?.play(); }
@@ -141,7 +140,7 @@ class LoopAnimation {
       if (el) el.classList.remove('active', 'done');
     });
     const desc = this.container.querySelector('#loop-desc');
-    if (desc) desc.textContent = '点击 ▶ 观看Agent如何在循环中不断演进';
+    if (desc) desc.textContent = '点击播放按钮，观看Agent如何在循环中不断演进';
     const cycleInfo = this.container.querySelector('#loop-cycle-info');
     if (cycleInfo) cycleInfo.textContent = '';
     this.player?.reset();

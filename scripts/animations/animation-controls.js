@@ -4,11 +4,6 @@
    ═══════════════════════════════════════════════════════════════ */
 
 class AnimationControls {
-  /**
-   * @param {AnimationPlayer} player - 动画播放器实例
-   * @param {Object} options - 配置
-   * @param {string} options.stepFormat - 步骤显示格式 '{current}/{total}'
-   */
   constructor(player, options = {}) {
     this.player = player;
     this.stepFormat = options.stepFormat || '{current}/{total}';
@@ -41,7 +36,6 @@ class AnimationControls {
       </select>
     `;
 
-    // Find the anim-container to append controls to
     const animContainer = this.container.querySelector('.anim-container') || this.container;
     const existingControls = animContainer.querySelector('.anim-controls');
     if (existingControls) existingControls.remove();
@@ -68,11 +62,12 @@ class AnimationControls {
       this.player.setSpeed(parseFloat(e.target.value));
     });
 
-    // Listen to player state changes
-    this._updateHandler = () => this._updateUI();
-    this.player.onStep = (i) => {
+    // Listen to player state via polling in the tick loop
+    // We wrap the player's tick to update UI on each step
+    this._originalTick = this.player._tick.bind(this.player);
+    this.player._tick = () => {
       this._updateUI();
-      if (this.player._originalOnStep) this.player._originalOnStep(i);
+      this._originalTick();
     };
 
     this._updateUI();
