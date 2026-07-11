@@ -1,0 +1,131 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-outline" style="border-color: var(--chart-5); color: var(--chart-5);">LLM基础</span>
+                <span class="tag tag-muted">入门</span>
+                <span class="tag tag-muted">10 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                分词与 Tokenization
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                "你好世界"到底被切成了什么？深入理解LLM如何将人类语言转化为可处理的数字序列。
+            </p>
+        </div>
+
+        <h2 id="section-intro">什么是Tokenization？</h2>
+        <p>
+            Tokenization（分词）是LLM处理文本的第一步。它将连续的文本字符串切分为离散的<strong>token</strong>——模型能理解的最小单位。每个token会被映射为一个唯一的整数ID，再转换为向量表示。
+        </p>
+
+        <blockquote>
+            <strong>核心洞察：</strong>Tokenizer不是简单的"按空格分词"。它会处理多语言、缩写、表情符号，甚至将常见词合并为单个token。同一个词在不同tokenizer下可能被切成不同数量的token。
+        </blockquote>
+
+        <h2 id="section-types">主流分词方案</h2>
+
+        <h3>BPE（Byte Pair Encoding）</h3>
+        <p>GPT系列使用的分词方案。从字节对开始，逐步合并最常见的相邻token对，直到达到目标词表大小。</p>
+        <ul>
+            <li><strong>优势：</strong>能处理未见过的词（通过子词组合）</li>
+            <li><strong>词表大小：</strong>GPT-2约5万，GPT-4约10万</li>
+            <li><strong>中文处理：</strong>中文字通常被拆为单字或常见双字组合</li>
+        </ul>
+
+        <h3>WordPiece</h3>
+        <p>BERT使用的方案。与BPE类似，但合并策略基于似然比而非频率。</p>
+
+        <h3>SentencePiece</h3>
+        <p>将文本视为原始字节序列，不需要预分词。支持多语言统一词表。</p>
+
+        <h3>tiktoken（OpenAI）</h3>
+        <p>GPT-4使用的快速分词器，BPE的优化实现。Python和Rust实现。</p>
+
+        <h2 id="section-code">代码示例</h2>
+        <div class="code-block" style="margin: 24px 0;">
+            <div class="code-block-header">
+                <span>Python · Tokenization对比</span>
+                <button class="copy-btn" onclick="this.textContent='已复制'; setTimeout(()=>this.textContent='复制', 1500)">复制</button>
+            </div>
+            <div class="code-block-body">
+<pre><code class="language-python">from transformers import AutoTokenizer
+import tiktoken
+
+text = "AgentForge是最好的学习平台，让我们开始吧！"
+
+# 1. GPT-2 BPE
+gpt2_tokenizer = AutoTokenizer.from_pretrained("gpt2")
+gpt2_tokens = gpt2_tokenizer.encode(text)
+print(f"GPT-2: {len(gpt2_tokens)} tokens")
+print(f"解码: {[gpt2_tokenizer.decode([t]) for t in gpt2_tokens]}")
+
+# 2. Claude的cl100k_base
+enc = tiktoken.get_encoding("cl100k_base")
+claude_tokens = enc.encode(text)
+print(f"Claude: {len(claude_tokens)} tokens")
+print(f"解码: {[enc.decode([t]) for t in claude_tokens]}")
+
+# 3. 中文BERT
+bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-chinese")
+bert_tokens = bert_tokenizer.encode(text)
+print(f"BERT中文: {len(bert_tokens)} tokens")
+print(f"解码: {bert_tokenizer.convert_ids_to_tokens(bert_tokens)}")
+
+# 输出示例：
+# GPT-2: 18 tokens   (英文切分更细，中文按字切)
+# Claude: 14 tokens  (对中文更友好)
+# BERT中文: 16 tokens (中文按字/词切分)</code></pre>
+            </div>
+        </div>
+
+        <h2 id="section-impact">Token数量对成本的影响</h2>
+        <p>Token数量直接决定了API调用成本和上下文窗口限制：</p>
+        <ul>
+            <li><strong>GPT-4o：</strong>128K context，~$2.50/1M input tokens</li>
+            <li><strong>Claude 3.5：</strong>200K context，~$3/1M input tokens</li>
+            <li>同样一段中文，不同tokenizer可能差出30%-50%的token数量</li>
+        </ul>
+
+        <div class="code-block" style="margin: 24px 0;">
+            <div class="code-block-body">
+<pre><code class="language-python"># Token成本计算示例
+text = "请帮我分析一下2024年AI行业的发展趋势..."
+tokens = enc.encode(text)
+cost_per_1k = 0.003  # $3/1M tokens
+cost = len(tokens) / 1000 * cost_per_1k
+print(f"这段文本: {len(tokens)} tokens, 成本: ${cost:.6f}")
+# 若选择更高效的prompt措辞，可能节省30%的token</code></pre>
+            </div>
+        </div>
+
+        <h2 id="section-best">最佳实践</h2>
+        <ul>
+            <li><strong>选择合适tokenizer：</strong>中文场景优先用支持中文的tokenizer</li>
+            <li><strong>压缩prompt：</strong>同样的意思，不同的措辞可能差几倍token</li>
+            <li><strong>监控token消耗：</strong>生产环境必须监控input/output token数量</li>
+            <li><strong>避免token浪费：</strong>不要在prompt中重复系统指令</li>
+            <li><strong>中文优化：</strong>cl100k_base对中文比GPT-2 tokenizer友好得多</li>
+        </ul>
+
+        <h2 id="section-further">延伸阅读</h2>
+        <ul>
+            <li><a href="https://github.com/openai/tiktoken" target="_blank" rel="noopener">tiktoken GitHub</a></li>
+            <li><a href="https://huggingface.co/docs/transformers/tokenizer_summary" target="_blank" rel="noopener">HuggingFace Tokenizer文档</a></li>
+            <li><a href="#/llm/transformers">→ Transformer架构详解</a></li>
+            <li><a href="#/llm/prompting">→ Prompting技术</a></li>
+        </ul>
+
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

@@ -1,0 +1,170 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-outline" style="border-color: var(--chart-5); color: var(--chart-5);">LLM基础</span>
+                <span class="tag tag-muted">进阶</span>
+                <span class="tag tag-muted">12 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                微调：让通用模型成为专家
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                从预训练到领域专家——理解Fine-tuning的完整流程、策略选择和工程实践。
+            </p>
+        </div>
+
+        <h2 id="section-intro">为什么需要微调？</h2>
+        <p>
+            预训练模型是"通才"——它知道很多，但对特定领域的理解不够深入。微调（Fine-tuning）是在预训练模型的基础上，使用<strong>领域特定的有标注数据</strong>继续训练，让模型成为该领域的"专家"。
+        </p>
+
+        <blockquote>
+            <strong>核心洞察：</strong>微调不是"重新训练"，而是在预训练知识的"冰山"上，雕刻出你需要的形状。小数据 + 正确的方法，往往比大规模训练更有效。
+        </blockquote>
+
+        <h2 id="section-methods">微调方法</h2>
+
+        <h3>Full Fine-tuning</h3>
+        <p>更新模型所有参数。效果最好，但成本最高。</p>
+        <ul>
+            <li>需要大量GPU资源</li>
+            <li>适合有充足数据的大型任务</li>
+            <li>风险：灾难性遗忘</li>
+        </ul>
+
+        <h3>LoRA / QLoRA</h3>
+        <p><strong>LoRA（Low-Rank Adaptation）</strong>：冻结原始权重，只训练低秩分解矩阵。QLoRA进一步用4-bit量化降低显存需求。</p>
+        <ul>
+            <li>单卡可微调7B-70B模型</li>
+            <li>效果接近全量微调</li>
+            <li>训练速度提升2-3倍</li>
+            <li><strong>当前主流方案</strong></li>
+        </ul>
+
+        <h3>Prompt Tuning / P-Tuning</h3>
+        <p>只优化输入的soft prompt（可学习的虚拟token），模型权重完全冻结。适合快速适配但效果较弱。</p>
+
+        <h2 id="section-code">LoRA微调实战</h2>
+        <div class="code-block" style="margin: 24px 0;">
+            <div class="code-block-header">
+                <span>Python · LoRA微调（使用unsloth）</span>
+                <button class="copy-btn" onclick="this.textContent='已复制'; setTimeout(()=>this.textContent='复制', 1500)">复制</button>
+            </div>
+            <div class="code-block-body">
+<pre><code class="language-python">from unsloth import FastLanguageModel
+from trl import SFTTrainer, SFTConfig
+
+# 1. 加载模型（4-bit量化，QLoRA模式）
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name="unsloth/llama-3.1-8b-bnb-4bit",
+    max_seq_length=2048,
+    load_in_4bit=True,
+)
+
+# 2. 应用LoRA
+model = FastLanguageModel.get_peft_model(
+    model,
+    r=16,                    # LoRA秩
+    lora_alpha=16,           # LoRA缩放
+    lora_dropout=0,
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                    "gate_proj", "up_proj", "down_proj"],
+    use_gradient_checkpointing="unsloth",
+)
+
+# 3. 准备数据
+from datasets import load_dataset
+dataset = load_dataset("jsonl", data_files="agent_forge_training.jsonl")
+
+# 4. 配置训练
+trainer = SFTTrainer(
+    model=model,
+    train_dataset=dataset["train"],
+    peft_config=model.peft_config,
+    args=SFTConfig(
+        output_dir="./lora-agent",
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=4,
+        max_steps=200,
+        learning_rate=2e-4,
+        fp16=True,
+        logging_steps=10,
+        save_strategy="steps",
+        save_steps=50,
+    ),
+)
+
+# 5. 开始训练
+trainer.train()
+
+# 6. 保存
+model.save_pretrained("./lora-agent-final")
+tokenizer.save_pretrained("./lora-agent-final")</code></pre>
+            </div>
+        </div>
+
+        <h2 id="section-strategy">微调策略</h2>
+
+        <h3>数据准备</h3>
+        <ul>
+            <li><strong>质量 > 数量：</strong>1000条高质量数据 > 10万条嘈杂数据</li>
+            <li><strong>格式一致性：</strong>训练数据格式要与推理格式完全一致</li>
+            <li><strong>去重：</strong>训练集和验证集不能重叠</li>
+            <li><strong>覆盖边界case：</strong>包含困难样本和错误答案的纠正</li>
+        </ul>
+
+        <h3>训练参数</h3>
+        <ul>
+            <li><strong>学习率：</strong>LoRA通常用 1e-4 ~ 3e-4，全量微调用 1e-5 ~ 5e-5</li>
+            <li><strong>Batch Size：</strong>受显存限制，通常1-4，用gradient accumulation放大</li>
+            <li><strong>Epochs：</strong>3-5个epoch通常足够，过多会过拟合</li>
+            <li><strong>LoRA rank：</strong>8-64之间，越大表达能力越强但越慢</li>
+        </ul>
+
+        <h2 id="section-eval">评估与迭代</h2>
+        <ul>
+            <li><strong>Hold-out验证集：</strong>从未参与训练的独立数据</li>
+            <li><strong>LLM-as-Judge：</strong>用更强的模型评估微调后模型的输出质量</li>
+            <li><strong>A/B测试：</strong>对比微调前后在真实任务上的表现</li>
+            <li><strong>持续迭代：</strong>分析bad case → 补充数据 → 再训练</li>
+        </ul>
+
+        <h2 id="section-comparison">微调 vs 其他方法</h2>
+        <ul>
+            <li><strong>vs RAG：</strong>微调改变模型"知道什么"，RAG改变模型"能查到什么"</li>
+            <li><strong>vs Prompt Engineering：</strong>微调更持久但成本更高；Prompt更灵活但有上限</li>
+            <li><strong>vs 纯API调用：</strong>微调适合需要特定格式/风格/知识的场景</li>
+            <li><strong>组合使用：</strong>RAG + 微调 + 好的Prompt = 最强方案</li>
+        </ul>
+
+        <h2 id="section-best">最佳实践</h2>
+        <ul>
+            <li><strong>先用Prompt Engineering：</strong>如果Prompt能解决问题，就不需要微调</li>
+            <li><strong>数据质量第一：</strong>宁可100条精品，不要1万条垃圾</li>
+            <li><strong>从LoRA开始：</strong>先验证效果再考虑全量微调</li>
+            <li><strong>监控过拟合：</strong>验证集loss如果持续上升就停止</li>
+            <li><strong>版本管理：</strong>每个微调版本记录数据版本、参数、效果指标</li>
+        </ul>
+
+        <h2 id="section-further">延伸阅读</h2>
+        <ul>
+            <li><a href="https://arxiv.org/abs/2106.09685" target="_blank" rel="noopener">[论文] LoRA: Low-Rank Adaptation</a></li>
+            <li><a href="https://arxiv.org/abs/2305.14314" target="_blank" rel="noopener">[论文] QLoRA: Efficient Finetuning</a></li>
+            <li><a href="https://huggingface.co/docs/trl/sft_trainer" target="_blank" rel="noopener">TRL SFTTrainer文档</a></li>
+            <li><a href="#/llm/transformers">→ Transformer架构详解</a></li>
+        </ul>
+
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

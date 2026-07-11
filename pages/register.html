@@ -1,0 +1,43 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 480px; margin: 0 auto; padding: 64px 24px;">
+
+    <div style="text-align: center; margin-bottom: 40px;">
+        <div style="width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(135deg, var(--chart-5), var(--chart-4)); display: inline-flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 16px;">⚒️</div>
+        <h1 style="font-family: var(--font-serif); font-weight: 600; font-size: 28px; margin-bottom: 8px;">创建账号</h1>
+        <p style="font-size: 14px; color: var(--muted-foreground);">加入AgentForge，开启你的Agent学习之旅</p>
+    </div>
+
+    <div style="padding: 32px; border-radius: 20px; background: var(--card); border: 1px solid var(--border);">
+        <form id="register-form" onsubmit="return false;">
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--foreground);">用户名</label>
+                <input type="text" id="reg-username" placeholder="选择一个用户名" style="width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--input); color: var(--foreground); font-size: 15px; outline: none; box-sizing: border-box;" required>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--foreground);">邮箱</label>
+                <input type="email" id="reg-email" placeholder="you@example.com" style="width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--input); color: var(--foreground); font-size: 15px; outline: none; box-sizing: border-box;" required>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--foreground);">密码</label>
+                <input type="password" id="reg-password" placeholder="至少8个字符" style="width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--input); color: var(--foreground); font-size: 15px; outline: none; box-sizing: border-box;" required minlength="8">
+            </div>
+
+            <div style="margin-bottom: 24px;">
+                <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--foreground);">确认密码</label>
+                <input type="password" id="reg-password-confirm" placeholder="再次输入密码" style="width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--input); color: var(--foreground); font-size: 15px; outline: none; box-sizing: border-box;" required>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 14px; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer;">
+                注册
+            </button>
+        </form>
+
+        <div style="margin-top: 24px; text-align: center; padding-top: 24px; border-top: 1px solid var(--border);">
+            <p style="font-size: 14px; color: var(--muted-foreground);">
+                已有账号？<a href="#/login" style="color: var(--chart-5); text-decoration: none; font-weight: 500;">立即登录</a>
+            </p>
+        </div>
+    </div>
+</div>

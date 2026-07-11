@@ -1,0 +1,114 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <!-- 左侧 TOC -->
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <!-- 右侧文章内容 -->
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-primary" style="background: var(--chart-3); color: #1a1714;">协议</span>
+                <span class="tag tag-muted">中级</span>
+                <span class="tag tag-muted">9 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                MCP：模型上下文协议
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                Model Context Protocol（MCP）是 Anthropic 推出的开放协议，标准化了 AI 模型与外部数据源、工具之间的交互方式。它是 Agent 生态的"USB接口"。
+            </p>
+        </div>
+
+        <h2 id="section-intro">MCP 解决了什么问题？</h2>
+        <p>
+            在使用 LLM 构建 Agent 时，一个核心挑战是：<strong>如何让模型安全、标准化地访问外部资源和工具？</strong>每个工具可能有不同的 API 格式、认证方式、返回结构。MCP 提供了一个统一的抽象层。
+        </p>
+        <p>
+            想象一下 USB 接口——不管是什么设备，只要插上就能用。MCP 就是 Agent 生态中的"USB接口"——<strong>一个 MCP Client（如 Claude Desktop）可以连接任何 MCP Server，就像插入U盘一样简单</strong>。
+        </p>
+
+        <blockquote>
+            <strong>核心洞察：</strong>MCP 将"模型能做什么"从硬编码变成可插拔。开发者可以像搭积木一样组合工具，而模型端无需关心具体实现。
+        </blockquote>
+
+        <!-- MCP动画 -->
+        <h2 id="section-animation">交互式动画：MCP通信流程</h2>
+        <p>
+            下面的动画展示了 MCP Client 和 Server 之间的完整通信流程。
+        </p>
+
+        <div class="anim-container" style="margin: 32px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); overflow: hidden; box-shadow: var(--shadow-sm);">
+            <div style="padding: 12px 16px; background: var(--muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;">
+                <span style="font: 600 12px/1 var(--font-mono); color: var(--muted-foreground);">MODEL CONTEXT PROTOCOL</span>
+                <span style="font-size: 11px; color: var(--muted-foreground);">Client ↔ Server 通信流程</span>
+            </div>
+            <div id="mcp-animation" style="min-height: 340px;">
+                <!-- McpAnimation在这里渲染 -->
+            </div>
+        </div>
+
+        <h2 id="section-architecture">MCP 架构</h2>
+        <p>MCP 采用 Client-Server 架构，包含三个核心概念：</p>
+
+        <h3 id="section-resources">Resources（资源）</h3>
+        <p>Server 提供的数据源，供 Client 读取。类似于"文件系统"——可以是文件内容、数据库记录、API响应等。Resources 是<strong>被动</strong>的——Client 读取，Server 提供。</p>
+
+        <h3 id="section-tools">Tools（工具）</h3>
+        <p>Server 提供的能力函数，供 Client 调用。类似于"API端点"——模型可以调用它们来执行操作（搜索、计算、写入数据等）。Tools 是<strong>主动</strong>的——Client 请求执行，Server 执行并返回结果。</p>
+
+        <h3 id="section-prompts">Prompts（提示模板）</h3>
+        <p>Server 提供的预定义提示模板，帮助模型更好地完成任务。例如"总结这段文本"的标准格式模板。</p>
+
+        <h2 id="section-code">快速上手</h2>
+        <div class="code-block" style="margin: 24px 0;">
+            <div class="code-block-header">
+                <span>TypeScript · MCP Server</span>
+                <button class="copy-btn" onclick="this.textContent='已复制'; setTimeout(()=>this.textContent='复制', 1500)">复制</button>
+            </div>
+            <div class="code-block-body">
+<pre><code class="language-typescript">import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+const server = new McpServer({ name: "weather", version: "1.0.0" });
+
+// 定义一个工具
+server.tool("get_weather", { city: z.string() }, async ({ city }) => {
+  const data = await fetchWeather(city);
+  return {
+    content: [{ type: "text", text: JSON.stringify(data) }]
+  };
+});
+
+// 定义一个资源
+server.resource("weather-report", "weather://report/{city}", async (uri) => {
+  const city = uri.pathname;
+  const data = await fetchWeather(city);
+  return { contents: [{ uri, text: JSON.stringify(data) }] };
+});</code></pre>
+            </div>
+        </div>
+
+        <h2 id="section-ecosystem">生态现状</h2>
+        <ul>
+            <li><strong>Claude Desktop：</strong>原生支持 MCP，可通过配置连接多个 Server。</li>
+            <li><strong>Cursor IDE：</strong>支持 MCP 工具集成。</li>
+            <li><strong>LangChain：</strong>通过 langchain-mcp-adapters 支持 MCP。</li>
+            <li><strong>社区 Server：</strong>文件系统、数据库、GitHub、Slack 等已有大量社区实现。</li>
+        </ul>
+
+        <h2 id="section-further-reading">延伸阅读</h2>
+        <ul>
+            <li><a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener">MCP 官方文档</a></li>
+            <li><a href="https://github.com/modelcontextprotocol/servers" target="_blank" rel="noopener">MCP Servers 仓库</a></li>
+            <li><a href="#/knowledge/tool-use">→ 工具调用详解</a></li>
+        </ul>
+
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

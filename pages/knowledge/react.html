@@ -1,0 +1,201 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <!-- 左侧 TOC -->
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <!-- 右侧文章内容 -->
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <!-- 文章头部 -->
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-primary">推理模式</span>
+                <span class="tag tag-muted">入门</span>
+                <span class="tag tag-muted">8 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                ReAct：推理与行动的交替循环
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                ReAct（Reason + Act）是Agent最核心的推理模式之一。本文将通过交互式动画，让你直观理解Agent如何在"思考"和"行动"之间交替循环，最终解决问题。
+            </p>
+        </div>
+
+        <!-- ═══ 引言 ═══ -->
+        <h2 id="section-intro">什么是ReAct？</h2>
+        <p>
+            ReAct 是由 Google Research 和 Princeton University 在 2022 年提出的推理框架。它的核心思想非常简洁：<strong>让Agent交替进行"推理(Reasoning)"和"行动(Action)"</strong>，而不是像传统Chain-of-Thought那样只做纯文本推理。
+        </p>
+        <p>
+            想象一下你解决一个复杂问题时：你不会一次性想完所有步骤然后行动——你会想一步、做一步、看看结果、再想下一步。ReAct 就是让 LLM 模拟这种人类式的解决问题方式。
+        </p>
+
+        <blockquote>
+            <strong>核心洞察：</strong>将推理过程与行动过程交织在一起，让每一步推理都能基于实际观察结果进行调整，大幅提高了复杂任务的解决准确率。
+        </blockquote>
+
+        <!-- ═══ 交互式动画 ═══ -->
+        <h2 id="section-animation">交互式动画演示</h2>
+        <p>
+            下面的动画展示了ReAct模式的一个完整循环。你可以<strong>播放、暂停、逐步前进/后退</strong>，观察Agent如何交替进行推理和行动。点击<strong>播放</strong>按钮开始。
+        </p>
+
+        <div class="anim-container" style="margin: 32px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); overflow: hidden; box-shadow: var(--shadow-sm);">
+            <div style="padding: 12px 16px; background: var(--muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;">
+                <span style="font: 600 12px/1 var(--font-mono); color: var(--muted-foreground);">REACT</span>
+                <span style="font-size: 11px; color: var(--muted-foreground);">推理与行动交替循环</span>
+            </div>
+            <div id="react-animation" style="min-height: 340px;">
+                <!-- ReactAnimation在这里渲染 -->
+            </div>
+        </div>
+
+        <!-- ═══ 核心原理 ═══ -->
+        <h2 id="section-principles">核心原理</h2>
+        <p>ReAct 的工作流程可以用以下循环来描述：</p>
+
+        <h3 id="section-thought">Thought（思考）</h3>
+        <p>
+            在每一步，Agent首先进行推理，思考当前状态和下一步该做什么。这个推理过程是<strong>显式的</strong>——它会以文本形式输出，让我们能看到Agent的"想法"。
+        </p>
+
+        <h3 id="section-action">Action（行动）</h3>
+        <p>
+            基于推理结果，Agent选择一个具体的行动。行动通常是<strong>调用一个工具</strong>（如搜索、计算、读取文件等）。Action包含两个部分：行动名称和行动参数。
+        </p>
+
+        <h3 id="section-observation">Observation（观察）</h3>
+        <p>
+            行动执行后，Agent会收到一个<strong>观察结果</strong>——工具返回的数据。这个结果成为下一步推理的输入，驱动循环继续。
+        </p>
+
+        <!-- 流程图 -->
+        <div style="margin: 32px 0; padding: 24px; background: var(--muted); border-radius: var(--radius); text-align: center; font-family: var(--font-mono); font-size: 13px; line-height: 2;">
+            <span style="display: inline-block; padding: 6px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; color: var(--foreground);">Question</span>
+            <span style="margin: 0 8px; color: var(--muted-foreground);">→</span>
+            <span style="display: inline-block; padding: 6px 14px; background: var(--primary); color: var(--primary-foreground); border-radius: 8px;">Thought</span>
+            <span style="margin: 0 8px; color: var(--muted-foreground);">→</span>
+            <span style="display: inline-block; padding: 6px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; color: var(--foreground);">Action</span>
+            <span style="margin: 0 8px; color: var(--muted-foreground);">→</span>
+            <span style="display: inline-block; padding: 6px 14px; background: var(--card); border: 1px solid var(--chart-2); border-radius: 8px; color: var(--foreground);">Observation</span>
+            <span style="margin: 0 8px; color: var(--muted-foreground);">↻</span>
+        </div>
+        <p style="text-align: center; font-size: 12px; color: var(--muted-foreground); margin-top: -16px; margin-bottom: 32px;">循环直到得到最终 Answer</p>
+
+        <!-- ═══ 代码示例 ═══ -->
+        <h2 id="section-code">代码示例</h2>
+        <p>下面是一个使用LangChain实现ReAct Agent的示例：</p>
+
+        <div class="code-block" style="margin: 24px 0;">
+            <div class="code-block-header">
+                <span>Python · LangChain</span>
+                <button class="copy-btn" onclick="this.textContent='已复制'; setTimeout(()=>this.textContent='复制', 1500)">复制</button>
+            </div>
+            <div class="code-block-body">
+<pre><code class="language-python">from langchain.agents import initialize_agent, AgentType
+from langchain.llms import OpenAI
+from langchain.tools import Tool
+
+# 定义工具
+tools = [
+    Tool(
+        name="搜索",
+        func=lambda q: search_engine(q),
+        description="用于搜索网络信息"
+    ),
+    Tool(
+        name="计算器",
+        func=lambda expr: eval(expr),
+        description="用于数学计算"
+    )
+]
+
+# 初始化 ReAct Agent
+llm = OpenAI(temperature=0)
+agent = initialize_agent(
+    tools=tools,
+    llm=llm,
+    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+    verbose=True  # 输出完整的 Thought-Action-Observation 循环
+)
+
+# 运行
+result = agent.run("2024年巴黎奥运会中国获得多少金牌？")
+# 输出会包含完整的 ReAct 循环：
+# Thought: 我需要搜索2024年巴黎奥运会的信息...
+# Action: 搜索
+# Action Input: 2024年巴黎奥运会中国金牌数
+# Observation: 中国获得40枚金牌...
+# Thought: 基于搜索结果，答案是40枚...
+# Final Answer: 中国在2024年巴黎奥运会上获得了40枚金牌。</code></pre>
+            </div>
+        </div>
+
+        <!-- ═══ 对比分析 ═══ -->
+        <h2 id="section-comparison">ReAct vs CoT</h2>
+        <p>理解ReAct最好的方式是将其与CoT（Chain-of-Thought）对比：</p>
+
+        <div style="margin: 24px 0; overflow-x: auto;">
+            <table style="width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;">
+                <thead>
+                    <tr style="background: var(--muted);">
+                        <th style="padding: 12px 16px; text-align: left; font: 600 12px/1 var(--font-mono); color: var(--muted-foreground);">特性</th>
+                        <th style="padding: 12px 16px; text-align: left; font: 600 12px/1 var(--font-mono); color: var(--muted-foreground);">CoT</th>
+                        <th style="padding: 12px 16px; text-align: left; font: 600 12px/1 var(--font-mono); color: var(--muted-foreground);">ReAct</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="border-top: 1px solid var(--border);">
+                        <td style="padding: 12px 16px; font-size: 14px; font-weight: 500;">推理方式</td>
+                        <td style="padding: 12px 16px; font-size: 14px; color: var(--muted-foreground);">纯文本推理链</td>
+                        <td style="padding: 12px 16px; font-size: 14px; color: var(--muted-foreground);">推理 + 行动交替</td>
+                    </tr>
+                    <tr style="border-top: 1px solid var(--border); background: var(--muted); opacity: 0.5;">
+                        <td style="padding: 12px 16px; font-size: 14px; font-weight: 500;">外部交互</td>
+                        <td style="padding: 12px 16px; font-size: 14px; color: var(--muted-foreground);">❌ 不支持</td>
+                        <td style="padding: 12px 16px; font-size: 14px; color: var(--chart-3);">✅ 支持工具调用</td>
+                    </tr>
+                    <tr style="border-top: 1px solid var(--border);">
+                        <td style="padding: 12px 16px; font-size: 14px; font-weight: 500;">可解释性</td>
+                        <td style="padding: 12px 16px; font-size: 14px; color: var(--muted-foreground);">高（纯文本）</td>
+                        <td style="padding: 12px 16px; font-size: 14px; color: var(--muted-foreground);">高（带行动记录）</td>
+                    </tr>
+                    <tr style="border-top: 1px solid var(--border); background: var(--muted); opacity: 0.5;">
+                        <td style="padding: 12px 16px; font-size: 14px; font-weight: 500;">适用场景</td>
+                        <td style="padding: 12px 16px; font-size: 14px; color: var(--muted-foreground);">数学、逻辑推理</td>
+                        <td style="padding: 12px 16px; font-size: 14px; color: var(--muted-foreground);">需要工具的复杂任务</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- ═══ 最佳实践 ═══ -->
+        <h2 id="section-best-practices">最佳实践</h2>
+        <ul>
+            <li><strong>工具描述要清晰：</strong>Agent依赖工具描述来选择行动，模糊的描述会导致选错工具。</li>
+            <li><strong>限制循环步数：</strong>设置最大步数（如10步）防止Agent陷入无限循环。</li>
+            <li><strong>正则化Observation：</strong>过长的工具返回结果会消耗token，需要截断或摘要。</li>
+            <li><strong>使用Few-shot提示：</strong>在System Prompt中提供ReAct格式的示例，引导正确的输出格式。</li>
+            <li><strong>错误处理：</strong>工具调用可能失败，需要在Observation中明确返回错误信息，让Agent能自我修正。</li>
+        </ul>
+
+        <!-- ═══ 延伸阅读 ═══ -->
+        <h2 id="section-further-reading">延伸阅读</h2>
+        <ul>
+            <li><a href="https://arxiv.org/abs/2210.03629" target="_blank" rel="noopener">[论文] ReAct: Synergizing Reasoning and Acting in Language Models</a></li>
+            <li><a href="https://python.langchain.com/docs/modules/agents/" target="_blank" rel="noopener">LangChain Agents 文档</a></li>
+            <li><a href="#/knowledge/cot">→ CoT 思维链</a></li>
+            <li><a href="#/knowledge/tool-use">→ 工具调用详解</a></li>
+        </ul>
+
+        <!-- 评论区预留 -->
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+
+    </article>
+</div>

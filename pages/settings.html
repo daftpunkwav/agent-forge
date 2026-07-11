@@ -1,0 +1,108 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 720px; margin: 0 auto; padding: 48px 24px;">
+
+    <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 40px); line-height: 1.2; margin-bottom: 32px;">
+        设置
+    </h1>
+
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+
+        <!-- 外观设置 -->
+        <div style="padding: 28px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+            <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 4px;">🎨 外观</h2>
+            <p style="font-size: 13px; color: var(--muted-foreground); margin-bottom: 20px;">自定义你的视觉体验</p>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border);">
+                <div>
+                    <div style="font-size: 14px; font-weight: 500;">深色模式</div>
+                    <div style="font-size: 12px; color: var(--muted-foreground);">切换浅色/深色主题</div>
+                </div>
+                <button id="theme-toggle-btn" onclick="window.__THEME_MANAGER__.toggle()" class="btn btn-secondary" style="padding: 8px 16px; font-size: 13px;">
+                    切换主题
+                </button>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0;">
+                <div>
+                    <div style="font-size: 14px; font-weight: 500;">动画效果</div>
+                    <div style="font-size: 12px; color: var(--muted-foreground);">启用页面过渡和微交互动画</div>
+                </div>
+                <label style="position: relative; width: 44px; height: 24px; cursor: pointer;">
+                    <input type="checkbox" checked id="animations-toggle" style="opacity: 0; width: 0; height: 0;">
+                    <span style="position: absolute; inset: 0; background: var(--chart-5); border-radius: 12px; transition: 0.3s;" class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- 学习设置 -->
+        <div style="padding: 28px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+            <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 4px;">📚 学习</h2>
+            <p style="font-size: 13px; color: var(--muted-foreground); margin-bottom: 20px;">个性化你的学习体验</p>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border);">
+                <div>
+                    <div style="font-size: 14px; font-weight: 500;">自动播放动画</div>
+                    <div style="font-size: 12px; color: var(--muted-foreground);">打开文章时自动播放可视化动画</div>
+                </div>
+                <label style="position: relative; width: 44px; height: 24px; cursor: pointer;">
+                    <input type="checkbox" id="autoplay-toggle" style="opacity: 0; width: 0; height: 0;">
+                    <span style="position: absolute; inset: 0; background: var(--muted); border-radius: 12px; transition: 0.3s;" class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0;">
+                <div>
+                    <div style="font-size: 14px; font-weight: 500;">动画播放速度</div>
+                    <div style="font-size: 12px; color: var(--muted-foreground);">默认动画演示速度</div>
+                </div>
+                <select id="speed-select" style="padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--input); color: var(--foreground); font-size: 13px; cursor: pointer;">
+                    <option value="0.5">0.5x</option>
+                    <option value="1" selected>1x</option>
+                    <option value="1.5">1.5x</option>
+                    <option value="2">2x</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Agent设置 -->
+        <div style="padding: 28px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+            <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 4px;">🤖 Agent</h2>
+            <p style="font-size: 13px; color: var(--muted-foreground); margin-bottom: 20px;">配置你的AI助手（Phase 3功能）</p>
+
+            <div style="padding: 20px; border-radius: 12px; background: var(--muted); border: 1px dashed var(--border); text-align: center;">
+                <p style="font-size: 14px; color: var(--muted-foreground);">Agent对话面板和API Key管理功能即将推出</p>
+                <p style="font-size: 12px; color: var(--muted-foreground); margin-top: 6px;">敬请期待 Phase 3</p>
+            </div>
+        </div>
+
+        <!-- 账户 -->
+        <div style="padding: 28px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+            <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 4px;">👤 账户</h2>
+            <p style="font-size: 13px; color: var(--muted-foreground); margin-bottom: 20px;">管理你的账号</p>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border);">
+                <div>
+                    <div style="font-size: 14px; font-weight: 500;">修改密码</div>
+                    <div style="font-size: 12px; color: var(--muted-foreground);">定期更换密码保护账户安全</div>
+                </div>
+                <button class="btn btn-secondary" style="padding: 8px 16px; font-size: 13px;">修改</button>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border);">
+                <div>
+                    <div style="font-size: 14px; font-weight: 500;">学习进度</div>
+                    <div style="font-size: 12px; color: var(--muted-foreground);">已学习 0 / 14 篇文章</div>
+                </div>
+                <a href="#/profile" style="font-size: 13px; color: var(--chart-5); text-decoration: none; font-weight: 500;">查看 →</a>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 0;">
+                <div>
+                    <div style="font-size: 14px; font-weight: 500; color: #ef4444;">删除账号</div>
+                    <div style="font-size: 12px; color: var(--muted-foreground);">永久删除所有数据</div>
+                </div>
+                <button class="btn btn-ghost" style="padding: 8px 16px; font-size: 13px; color: #ef4444; border-color: #ef4444;">删除</button>
+            </div>
+        </div>
+    </div>
+</div>

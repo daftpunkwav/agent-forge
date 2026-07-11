@@ -1,0 +1,139 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <!-- 左侧 TOC -->
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <!-- 右侧文章内容 -->
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <!-- 文章头部 -->
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-primary">推理模式</span>
+                <span class="tag tag-muted">入门</span>
+                <span class="tag tag-muted">7 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                CoT：思维链 prompting
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                Chain-of-Thought（思维链）是一种让LLM展现出类似人类逐步推理能力的prompting技术。通过让模型"说出自己的思考过程"，大幅提升了复杂推理任务的准确率。
+            </p>
+        </div>
+
+        <!-- 引言 -->
+        <h2 id="section-intro">什么是思维链（CoT）？</h2>
+        <p>
+            2022年，Google Research在论文《Chain-of-Thought Prompting Elicits Reasoning in Large Language Models》中提出：<strong>通过在prompt中提供推理过程的示例，可以显著提升LLM在复杂推理任务上的表现</strong>。
+        </p>
+        <p>
+            传统 prompting 直接问"答案是什么"，而 CoT prompting 引导模型<strong>"一步步来，说出你的推理过程"</strong>。这种简单的改变带来了惊人的效果提升——在数学推理任务上，准确率从约17%跃升到约58%。
+        </p>
+
+        <blockquote>
+            <strong>核心洞察：</strong>LLM不是真的"理解"数学，而是学会了模仿推理的文本模式。提供推理过程的示例，就是在教模型"如何思考"。
+        </blockquote>
+
+        <!-- 动画演示 -->
+        <h2 id="section-animation">交互式动画演示</h2>
+        <p>
+            下面的动画展示了CoT思维链的一个完整推理过程。你可以<strong>逐步观察</strong>Agent如何从问题出发，经过多个推理步骤，最终得出答案。
+        </p>
+
+        <div class="anim-container" style="margin: 32px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); overflow: hidden; box-shadow: var(--shadow-sm);">
+            <div style="padding: 12px 16px; background: var(--muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;">
+                <span style="font: 600 12px/1 var(--font-mono); color: var(--muted-foreground);">CHAIN OF THOUGHT</span>
+                <span style="font-size: 11px; color: var(--muted-foreground);">逐步推理过程演示</span>
+            </div>
+            <div id="cot-animation" style="min-height: 340px;">
+                <!-- CotAnimation在这里渲染 -->
+            </div>
+        </div>
+
+        <!-- CoT 类型 -->
+        <h2 id="section-types">CoT的两种方式</h2>
+
+        <h3 id="section-zero-shot">Zero-shot CoT</h3>
+        <p>
+            最简单的方式——只需在prompt末尾加一句：<code style="background: var(--muted); padding: 2px 8px; border-radius: 4px; font-family: var(--font-mono); font-size: 13px;">"请一步步思考"</code> 或 <code style="background: var(--muted); padding: 2px 8px; border-radius: 4px; font-family: var(--font-mono); font-size: 13px;">"Let's think step by step"</code>。
+        </p>
+        <div class="code-block" style="margin: 16px 0;">
+            <div class="code-block-body">
+<pre><code class="language-text">Q: 一个农场有鸡和兔子共35只，总共有94条腿，各几只？
+A: 让我们一步步来思考。
+1. 假设全是鸡：35 × 2 = 70条腿
+2. 实际少了：94 - 70 = 24条腿
+3. 每只兔子多2条腿：24 ÷ 2 = 12只兔子
+4. 鸡的数量：35 - 12 = 23只
+答案：兔子12只，鸡23只。</code></pre>
+            </div>
+        </div>
+
+        <h3 id="section-few-shot">Few-shot CoT</h3>
+        <p>
+            在prompt中提供多个包含推理过程的示例，让模型学习推理模式。效果通常比Zero-shot更好，但需要手动编写示例。
+        </p>
+
+        <!-- CoT 提示模板 -->
+        <h2 id="section-template">CoT提示模板</h2>
+        <div class="code-block" style="margin: 24px 0;">
+            <div class="code-block-header">
+                <span>Prompt 模板</span>
+            </div>
+            <div class="code-block-body">
+<pre><code class="language-text">你是数学解题助手。请严格按照以下格式回答：
+
+问题：[用户的问题]
+
+解题步骤：
+1. [第一步推理]
+2. [第二步推理]
+3. [继续步骤...]
+
+答案：[最终答案]
+
+现在开始：
+
+问题：{{QUESTION}}
+解题步骤：</code></pre>
+            </div>
+        </div>
+
+        <!-- 适用场景 -->
+        <h2 id="section-applications">适用场景</h2>
+        <ul>
+            <li><strong>数学推理：</strong>算术、代数、几何问题</li>
+            <li><strong>逻辑推理：</strong>因果推断、条件判断</li>
+            <li><strong>常识推理：</strong>物理、日常场景推理</li>
+            <li><strong>代码生成：</strong>复杂算法的分步实现</li>
+            <li><strong>规划任务：</strong>多步骤的行动规划</li>
+        </ul>
+
+        <!-- 局限性 -->
+        <h2 id="section-limitations">局限性与注意事项</h2>
+        <ul>
+            <li><strong>Token消耗大：</strong>推理过程会占用大量输出token，增加延迟和成本。</li>
+            <li><strong>幻觉风险：</strong>模型可能在推理链中"合理但错误"地得出错误结论。</li>
+            <li><strong>不适合简单任务：</strong>对简单问题过度推理反而可能引入错误。</li>
+            <li><strong>模型依赖：</strong>效果随模型规模增大而提升，小模型可能产生混乱的推理链。</li>
+        </ul>
+
+        <!-- 延伸阅读 -->
+        <h2 id="section-further-reading">延伸阅读</h2>
+        <ul>
+            <li><a href="https://arxiv.org/abs/2201.11903" target="_blank" rel="noopener">[论文] Chain-of-Thought Prompting Elicits Reasoning</a></li>
+            <li><a href="https://arxiv.org/abs/2203.11165" target="_blank" rel="noopener">[论文] Zero-shot Chain-of-Thought</a></li>
+            <li><a href="#/knowledge/react">→ ReAct模式</a></li>
+            <li><a href="#/knowledge/prompt-eng">→ Prompt工程</a></li>
+        </ul>
+
+        <!-- 评论区 -->
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

@@ -1,0 +1,129 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-secondary">框架</span>
+                <span class="tag tag-muted">中级</span>
+                <span class="tag tag-muted">10 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                AutoGen：多Agent对话框架
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                AutoGen 是微软推出的多Agent协作框架，让多个AI Agent通过对话协作完成复杂任务。核心理念：让Agent"聊天"来解决问题。
+            </p>
+        </div>
+
+        <h2 id="section-intro">多Agent协作</h2>
+        <p>
+            AutoGen 的核心创新是<strong>Conversation Programming</strong>——将Agent之间的交互建模为对话。每个Agent有独立的角色和系统提示，它们通过交换消息来协作完成任务。
+        </p>
+        <p>
+            想象一个团队：产品经理定义需求、工程师编写代码、测试员验证质量。AutoGen让AI Agent扮演这些角色，通过对话完成工作——就像真实团队一样。
+        </p>
+
+        <blockquote>
+            <strong>核心洞察：</strong>复杂任务通过分解为多个Agent的子任务来解决。Agent之间的对话既是协作机制，也是天然的可审计日志。
+        </blockquote>
+
+        <h2 id="section-core">核心概念</h2>
+
+        <h3 id="section-agent">ConversableAgent</h3>
+        <p>AutoGen的基本构建块。每个Agent是一个对话参与者，可以接收消息、生成回复、调用工具。</p>
+
+        <h3 id="section-group-chat">GroupChat</h3>
+        <p>多个Agent的对话管理器。它管理对话流程——谁说话、什么时候说话、对话何时结束。</p>
+
+        <h3 id="section-manager">GroupChatManager</h3>
+        <p>控制对话轮次的Agent。它决定下一个由哪个Agent发言，以及何时终止对话。</p>
+
+        <h2 id="section-code">代码示例</h2>
+        <div class="code-block" style="margin: 24px 0;">
+            <div class="code-block-header">
+                <span>Python · AutoGen 多Agent协作</span>
+                <button class="copy-btn" onclick="this.textContent='已复制'; setTimeout(()=>this.textContent='复制', 1500)">复制</button>
+            </div>
+            <div class="code-block-body">
+<pre><code class="language-python">import autogen
+from autogen import ConversableAgent, GroupChat, GroupChatManager
+
+# 1. 创建AssistantAgent（助手）
+assistant = ConversableAgent(
+    name="Assistant",
+    system_message="你是一个编程助手。帮助用户编写和调试代码。",
+    llm_config={"model": "gpt-4o"},
+)
+
+# 2. 创建UserProxyAgent（用户代理）
+user_proxy = ConversableAgent(
+    name="User",
+    system_message="你代表用户，负责执行代码和提供反馈。",
+    human_input_mode="NEVER",
+    code_execution_config={"work_dir": "coding"},
+)
+
+# 3. 创建GroupChat
+group_chat = GroupChat(
+    agents=[user_proxy, assistant],
+    messages=[],
+    max_round=20,
+)
+
+# 4. 创建Manager
+manager = GroupChatManager(
+    groupchat=group_chat,
+    llm_config={"model": "gpt-4o"},
+)
+
+# 5. 启动对话
+user_proxy.initiate_chat(
+    manager,
+    message="写一个Python函数来计算斐波那契数列的第n项"
+)
+# 输出：Assistant和User自动对话，完成编码+测试</code></pre>
+            </div>
+        </div>
+
+        <h2 id="section-patterns">协作模式</h2>
+        <ul>
+            <li><strong>一对一协作：</strong>两个Agent交替对话（如：编码Agent + 审查Agent）</li>
+            <li><strong>多Agent辩论：</strong>多个Agent对同一问题给出不同观点</li>
+            <li><strong>层级管理：</strong>Manager Agent分配子任务给Worker Agent</li>
+            <li><strong>人类介入：</strong>在关键节点引入人类反馈</li>
+        </ul>
+
+        <h2 id="section-comparison">框架对比</h2>
+        <ul>
+            <li><strong>vs LangChain：</strong>AutoGen专注多Agent对话；LangChain更通用</li>
+            <li><strong>vs CrewAI：</strong>AutoGen更底层更灵活；CrewAI更高层更简单</li>
+        </ul>
+
+        <h2 id="section-best-practices">最佳实践</h2>
+        <ul>
+            <li><strong>明确的角色：</strong>每个Agent的系统提示要清晰定义职责和边界</li>
+            <li><strong>控制对话轮数：</strong>设置max_round防止无限对话</li>
+            <li><strong>终止条件：</strong>定义明确的对话结束条件</li>
+            <li><strong>日志记录：</strong>保存完整的对话日志用于调试和审计</li>
+        </ul>
+
+        <h2 id="section-further-reading">延伸阅读</h2>
+        <ul>
+            <li><a href="https://github.com/microsoft/autogen" target="_blank" rel="noopener">AutoGen GitHub</a></li>
+            <li><a href="https://microsoft.github.io/autogen/" target="_blank" rel="noopener">AutoGen 文档</a></li>
+            <li><a href="#/knowledge/frameworks/crewai">→ CrewAI</a></li>
+            <li><a href="#/knowledge/frameworks/langchain">→ LangChain</a></li>
+        </ul>
+
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

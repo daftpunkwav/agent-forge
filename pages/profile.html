@@ -1,0 +1,80 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 720px; margin: 0 auto; padding: 48px 24px;">
+
+    <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 40px); line-height: 1.2; margin-bottom: 32px;">
+        个人主页
+    </h1>
+
+    <div style="display: flex; gap: 32px; align-items: flex-start; margin-bottom: 40px;">
+        <div style="width: 96px; height: 96px; border-radius: 50%; background: linear-gradient(135deg, var(--chart-5), var(--chart-4)); display: flex; align-items: center; justify-content: center; font-size: 36px; flex-shrink: 0;">
+            👤
+        </div>
+        <div style="flex: 1;">
+            <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 4px;">AgentForge 用户</h2>
+            <p style="font-size: 14px; color: var(--muted-foreground); margin-bottom: 8px;">agentforge@example.com</p>
+            <p style="font-size: 14px; color: var(--muted-foreground);">加入于 2025年7月</p>
+        </div>
+    </div>
+
+    <!-- 学习统计 -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 40px;">
+        <div style="padding: 20px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); text-align: center;">
+            <div style="font-size: 28px; font-weight: 700; color: var(--chart-5);">0</div>
+            <div style="font-size: 13px; color: var(--muted-foreground); margin-top: 4px;">已读文章</div>
+        </div>
+        <div style="padding: 20px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); text-align: center;">
+            <div style="font-size: 28px; font-weight: 700; color: var(--chart-3);">0h</div>
+            <div style="font-size: 13px; color: var(--muted-foreground); margin-top: 4px;">学习时长</div>
+        </div>
+        <div style="padding: 20px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); text-align: center;">
+            <div style="font-size: 28px; font-weight: 700; color: var(--chart-1);">0</div>
+            <div style="font-size: 13px; color: var(--muted-foreground); margin-top: 4px;">动画观看</div>
+        </div>
+        <div style="padding: 20px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); text-align: center;">
+            <div style="font-size: 28px; font-weight: 700; color: var(--chart-4);">0%</div>
+            <div style="font-size: 13px; color: var(--muted-foreground); margin-top: 4px;">完成进度</div>
+        </div>
+    </div>
+
+    <!-- 学习进度 -->
+    <div style="padding: 28px; border-radius: 16px; background: var(--card); border: 1px solid var(--border); margin-bottom: 32px;">
+        <h3 style="font-size: 17px; font-weight: 600; margin-bottom: 20px;">📖 学习进度</h3>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px;">
+                    <span>推理模式（4/4 篇）</span>
+                    <span style="color: var(--muted-foreground);">0%</span>
+                </div>
+                <div style="height: 6px; background: var(--muted); border-radius: 3px; overflow: hidden;">
+                    <div style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--chart-5), var(--chart-4)); border-radius: 3px;"></div>
+                </div>
+            </div>
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px;">
+                    <span>开发框架（3/3 篇）</span>
+                    <span style="color: var(--muted-foreground);">0%</span>
+                </div>
+                <div style="height: 6px; background: var(--muted); border-radius: 3px; overflow: hidden;">
+                    <div style="width: 0%; height: 100%; background: linear-gradient(90deg, #1c1917, #57534e); border-radius: 3px;"></div>
+                </div>
+            </div>
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px;">
+                    <span>LLM基础（4/4 篇）</span>
+                    <span style="color: var(--muted-foreground);">0%</span>
+                </div>
+                <div style="height: 6px; background: var(--muted); border-radius: 3px; overflow: hidden;">
+                    <div style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--chart-5), #fbbf24); border-radius: 3px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 最近学习 -->
+    <div style="padding: 28px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+        <h3 style="font-size: 17px; font-weight: 600; margin-bottom: 16px;">📝 最近学习</h3>
+        <p style="font-size: 14px; color: var(--muted-foreground); text-align: center; padding: 24px;">
+            还没有学习记录。开始阅读文章吧！
+        </p>
+    </div>
+</div>

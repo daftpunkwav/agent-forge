@@ -1,0 +1,129 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <!-- 左侧 TOC -->
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <!-- 右侧文章内容 -->
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-primary">推理模式</span>
+                <span class="tag tag-muted">中级</span>
+                <span class="tag tag-muted">10 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                GoT：图谱思维
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                Graph of Thoughts（GoT）将推理过程建模为图谱结构，允许任意节点之间的信息流动和协作，突破Chain-of-Thought的线性限制。
+            </p>
+        </div>
+
+        <h2 id="section-intro">从链到图：推理结构的进化</h2>
+        <p>
+            CoT将推理视为<strong>线性链</strong>——每个步骤依赖前一步。GoT则将其提升为<strong>图结构</strong>——推理步骤成为节点，信息可以在任意节点间流动。
+        </p>
+        <p>
+            这种结构的优势在于：<strong>不同的推理分支可以独立发展，然后汇聚形成更强大的综合推理</strong>。比如一个分支分析数据，另一个分支查阅资料，最后将两者结合得出答案。
+        </p>
+
+        <blockquote>
+            <strong>核心洞察：</strong>线性推理链限制了信息流。图结构允许Agent进行更复杂的推理模式——并行探索、回溯修正、多源融合。
+        </blockquote>
+
+        <!-- GoT动画 -->
+        <h2 id="section-animation">交互式动画：知识图谱构建</h2>
+        <p>
+            下面的动画展示了GoT的一个典型应用场景：从一段文本中<strong>提取实体、识别关系、构建知识图谱</strong>的过程。
+        </p>
+
+        <div class="anim-container" style="margin: 32px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); overflow: hidden; box-shadow: var(--shadow-sm);">
+            <div style="padding: 12px 16px; background: var(--muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;">
+                <span style="font: 600 12px/1 var(--font-mono); color: var(--muted-foreground);">GRAPH OF THOUGHTS</span>
+                <span style="font-size: 11px; color: var(--muted-foreground);">从文本构建知识图谱</span>
+            </div>
+            <div id="got-animation" style="min-height: 340px;">
+                <!-- GotAnimation在这里渲染 -->
+            </div>
+        </div>
+
+        <!-- GoT核心操作 -->
+        <h2 id="section-operations">GoT的四种核心操作</h2>
+
+        <h3 id="section-splitting">1. Splitting（拆分）</h3>
+        <p>将一个推理节点拆分为多个独立的分支，每个分支进行独立的推理。类似于"头脑风暴"——同时探索多种可能性。</p>
+
+        <h3 id="section-aggregating">2. Aggregating（聚合）</h3>
+        <p>将多个分支的推理结果合并为一个。Agent使用prompt将不同分支的输出综合起来，形成更完整的结论。</p>
+
+        <h3 id="section-refining">3. Refining（精炼）</h3>
+        <p>对已有推理节点进行改进。Agent审查之前的推理，发现错误或不足，然后生成一个更高质量的版本。</p>
+
+        <h3 id="section-backtracking">4. Backtracking（回溯）</h3>
+        <p>返回到之前的推理节点，基于新信息重新推理。这允许Agent修正错误路径，而不必从头开始。</p>
+
+        <!-- 对比 -->
+        <h2 id="section-comparison">GoT vs 其他推理模式</h2>
+        <ul>
+            <li><strong>vs CoT：</strong>CoT是线性链，GoT是图。GoT支持并行推理和回溯。</li>
+            <li><strong>vs ReAct：</strong>ReAct交替推理和行动，GoT在推理层面做结构化组织。</li>
+            <li><strong>vs ToT：</strong>ToT是GoT的特例——树形结构。GoT更通用，允许任意图拓扑。</li>
+        </ul>
+
+        <!-- 代码示例 -->
+        <h2 id="section-code">实现示例</h2>
+        <div class="code-block" style="margin: 24px 0;">
+            <div class="code-block-header">
+                <span>Python · LangChain</span>
+                <button class="copy-btn" onclick="this.textContent='已复制'; setTimeout(()=>this.textContent='复制', 1500)">复制</button>
+            </div>
+            <div class="code-block-body">
+<pre><code class="language-python">from langchain.graphs import NetworkxEntityGraph
+
+# 使用图结构管理推理状态
+graph = NetworkxEntityGraph()
+
+# 添加推理节点
+graph.add_node("问题分析", "用户询问预算方案")
+graph.add_node("方案A", "削减研发投入")
+graph.add_node("方案B", "拓展营收渠道")
+graph.add_node("综合", "方案A+B组合")
+
+# 建立推理关系（边）
+graph.add_edge("问题分析", "方案A", "leads_to")
+graph.add_edge("问题分析", "方案B", "leads_to")
+graph.add_edge("方案A", "综合", "aggregated_with")
+graph.add_edge("方案B", "综合", "aggregated_with")
+
+# Agent可以通过图遍历进行多路径推理
+for path in graph.get_all_paths("问题分析"):
+    print(f"推理路径: {' → '.join(path)}")</code></pre>
+            </div>
+        </div>
+
+        <!-- 最佳实践 -->
+        <h2 id="section-best-practices">最佳实践</h2>
+        <ul>
+            <li><strong>控制分支数量：</strong>过多分支会指数级增加token消耗，建议每步不超过3-5个分支。</li>
+            <li><strong>明确聚合策略：</strong>告诉Agent如何合并不同分支的结果，否则聚合质量会下降。</li>
+            <li><strong>适时回溯：</strong>设置回溯触发条件，避免无意义的循环。</li>
+            <li><strong>图可视化：</strong>复杂GoT推理过程很难跟踪，实时可视化图谱状态有助于调试。</li>
+        </ul>
+
+        <h2 id="section-further-reading">延伸阅读</h2>
+        <ul>
+            <li><a href="https://arxiv.org/abs/2308.09687" target="_blank" rel="noopener">[论文] Graph of Thoughts: Solving Elaborate Problems with Large Language Models</a></li>
+            <li><a href="#/knowledge/react">→ ReAct模式</a></li>
+            <li><a href="#/knowledge/tot">→ ToT思维树</a></li>
+        </ul>
+
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

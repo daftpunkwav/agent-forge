@@ -1,0 +1,77 @@
+<!-- 文章布局：左侧TOC + 右侧内容 -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <!-- 左侧 TOC -->
+    <aside class="toc" style="width: 220px; flex-shrink: 0;">
+        <div class="toc-title">目录</div>
+        <!-- JS动态填充 -->
+    </aside>
+
+    <!-- 移动端TOC按钮 -->
+    <button class="toc-toggle" style="display: none;" aria-label="目录">📋</button>
+
+    <!-- 右侧文章内容 -->
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <!-- 文章头部 -->
+        <div style="margin-bottom: 48px;">
+            <span class="tag tag-primary" style="margin-bottom: 16px; display: inline-flex;">标签</span>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-top: 16px; margin-bottom: 16px;">
+                文章标题
+            </h1>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; font-size: 13px; color: var(--muted-foreground);">
+                <span>2026.07.11</span>
+                <span>·</span>
+                <span>10 min read</span>
+                <span>·</span>
+                <span style="font-family: var(--font-mono); font-size: 12px;">难度：入门</span>
+            </div>
+        </div>
+
+        <!-- SLOT: articleBody -->
+        <div id="article-body">
+
+            <!-- 引言 -->
+            <h2 id="section-intro">引言</h2>
+            <p>文章正文内容...</p>
+
+            <!-- 动画嵌入点示例 -->
+            <h2 id="section-animation">交互式动画演示</h2>
+            <p>以下动画将帮助你直观理解核心概念。你可以播放、暂停、逐步观察每一步的变化。</p>
+
+            <div class="anim-container" id="animation-placeholder" style="margin: 24px 0;">
+                <div class="anim-stage" id="animation-mount">
+                    <!-- 动画渲染到这里 -->
+                </div>
+                <div class="anim-controls">
+                    <!-- 控件由AnimationControls自动添加 -->
+                </div>
+            </div>
+
+            <h2 id="section-details">详细解析</h2>
+            <p>更多内容...</p>
+
+            <h2 id="section-practice">动手实践</h2>
+            <p>实践指导...</p>
+
+            <h2 id="section-comparison">对比分析</h2>
+            <p>方案对比...</p>
+
+            <h2 id="section-best-practices">最佳实践</h2>
+            <p>经验总结...</p>
+
+            <h2 id="section-further-reading">延伸阅读</h2>
+            <ul>
+                <li>参考链接...</li>
+            </ul>
+
+        </div>
+
+        <!-- 评论区预留 -->
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+
+    </article>
+</div>

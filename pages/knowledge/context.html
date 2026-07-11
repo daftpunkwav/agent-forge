@@ -1,0 +1,126 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <!-- 左侧 TOC -->
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <!-- 右侧文章内容 -->
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-primary">工程实践</span>
+                <span class="tag tag-muted">中级</span>
+                <span class="tag tag-muted">11 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                上下文管理
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                Context 是 Agent 的"工作记忆"。如何设计、管理和优化上下文，直接决定了 Agent 的能力上限和运行成本。
+            </p>
+        </div>
+
+        <h2 id="section-intro">什么是 Context Window？</h2>
+        <p>
+            LLM 有一个固定的"上下文窗口"（Context Window）——模型一次能"看到"的文本长度。GPT-4 是 128K tokens，Claude 3 是 200K tokens。超出这个窗口的内容，模型就"看不见"了。
+        </p>
+        <p>
+            对于 Agent 应用，Context Window 就像一张<strong>有限大小的桌子</strong>——所有相关的信息（对话历史、工具结果、系统指令）都要放在这张桌子上。放不下怎么办？这就是上下文管理的核心挑战。
+        </p>
+
+        <blockquote>
+            <strong>核心洞察：</strong>不是所有信息都有同等价值。上下文管理的本质是：在有限的窗口内，始终保留最关键的信息。
+        </blockquote>
+
+        <h2 id="section-components">Context 的组成</h2>
+        <p>一个完整的 Agent Context 通常包含以下部分：</p>
+        <ul>
+            <li><strong>System Prompt：</strong>角色定义、行为规则、可用工具列表</li>
+            <li><strong>对话历史：</strong>用户消息 + Agent回复的完整记录</li>
+            <li><strong>工具结果：</strong>每次工具调用的返回数据</li>
+            <li><strong>检索上下文：</strong>从知识库/数据库中检索的相关信息</li>
+            <li><strong>工作记忆：</strong>Agent自己维护的状态变量</li>
+        </ul>
+
+        <!-- 上下文管理动画 -->
+        <h2 id="section-animation">交互式动画：上下文构建过程</h2>
+        <p>
+            下面的动画展示了 Agent 如何逐步构建和管理上下文窗口。
+        </p>
+
+        <div class="anim-container" style="margin: 32px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); overflow: hidden; box-shadow: var(--shadow-sm);">
+            <div style="padding: 12px 16px; background: var(--muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;">
+                <span style="font: 600 12px/1 var(--font-mono); color: var(--muted-foreground);">CONTEXT MANAGEMENT</span>
+                <span style="font-size: 11px; color: var(--muted-foreground);">Agent Loop中的上下文构建</span>
+            </div>
+            <div id="loop-animation" style="min-height: 340px;">
+                <!-- LoopAnimation在这里渲染 -->
+            </div>
+        </div>
+
+        <h2 id="section-strategies">管理策略</h2>
+
+        <h3 id="section-sliding">滑动窗口（Sliding Window）</h3>
+        <p>最简单的策略——保留最近N条消息。超出窗口的旧消息被丢弃。优点是实现简单，缺点是可能丢失关键上下文。</p>
+
+        <h3 id="section-summary">摘要压缩（Summary Compression）</h3>
+        <p>当上下文接近上限时，使用LLM将旧消息压缩为摘要。这样既保留了关键信息，又节省了token空间。</p>
+        <div class="code-block" style="margin: 16px 0;">
+            <div class="code-block-body">
+<pre><code class="language-python">def compress_context(messages, max_tokens):
+    """将对话历史压缩为摘要"""
+    if count_tokens(messages) <= max_tokens:
+        return messages
+
+    # 保留最近的消息 + 压缩旧消息
+    recent = messages[-4:]
+    older = messages[:-4]
+
+    summary_prompt = f"""
+    请将以下对话历史压缩为简洁的摘要，保留关键信息：
+
+    {format_messages(older)}
+
+    摘要："""
+
+    summary = llm(summary_prompt)
+    return [{"role": "system", "content": f"对话摘要：{summary}"}] + recent</code></pre>
+            </div>
+        </div>
+
+        <h3 id="section-retrieval">检索增强（RAG-based）</h3>
+        <p>不在context中保留所有历史，而是在需要时从外部存储中检索相关信息。这是目前最实用的方案。</p>
+
+        <h3 id="section-tiered">分层存储（Tiered Storage）</h3>
+        <p>将信息按重要性分层：</p>
+        <ul>
+            <li><strong>热层（Hot）：</strong>最近对话 + 当前任务状态（完整保留）</li>
+            <li><strong>温层（Warm）：</strong>近期摘要 + 用户偏好（压缩保留）</li>
+            <li><strong>冷层（Cold）：</strong>长期记忆 + 历史数据（向量数据库检索）</li>
+        </ul>
+
+        <h2 id="section-best-practices">最佳实践</h2>
+        <ul>
+            <li><strong>优先级排序：</strong>System Prompt > 当前任务 > 工具结果 > 对话历史</li>
+            <li><strong>监控token使用：</strong>始终追踪当前context的token计数，在接近上限前主动管理</li>
+            <li><strong>结构化消息：</strong>区分消息类型（user/assistant/system/tool），便于管理</li>
+            <li><strong>工具结果截断：</strong>过长的工具输出应截断并告知模型"结果已截断"</li>
+            <li><strong>测试上下文边界：</strong>在长对话场景下测试上下文管理的效果</li>
+        </ul>
+
+        <h2 id="section-further-reading">延伸阅读</h2>
+        <ul>
+            <li><a href="#/knowledge/memory">→ 记忆系统</a></li>
+            <li><a href="#/knowledge/prompt-eng">→ Prompt工程</a></li>
+            <li><a href="https://docs.anthropic.com/claude/docs/build-with-claude/context-windows" target="_blank" rel="noopener">Anthropic Context Windows 文档</a></li>
+        </ul>
+
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

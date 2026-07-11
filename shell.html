@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentForge — Agent锻造坊</title>
+
+    <!-- 主题变量 -->
+    <link rel="stylesheet" href="../styles/theme-vars.css">
+    <!-- 组件样式 -->
+    <link rel="stylesheet" href="../styles/components.css">
+    <!-- 动画样式 -->
+    <link rel="stylesheet" href="../styles/animations.css">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script>
+      @theme inline {
+        --color-background: var(--vibe-background);
+        --color-foreground: var(--vibe-foreground);
+        --color-card: var(--vibe-card);
+        --color-card-foreground: var(--vibe-card-foreground);
+        --color-popover: var(--vibe-popover);
+        --color-popover-foreground: var(--vibe-popover-foreground);
+        --color-primary: var(--vibe-primary);
+        --color-primary-foreground: var(--vibe-primary-foreground);
+        --color-secondary: var(--vibe-secondary);
+        --color-secondary-foreground: var(--vibe-secondary-foreground);
+        --color-muted: var(--vibe-muted);
+        --color-muted-foreground: var(--vibe-muted-foreground);
+        --color-accent: var(--vibe-accent);
+        --color-accent-foreground: var(--vibe-accent-foreground);
+        --color-destructive: var(--vibe-destructive);
+        --color-destructive-foreground: var(--vibe-destructive-foreground);
+        --color-border: var(--vibe-border);
+        --color-input: var(--vibe-input);
+        --color-ring: var(--vibe-ring);
+        --color-chart-1: var(--vibe-chart-1);
+        --color-chart-2: var(--vibe-chart-2);
+        --color-chart-3: var(--vibe-chart-3);
+        --color-chart-4: var(--vibe-chart-4);
+        --color-chart-5: var(--vibe-chart-5);
+        --color-sidebar: var(--vibe-sidebar);
+        --color-sidebar-foreground: var(--vibe-sideground-foreground);
+        --color-sidebar-primary: var(--vibe-sidebar-primary);
+        --color-sidebar-primary-foreground: var(--vibe-sidebar-primary-foreground);
+        --color-sidebar-accent: var(--vibe-sidebar-accent);
+        --color-sidebar-accent-foreground: var(--vibe-sidebar-accent-foreground);
+      }
+      @layer base {
+        body { background: var(--vibe-background); color: var(--vibe-foreground); }
+      }
+    </script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+    <main id="app-main" style="transition: opacity 0.2s ease, transform 0.2s ease;">
+        <!-- SLOT: pageBody -->
+    </main>
+
+    <!-- ═══ 页脚 ═══ -->
+    <footer style="background: var(--muted); border-top: 1px solid var(--border); margin-top: 64px;">
+        <div style="max-width: 1280px; margin: 0 auto; padding: 48px 24px 32px; display: grid; gap: 40px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+            <div>
+                <h3 style="font-family: var(--font-serif); font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; color: var(--foreground);">AgentForge</h3>
+                <p style="margin-top: 8px; font-size: 13px; color: var(--muted-foreground);">Agent锻造坊</p>
+                <p style="margin-top: 4px; font-size: 12px; color: var(--muted-foreground);">从零到一掌握Agent开发</p>
+            </div>
+            <div>
+                <h4 style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-foreground); margin-bottom: 12px;">导航</h4>
+                <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
+                    <li><a href="#/" style="color: var(--foreground); text-decoration: none;">首页</a></li>
+                    <li><a href="#/knowledge" style="color: var(--foreground); text-decoration: none;">Agent知识</a></li>
+                    <li><a href="#/llm/basics" style="color: var(--foreground); text-decoration: none;">LLM基础</a></li>
+                    <li><a href="#/news" style="color: var(--foreground); text-decoration: none;">前沿资讯</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-foreground); margin-bottom: 12px;">知识领域</h4>
+                <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
+                    <li><a href="#/knowledge/react" style="color: var(--foreground); text-decoration: none;">ReAct模式</a></li>
+                    <li><a href="#/knowledge/cot" style="color: var(--foreground); text-decoration: none;">CoT思维链</a></li>
+                    <li><a href="#/knowledge/mcp" style="color: var(--foreground); text-decoration: none;">MCP协议</a></li>
+                    <li><a href="#/knowledge/frameworks/langchain" style="color: var(--foreground); text-decoration: none;">LangChain</a></li>
+                </ul>
+            </div>
+            <div>
+                <p style="font-size: 12px; color: var(--muted-foreground); line-height: 1.6;">
+                    一个致力于让Agent知识触手可及的学习平台。<br>
+                    精美动画 · 系统化知识 · 前沿资讯
+                </p>
+            </div>
+        </div>
+        <div style="border-top: 1px solid var(--border); padding: 16px 24px; text-align: center; font-size: 12px; color: var(--muted-foreground);">
+            AgentForge 2026 · 持续迭代中
+        </div>
+    </footer>
+
+    <!-- 共享脚本 -->
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <script src="../scripts/theme-manager.js"></script>
+    <script src="../scripts/animations/animation-player.js"></script>
+    <script src="../scripts/toc.js"></script>
+    <script src="../scripts/animations/animation-controls.js"></script>
+    <script src="../scripts/app.js"></script>
+</body>
+</html>

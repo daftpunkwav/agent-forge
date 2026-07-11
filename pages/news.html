@@ -1,0 +1,124 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px;">
+
+    <div style="margin-bottom: 48px;">
+        <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+            <span class="tag tag-secondary">前沿资讯</span>
+            <span class="tag tag-muted">2024-2025</span>
+        </div>
+        <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+            Agent 前沿资讯
+        </h1>
+        <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+            追踪Agent/AI领域的最新突破、产品发布和行业动态。
+        </p>
+    </div>
+
+    <div id="news-container" style="display: flex; flex-direction: column; gap: 24px;">
+
+        <!-- 精选头条 -->
+        <div style="padding: 28px 32px; border-radius: 20px; background: linear-gradient(135deg, rgba(241,72,30,0.08), rgba(241,72,30,0.03)); border: 1px solid rgba(241,72,30,0.2);">
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <span class="tag tag-primary">头条</span>
+                <span style="font-size: 12px; color: var(--muted-foreground);">2025.06.15</span>
+            </div>
+            <h2 style="font-family: var(--font-serif); font-size: 22px; font-weight: 600; margin-bottom: 10px;">
+                Anthropic 发布 Claude Opus 4.8：Agent能力再上新台阶
+            </h2>
+            <p style="font-size: 15px; color: var(--muted-foreground); line-height: 1.7; margin-bottom: 16px;">
+                Anthropic最新旗舰模型在工具使用、多步推理和代码生成方面取得重大突破。在Agent基准测试中，Opus 4.8比上一代提升了40%，特别是在复杂多工具协作场景中表现突出。
+            </p>
+            <div style="display: flex; gap: 8px;">
+                <span class="tag tag-muted">模型发布</span>
+                <span class="tag tag-muted">Agent能力</span>
+                <a href="https://www.anthropic.com/news" target="_blank" rel="noopener" style="font-size: 13px; color: var(--chart-5); text-decoration: none; font-weight: 500;">阅读原文 →</a>
+            </div>
+        </div>
+
+        <!-- 新闻列表 -->
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+
+            <article style="padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                    <span style="font-size: 12px; color: var(--muted-foreground);">2025.05.28</span>
+                    <span class="tag tag-secondary" style="font-size: 11px;">协议</span>
+                </div>
+                <h3 style="font-size: 17px; font-weight: 600; margin-bottom: 8px;">MCP 1.5 发布：支持流式工具调用和远程服务器</h3>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 10px;">
+                    Anthropic更新Model Context Protocol，新增流式SSE传输、远程MCP服务器发现机制和资源订阅功能。更多AI应用开始原生集成MCP。
+                </p>
+                <a href="#/knowledge/mcp" style="font-size: 13px; color: var(--chart-5); text-decoration: none;">了解MCP →</a>
+            </article>
+
+            <article style="padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                    <span style="font-size: 12px; color: var(--muted-foreground);">2025.05.10</span>
+                    <span class="tag tag-secondary" style="font-size: 11px;">框架</span>
+                </div>
+                <h3 style="font-size: 17px; font-weight: 600; margin-bottom: 8px;">LangGraph 0.3 发布：原生支持人机协作循环</h3>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 10px;">
+                    LangChain团队发布LangGraph重大更新，新增interrupt机制——Agent执行中可暂停等待人类确认，再继续执行。这对需要人工审批的Agent流程至关重要。
+                </p>
+                <a href="#/knowledge/frameworks/langchain" style="font-size: 13px; color: var(--chart-5); text-decoration: none;">了解LangChain →</a>
+            </article>
+
+            <article style="padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                    <span style="font-size: 12px; color: var(--muted-foreground);">2025.04.22</span>
+                    <span class="tag tag-secondary" style="font-size: 11px;">研究</span>
+                </div>
+                <h3 style="font-size: 17px; font-weight: 600; margin-bottom: 8px;">Google DeepMind：LLM在Agent任务中超越人类专家</h3>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 10px;">
+                    DeepMind发表新论文，证明经过专门训练的LLM在软件开发、数据分析和科学发现等Agent任务上，首次在标准基准测试中超越了领域专家水平。
+                </p>
+            </article>
+
+            <article style="padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                    <span style="font-size: 12px; color: var(--muted-foreground);">2025.04.05</span>
+                    <span class="tag tag-secondary" style="font-size: 11px;">行业</span>
+                </div>
+                <h3 style="font-size: 17px; font-weight: 600; margin-bottom: 8px;">OpenAI 推出 Codex CLI：开源终端Agent</h3>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 10px;">
+                    OpenAI开源Codex CLI工具，直接在终端中运行的Agent，能自主执行多步骤代码任务。支持sandbox执行、git集成和自定义工具，引发开发者社区热烈讨论。
+                </p>
+            </article>
+
+            <article style="padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                    <span style="font-size: 12px; color: var(--muted-foreground);">2025.03.18</span>
+                    <span class="tag tag-secondary" style="font-size: 11px;">框架</span>
+                </div>
+                <h3 style="font-size: 17px; font-weight: 600; margin-bottom: 8px;">CrewAI 0.110 发布：支持Human-in-the-Loop和YAML配置</h3>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 10px;">
+                    CrewAI团队发布重大更新，支持在Agent执行流程中嵌入人类审批节点，以及通过YAML文件声明式定义Crew。大幅降低了多Agent应用的门槛。
+                </p>
+                <a href="#/knowledge/frameworks/crewai" style="font-size: 13px; color: var(--chart-5); text-decoration: none;">了解CrewAI →</a>
+            </article>
+
+            <article style="padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                    <span style="font-size: 12px; color: var(--muted-foreground);">2025.03.01</span>
+                    <span class="tag tag-secondary" style="font-size: 11px;">推理</span>
+                </div>
+                <h3 style="font-size: 17px; font-weight: 600; margin-bottom: 8px;">ToT + MCTS：思维树遇上蒙特卡洛搜索</h3>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 10px;">
+                    研究者将蒙特卡洛树搜索（MCTS）与思维树（ToT）结合，在数学推理和代码生成任务上取得SOTA结果。MCTS提供系统化的探索策略，ToT提供LLM驱动的节点评估。
+                </p>
+                <a href="#/knowledge/tot" style="font-size: 13px; color: var(--chart-5); text-decoration: none;">了解ToT →</a>
+            </article>
+
+            <article style="padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                    <span style="font-size: 12px; color: var(--muted-foreground);">2025.02.10</span>
+                    <span class="tag tag-secondary" style="font-size: 11px;">安全</span>
+                </div>
+                <h3 style="font-size: 17px; font-weight: 600; margin-bottom: 8px;">Agent安全研究：沙箱、权限和可观测性的现状</h3>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 10px;">
+                    随着Agent自主性增强，安全成为关键议题。多家研究机构联合发布Agent安全基准，涵盖沙箱隔离、最小权限原则和可观测性标准。
+                </p>
+            </article>
+
+        </div>
+    </div>
+</div>

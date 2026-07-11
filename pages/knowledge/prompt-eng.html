@@ -1,0 +1,122 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-primary">工程实践</span>
+                <span class="tag tag-muted">入门</span>
+                <span class="tag tag-muted">8 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                Prompt 工程
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                Prompt是人与LLM交互的唯一接口。写好Prompt，是成为Agent开发者的第一道门槛。
+            </p>
+        </div>
+
+        <h2 id="section-intro">什么是Prompt工程？</h2>
+        <p>
+            Prompt Engineering 是<strong>设计和优化输入文本，以引导LLM生成期望输出</strong>的技术。好的Prompt可以：
+        </p>
+        <ul>
+            <li>让模型更准确地理解意图</li>
+            <li>引导模型按照期望格式输出</li>
+            <li>减少幻觉和错误</li>
+            <li>激发模型的最佳性能</li>
+        </ul>
+
+        <blockquote>
+            <strong>核心洞察：</strong>Prompt不是"提问"，而是"编程"——你把模型当成一个需要精确指令的执行者。
+        </blockquote>
+
+        <h2 id="section-principles">核心原则</h2>
+
+        <h3 id="section-clarity">1. 清晰具体</h3>
+        <p>模糊的指令产生模糊的输出。告诉模型：<strong>具体要什么、不要什么、用什么格式</strong>。</p>
+        <div style="margin: 16px 0; display: grid; gap: 12px;">
+            <div style="padding: 14px 18px; background: color-mix(in srgb, var(--destructive) 5%, var(--card)); border: 1px solid color-mix(in srgb, var(--destructive) 20%, var(--border)); border-radius: var(--radius);">
+                <div style="font: 600 11px/1 var(--font-mono); color: var(--destructive); text-transform: uppercase; margin-bottom: 6px;">✗ 不好</div>
+                <p style="font-size: 13px; color: var(--muted-foreground); margin: 0;">"写个Python程序"</p>
+            </div>
+            <div style="padding: 14px 18px; background: color-mix(in srgb, var(--chart-3) 5%, var(--card)); border: 1px solid color-mix(in srgb, var(--chart-3) 20%, var(--border)); border-radius: var(--radius);">
+                <div style="font: 600 11px/1 var(--font-mono); color: var(--chart-3); text-transform: uppercase; margin-bottom: 6px;">✓ 好</div>
+                <p style="font-size: 13px; color: var(--foreground); margin: 0;">"写一个Python函数，使用正则表达式验证邮箱格式，返回True/False，包含3个测试用例"</p>
+            </div>
+        </div>
+
+        <h3 id="section-structure">2. 结构化</h3>
+        <p>使用清晰的结构组织Prompt：角色、任务、约束、示例、输出格式。</p>
+
+        <h3 id="section-few-shot">3. Few-shot示例</h3>
+        <p>提供几个输入输出的示例，模型会模仿这个模式。这是最有效的Prompt技巧之一。</p>
+
+        <h3 id="section-system-prompt">4. System Prompt设计</h3>
+        <p>System Prompt是Agent的"灵魂"。好的System Prompt应该定义：角色、能力边界、行为规则、输出格式。</p>
+
+        <!-- Prompt模板 -->
+        <h2 id="section-template">推荐模板</h2>
+        <div class="code-block" style="margin: 24px 0;">
+            <div class="code-block-header">
+                <span>Agent System Prompt 模板</span>
+            </div>
+            <div class="code-block-body">
+<pre><code class="language-text">你是一个专业的{ROLE}助手。
+
+## 能力
+- 你可以使用以下工具：{TOOLS}
+- 每次回答前先思考用户需要什么
+- 不确定时请提问，不要猜测
+
+## 规则
+- 回答简洁，避免冗余
+- 代码必须有注释
+- 数字和日期必须准确
+- 涉及安全的内容必须谨慎
+
+## 输出格式
+- 使用 Markdown 格式
+- 代码块标注语言类型
+- 复杂内容使用列表
+
+## 示例
+{EXAMPLES}</code></pre>
+            </div>
+        </div>
+
+        <h2 id="section-techniques">进阶技巧</h2>
+        <ul>
+            <li><strong>Chain-of-Thought：</strong>"请一步步思考"</li>
+            <li><strong>Role Prompting：</strong>"你是一个资深工程师"</li>
+            <li><strong>Constraint Prompting：</strong>明确列出"不要做"的事情</li>
+            <li><strong>Self-Consistency：</strong>让模型多次推理，投票选出最佳答案</li>
+            <li><strong>Reflexion：</strong>让模型反思自己的输出并改进</li>
+        </ul>
+
+        <h2 id="section-anti-patterns">常见错误</h2>
+        <ul>
+            <li><strong>Prompt太长：</strong>超过模型能力范围的prompt会被截断或忽略</li>
+            <li><strong>矛盾指令：</strong>"简短回答" + "详细解释" = 模型困惑</li>
+            <li><strong>假设知识：</strong>模型不知道你的私有数据</li>
+            <li><strong>不测试边界：</strong>只在happy path下测试prompt</li>
+        </ul>
+
+        <h2 id="section-further-reading">延伸阅读</h2>
+        <ul>
+            <li><a href="https://www.promptingguide.ai/" target="_blank" rel="noopener">Prompt Engineering Guide</a></li>
+            <li><a href="#/knowledge/cot">→ CoT思维链</a></li>
+            <li><a href="#/knowledge/react">→ ReAct模式</a></li>
+        </ul>
+
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

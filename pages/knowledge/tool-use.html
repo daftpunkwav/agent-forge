@@ -1,0 +1,168 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-primary">工程实践</span>
+                <span class="tag tag-muted">中级</span>
+                <span class="tag tag-muted">10 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                工具调用（Function Calling）
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                工具调用让LLM能够执行实际操作——搜索网页、操作数据库、调用API。这是从"聊天机器人"到"Agent"的关键一步。
+            </p>
+        </div>
+
+        <h2 id="section-intro">从"说"到"做"</h2>
+        <p>
+            传统LLM只能生成文本——它"说"得再好，也无法真正帮你查天气、发邮件、操作数据库。<strong>工具调用（Function Calling）</strong>让LLM能够：
+        </p>
+        <ul>
+            <li><strong>选择</strong>合适的工具</li>
+            <li><strong>格式化</strong>正确的参数</li>
+            <li><strong>接收</strong>工具的执行结果</li>
+            <li><strong>基于结果</strong>继续推理或给出最终答案</li>
+        </ul>
+
+        <blockquote>
+            <strong>核心洞察：</strong>工具调用不是让LLM"学会"使用工具，而是让LLM学会"描述"如何使用工具——实际的执行由宿主程序完成。
+        </blockquote>
+
+        <h2 id="section-mechanism">工作机制</h2>
+        <p>工具调用的标准流程：</p>
+        <ol>
+            <li><strong>定义工具：</strong>开发者向LLM描述可用的工具（名称、参数schema、用途）</li>
+            <li><strong>LLM决策：</strong>模型根据用户输入，判断是否需要调用工具，以及调用哪个工具</li>
+            <li><strong>参数生成：</strong>模型输出结构化的工具调用请求（函数名 + 参数JSON）</li>
+            <li><strong>宿主执行：</strong>宿主程序接收请求，实际执行工具，返回结果</li>
+            <li><strong>结果注入：</strong>工具结果作为新消息注入对话，模型继续推理</li>
+        </ol>
+
+        <h2 id="section-code">代码示例</h2>
+        <div class="code-block" style="margin: 24px 0;">
+            <div class="code-block-header">
+                <span>Python · OpenAI Function Calling</span>
+                <button class="copy-btn" onclick="this.textContent='已复制'; setTimeout(()=>this.textContent='复制', 1500)">复制</button>
+            </div>
+            <div class="code-block-body">
+<pre><code class="language-python">from openai import OpenAI
+
+client = OpenAI()
+
+# 1. 定义工具
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "获取指定城市的当前天气",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "city": {
+                        "type": "string",
+                        "description": "城市名称，如北京、上海"
+                    },
+                    "unit": {
+                        "type": "string",
+                        "enum": ["celsius", "fahrenheit"],
+                        "description": "温度单位"
+                    }
+                },
+                "required": ["city"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": "搜索网络获取最新信息",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "搜索关键词"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    }
+]
+
+# 2. 发起请求
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "北京今天天气怎么样？"}],
+    tools=tools,
+)
+
+# 3. 处理工具调用
+message = response.choices[0].message
+if message.tool_calls:
+    for tool_call in message.tool_calls:
+        function_name = tool_call.function.name
+        function_args = json.loads(tool_call.function.arguments)
+
+        # 执行实际工具
+        if function_name == "get_weather":
+            result = get_weather_api(function_args["city"])
+
+        # 将结果回传给模型
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[...message, {
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": str(result)
+            }],
+            tools=tools,
+        )</code></pre>
+            </div>
+        </div>
+
+        <h2 id="section-parallel">并行工具调用</h2>
+        <p>现代LLM支持在单次响应中<strong>并行调用多个工具</strong>。当用户请求需要多个独立的信息源时，这能显著降低延迟。</p>
+
+        <h2 id="section-best-practices">最佳实践</h2>
+        <ul>
+            <li><strong>工具描述要精确：</strong>描述越清晰，模型选对工具的概率越高</li>
+            <li><strong>参数Schema严格：</strong>使用明确的类型和枚举值，减少模型猜测</li>
+            <li><strong>错误处理：</strong>工具执行可能失败，返回清晰的错误信息</li>
+            <li><strong>超时设置：</strong>为每个工具设置合理的超时，防止卡死</li>
+            <li><strong>结果截断：</strong>大结果截断到合理大小，避免撑爆context</li>
+            <li><strong>权限控制：</strong>敏感工具需要额外的权限验证</li>
+        </ul>
+
+        <h2 id="section-frameworks">框架支持</h2>
+        <ul>
+            <li><strong>LangChain：</strong>Agent + Tools 模块，支持多种LLM后端</li>
+            <li><strong>OpenAI API：</strong>原生function calling</li>
+            <li><strong>Anthropic API：</strong>tool_use block类型</li>
+            <li><strong>LlamaIndex：</strong>ToolSpec封装</li>
+            <li><strong>MCP：</strong>标准化工具协议</li>
+        </ul>
+
+        <h2 id="section-further-reading">延伸阅读</h2>
+        <ul>
+            <li><a href="https://platform.openai.com/docs/guides/function-calling" target="_blank" rel="noopener">OpenAI Function Calling 文档</a></li>
+            <li><a href="#/knowledge/react">→ ReAct模式</a></li>
+            <li><a href="#/knowledge/mcp">→ MCP协议</a></li>
+        </ul>
+
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

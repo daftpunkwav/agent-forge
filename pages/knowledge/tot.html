@@ -1,0 +1,117 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <!-- 左侧 TOC -->
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <!-- 右侧文章内容 -->
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-primary">推理模式</span>
+                <span class="tag tag-muted">中级</span>
+                <span class="tag tag-muted">12 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                ToT：思维树
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                Tree of Thoughts（ToT）将推理过程组织为树形结构，允许Agent探索多条推理路径，评估中间结果，并在必要时回溯——类似人类的"考虑多种方案再决定"。
+            </p>
+        </div>
+
+        <h2 id="section-intro">为什么要从链到树？</h2>
+        <p>
+            CoT的线性推理有一个根本性局限：<strong>一旦走了错误的路径，后续的推理都会建立在错误之上</strong>。人类不会这样做——我们会考虑多种可能，比较优劣，然后选择最佳路径。
+        </p>
+        <p>
+            ToT 的核心思想是：<strong>将每个推理步骤视为一个"thought"节点，Agent可以同时探索多条路径，并对每一步进行自我评估</strong>。就像下棋时考虑多种走法，然后选择最优的一步。
+        </p>
+
+        <blockquote>
+            <strong>核心洞察：</strong>复杂问题通常有多条可行的推理路径。ToT通过探索和评估多条路径，显著提高了解决复杂问题的准确率。
+        </blockquote>
+
+        <!-- ToT动画 -->
+        <h2 id="section-animation">交互式动画演示</h2>
+        <p>
+            下面的动画展示了ToT如何<strong>生成候选方案、评估打分、剪枝淘汰、找到最优路径</strong>。
+        </p>
+
+        <div class="anim-container" style="margin: 32px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); overflow: hidden; box-shadow: var(--shadow-sm);">
+            <div style="padding: 12px 16px; background: var(--muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;">
+                <span style="font: 600 12px/1 var(--font-mono); color: var(--muted-foreground);">TREE OF THOUGHTS</span>
+                <span style="font-size: 11px; color: var(--muted-foreground);">探索多路径并选择最优解</span>
+            </div>
+            <div id="tot-animation" style="min-height: 340px;">
+                <!-- TotAnimation在这里渲染 -->
+            </div>
+        </div>
+
+        <h2 id="section-framework">ToT框架</h2>
+        <p>ToT框架包含四个关键步骤：</p>
+        <ol>
+            <li><strong>Thought Decomposition：</strong>将问题分解为中间推理步骤。例如"写一篇文章"可以分解为：确定主题 → 列大纲 → 写开头 → 写正文 → 写结尾。</li>
+            <li><strong>Thought Generation：</strong>对每个步骤，生成多个候选thought。使用"提出5个不同的开头"这样的prompt。</li>
+            <li><strong>State Evaluation：</strong>评估每个中间thought的质量。使用0-10分评分或"好/中/差"分类。</li>
+            <li><strong>Search Algorithm：</strong>使用搜索算法遍历树。BFS（广度优先）探索更多路径，DFS（深度优先）深入单一路径，或使用beam search保留top-K路径。</li>
+        </ol>
+
+        <h2 id="section-search">搜索策略</h2>
+        <h3>Beam Search（束搜索）</h3>
+        <p>在每个步骤保留top-K个最佳thought，然后从这些继续向下探索。这是ToT最常用的策略。</p>
+        <div class="code-block" style="margin: 16px 0;">
+            <div class="code-block-body">
+<pre><code class="language-python"># Beam Search 伪代码
+beam = [initial_thought]
+for step in range(max_steps):
+    candidates = []
+    for thought in beam:
+        # 生成下一批候选thought
+        next_thoughts = llm.generate(thought, k=5)
+        candidates.extend(next_thoughts)
+    # 评估并保留top-K
+    scored = evaluate(candidates)
+    beam = sorted(scored, key=lambda x: x.score)[-K:]</code></pre>
+            </div>
+        </div>
+
+        <h3>BFS vs DFS</h3>
+        <ul>
+            <li><strong>BFS（广度优先）：</strong>每层探索所有路径，适合需要广泛探索的问题。</li>
+            <li><strong>DFS（深度优先）：</strong>深入单一路径到底，适合需要深度思考的问题。</li>
+            <li><strong>Beam Search：</strong>折中方案，每层保留K个最佳路径。</li>
+        </ul>
+
+        <h2 id="section-comparison">推理模式对比</h2>
+        <ul>
+            <li><strong>CoT：</strong>一条路径，不回头。简单高效，但容易走偏。</li>
+            <li><strong>ReAct：</strong>一条路径+工具。适合需要外部信息的问题。</li>
+            <li><strong>ToT：</strong>多路径+评估+剪枝。适合复杂规划问题。</li>
+            <li><strong>GoT：</strong>任意图结构。最灵活，也最复杂。</li>
+        </ul>
+
+        <h2 id="section-best-practices">最佳实践</h2>
+        <ul>
+            <li><strong>评估函数要可靠：</strong>ToT的效果严重依赖thought评估的质量。使用一致的评分标准。</li>
+            <li><strong>控制beam宽度：</strong>beam size=5通常是不错的起点。太宽增加成本，太窄失去探索价值。</li>
+            <li><strong>定义明确的终止条件：</strong>何时停止探索？达到目标分数？找到可接受答案？</li>
+            <li><strong>结合ReAct：</strong>ToT + ReAct = 多路径推理 + 工具调用，可以解决更复杂的任务。</li>
+        </ul>
+
+        <h2 id="section-further-reading">延伸阅读</h2>
+        <ul>
+            <li><a href="https://arxiv.org/abs/2305.10601" target="_blank" rel="noopener">[论文] Tree of Thoughts: Deliberate Problem Solving</a></li>
+            <li><a href="#/knowledge/react">→ ReAct模式</a></li>
+            <li><a href="#/knowledge/got">→ GoT图谱思维</a></li>
+        </ul>
+
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

@@ -1,0 +1,193 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-outline" style="border-color: var(--chart-5); color: var(--chart-5);">LLM基础</span>
+                <span class="tag tag-muted">中级</span>
+                <span class="tag tag-muted">10 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                Prompting 技术指南
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                与LLM沟通的艺术和科学。从零样本到思维链，掌握让AI更听话的关键技术。
+            </p>
+        </div>
+
+        <h2 id="section-intro">Prompt Engineering 是什么？</h2>
+        <p>
+            Prompt Engineering 是设计与优化输入提示（Prompt），以引导LLM产生期望输出的技术。它是<strong>当前成本最低、见效最快</strong>的LLM能力提升手段。
+        </p>
+
+        <blockquote>
+            <strong>核心洞察：</strong>同样的模型，不同的Prompt，效果可能天差地别。好的Prompt不是"问问题"，而是"引导推理"。
+        </blockquote>
+
+        <h2 id="section-techniques">核心技术</h2>
+
+        <h3>零样本提示（Zero-shot）</h3>
+        <p>直接提问，不提供示例。最简单但最不可靠。</p>
+        <div class="code-block" style="margin: 16px 0;">
+            <div class="code-block-body">
+<pre><code class="language-python"># 零样本：直接问
+prompt = "将以下英文翻译成中文：'The weather is beautiful today.'"
+# 输出可能正确，也可能漏译或误译</code></pre>
+            </div>
+        </div>
+
+        <h3>Few-shot 提示</h3>
+        <p>在prompt中提供几个示例，让模型理解期望的格式和风格。</p>
+        <div class="code-block" style="margin: 16px 0;">
+            <div class="code-block-body">
+<pre><code class="language-python">prompt = """将英文翻译成中文，使用正式的中文表达：
+
+英文：Hello, nice to meet you.
+中文：您好，很高兴认识您。
+
+英文：The quarterly report shows growth.
+中文：季度报告显示增长。
+
+英文：{input}
+中文："""</code></pre>
+            </div>
+        </div>
+
+        <h3>思维链（CoT）</h3>
+        <p>在prompt中加入"让我们一步步思考"，引导模型展示推理过程。</p>
+        <div class="code-block" style="margin: 16px 0;">
+            <div class="code-block-body">
+<pre><code class="language-python">prompt = """问题：一个农场有鸡和兔子共35只，总共有94条腿。鸡和兔子各有多少只？
+
+让我们一步步思考：
+1. 设鸡的数量为x，兔子的数量为y
+2. x + y = 35（总数量）
+3. 2x + 4y = 94（总腿数）
+4. 从方程1得：x = 35 - y
+5. 代入方程2：2(35-y) + 4y = 94
+6. 70 - 2y + 4y = 94
+7. 2y = 24, 所以 y = 12
+8. x = 35 - 12 = 23
+
+答案：鸡有23只，兔子有12只。
+
+现在解决：{problem}
+让我们一步步思考："""</code></pre>
+            </div>
+        </div>
+
+        <h2 id="section-advanced">高级技巧</h2>
+
+        <h3>角色提示（Persona）</h3>
+        <p>给模型分配一个明确的角色，可以显著改变输出风格和质量。</p>
+        <div class="code-block" style="margin: 16px 0;">
+            <div class="code-block-body">
+<pre><code class="language-python">prompt = """你是一位资深的安全工程师，专注于Web应用安全。
+你的分析风格：
+- 先指出最严重的风险
+- 提供具体的修复代码
+- 引用OWASP Top 10标准
+- 给出CVSS评分
+
+分析以下代码的安全问题：{code}"""</code></pre>
+            </div>
+        </div>
+
+        <h3>结构化输出</h3>
+        <p>明确指定输出格式——JSON、Markdown表格、XML——让结果更可解析。</p>
+
+        <h3>Chain-of-Verification</h3>
+        <p>让模型先列出需要验证的claim，逐一验证后再给出最终答案。减少幻觉。</p>
+
+        <h3>Self-Consistency</h3>
+        <p>让模型多次独立推理，取多数投票的结果。提升复杂推理的准确率。</p>
+
+        <h2 id="section-anti">反模式（避免这些）</h2>
+        <ul>
+            <li><strong>模糊指令：</strong>"写得好一点" — 什么是"好"？</li>
+            <li><strong>过多要求：</strong>一个prompt塞10个任务，模型会迷失</li>
+            <li><strong>否定式指令：</strong>"不要写太长"不如"写200字以内"</li>
+            <li><strong>假设上下文：</strong>模型不知道你的背景，把所有必要信息放入prompt</li>
+            <li><strong>过度工程：</strong>简单问题不需要复杂的CoT</li>
+        </ul>
+
+        <h2 id="section-template">Prompt模板系统</h2>
+        <div class="code-block" style="margin: 24px 0;">
+            <div class="code-block-body">
+<pre><code class="language-python">from string import Template
+
+class PromptTemplate:
+    """可复用的Prompt模板系统"""
+
+    REACT_ANALYSIS = Template("""你是一个分析专家。使用ReAct模式解决以下问题。
+
+问题：$question
+
+请按以下格式输出：
+Thought: [你的思考过程]
+Action: [你的行动/工具调用]
+Observation: [观察结果]
+... (循环直到)
+Thought: [最终思考]
+Answer: [最终答案]""")
+
+    CODE_REVIEW = Template("""你是一位资深代码审查员。审查以下$language代码。
+
+代码：
+$code
+
+请从以下维度给出评分（1-10）和改进建议：
+1. 代码质量（可读性、命名、结构）
+2. 安全性（注入、泄露、边界条件）
+3. 性能（算法复杂度、资源使用）
+4. 可维护性（注释、测试覆盖）
+
+格式：JSON数组，每个维度包含score和suggestion。""")
+
+    DATA_EXTRACTION = Template("""从以下文本中提取结构化信息。
+
+文本：$text
+
+提取字段：
+- entities: 提到的所有实体（人/公司/产品）
+- relations: 实体之间的关系
+- dates: 提到的所有日期
+- numbers: 关键数字和百分比
+
+输出JSON格式。""")</code></pre>
+            </div>
+        </div>
+
+        <h2 id="section-best">最佳实践清单</h2>
+        <ul>
+            <li><strong>Be specific：</strong>越具体，结果越可控</li>
+            <li><strong>Show, don't tell：</strong>用示例展示期望，而非描述</li>
+            <li><strong>Structure matters：</strong>使用分隔符（###、---、JSON）组织内容</li>
+            <li><strong>Step-by-step：</strong>复杂任务拆分为子任务</li>
+            <li><strong>Few-shot when possible：</strong>2-3个示例往往足够</li>
+            <li><strong>Iterate：</strong>Prompt是迭代产物，不是一次写成的</li>
+            <li><strong>Test edge cases：</strong>边界case暴露prompt缺陷</li>
+            <li><strong>Version control：</strong>Prompt也要版本管理</li>
+        </ul>
+
+        <h2 id="section-further">延伸阅读</h2>
+        <ul>
+            <li><a href="https://arxiv.org/abs/2107.03347" target="_blank" rel="noopener">[论文] Constitutional AI</a></li>
+            <li><a href="https://www.promptingguide.ai/" target="_blank" rel="noopener">Prompt Engineering Guide</a></li>
+            <li><a href="https://learnprompting.org/" target="_blank" rel="noopener">Learn Prompting</a></li>
+            <li><a href="#/knowledge/prompt-eng">→ Prompt工程（Agent视角）</a></li>
+            <li><a href="#/llm/transformers">→ Transformer架构详解</a></li>
+        </ul>
+
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

@@ -1,0 +1,133 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-secondary">框架</span>
+                <span class="tag tag-muted">中级</span>
+                <span class="tag tag-muted">12 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                LangChain：Agent开发框架
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                LangChain 是最流行的LLM应用开发框架，提供了Agent、Chain、Memory、Tool等丰富的模块，是Agent开发的事实标准起点。
+            </p>
+        </div>
+
+        <h2 id="section-intro">LangChain 是什么？</h2>
+        <p>
+            LangChain 是一个开源框架，旨在简化LLM应用的开发。它提供了一套<strong>标准化的抽象和工具</strong>，让开发者可以快速构建复杂的AI应用，而不需要处理底层的API调用、数据格式转换等细节。
+        </p>
+
+        <blockquote>
+            <strong>核心洞察：</strong>LangChain 的本质是"LLM应用的胶水层"——连接模型、数据、工具和记忆。
+        </blockquote>
+
+        <h2 id="section-core">核心概念</h2>
+
+        <h3 id="section-llm">LLM / ChatModel</h3>
+        <p>统一的模型接口。无论底层是OpenAI、Anthropic还是本地模型，通过LangChain的接口可以无缝切换。</p>
+
+        <h3 id="section-prompt">PromptTemplate</h3>
+        <p>可复用的Prompt模板。支持变量插值、部分填充，可以像函数一样被调用。</p>
+
+        <h3 id="section-chain">Chain</h3>
+        <p>将多个操作链接在一起。LLMChain = Prompt + LLM + OutputParser，是最基本的组合模式。</p>
+
+        <h3 id="section-agent">Agent</h3>
+        <p>拥有推理能力和工具调用能力的自主实体。Agent根据输入动态决定下一步行动，是LangChain最强大的模块。</p>
+
+        <h3 id="section-tool">Tool</h3>
+        <p>Agent可以调用的功能。LangChain内置了大量工具，也支持自定义工具。</p>
+
+        <h3 id="section-memory">Memory</h3>
+        <p>对话记忆管理。LangChain提供了多种记忆后端——内存、文件、向量数据库。</p>
+
+        <h3 id="section-retriever">Retriever</h3>
+        <p>文档检索器。LangChain提供了多种向量存储和检索策略，是RAG应用的核心。</p>
+
+        <h2 id="section-code">代码示例</h2>
+        <div class="code-block" style="margin: 24px 0;">
+            <div class="code-block-header">
+                <span>Python · LangChain Agent</span>
+                <button class="copy-btn" onclick="this.textContent='已复制'; setTimeout(()=>this.textContent='复制', 1500)">复制</button>
+            </div>
+            <div class="code-block-body">
+<pre><code class="language-python">from langchain.agents import create_agent, AgentExecutor
+from langchain.tools import Tool
+from langchain_anthropic import ChatAnthropic
+
+# 1. 初始化模型
+llm = ChatAnthropic(model="claude-sonnet-4-20250514")
+
+# 2. 定义工具
+def search(query: str) -> str:
+    """搜索网络获取信息"""
+    return web_search(query)
+
+def calculate(expr: str) -> str:
+    """计算数学表达式"""
+    return str(eval(expr))
+
+tools = [
+    Tool(name="Search", func=search, description="搜索网络"),
+    Tool(name="Calc", func=calculate, description="数学计算"),
+]
+
+# 3. 创建Agent
+agent = create_agent(
+    llm=llm,
+    tools=tools,
+    system_prompt="你是一个有用的助手，使用工具回答用户问题。"
+)
+
+# 4. 执行
+executor = AgentExecutor(agent=agent, tools=tools)
+result = executor.invoke({"input": "上海的房价和北京的房价各是多少？"})
+print(result["output"])</code></pre>
+            </div>
+        </div>
+
+        <h2 id="section-architecture">LangChain v0.3+ 架构</h2>
+        <ul>
+            <li><strong>LangChain Core：</strong>LCEL（LangChain Expression Language），声明式链式组合</li>
+            <li><strong>LangGraph：</strong>图结构Agent编排，支持循环、状态管理</li>
+            <li><strong>LangSmith：</strong>可观测性平台（调试、评估、监控）</li>
+            <li><strong>LangServe：</strong>部署服务</li>
+        </ul>
+
+        <h2 id="section-comparison">框架对比</h2>
+        <ul>
+            <li><strong>vs AutoGen：</strong>LangChain更灵活但更复杂；AutoGen更简单但定制性低</li>
+            <li><strong>vs LlamaIndex：</strong>LangChain更全面；LlamaIndex专注RAG</li>
+            <li><strong>vs CrewAI：</strong>LangChain底层；CrewAI高层封装</li>
+        </ul>
+
+        <h2 id="section-best-practices">最佳实践</h2>
+        <ul>
+            <li><strong>优先用LCEL：</strong>声明式写法更易读、更易调试</li>
+            <li><strong>LangGraph做复杂Agent：</strong>需要状态管理和循环时用LangGraph</li>
+            <li><strong>开启LangSmith追踪：</strong>调试Agent行为必须用</li>
+            <li><strong>模块化工具：</strong>每个工具只做一件事</li>
+        </ul>
+
+        <h2 id="section-further-reading">延伸阅读</h2>
+        <ul>
+            <li><a href="https://python.langchain.com/" target="_blank" rel="noopener">LangChain 官方文档</a></li>
+            <li><a href="#/knowledge/frameworks/autogen">→ AutoGen</a></li>
+            <li><a href="#/knowledge/frameworks/crewai">→ CrewAI</a></li>
+        </ul>
+
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

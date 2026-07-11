@@ -1,0 +1,91 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-outline" style="border-color: var(--chart-5); color: var(--chart-5);">LLM基础</span>
+                <span class="tag tag-muted">中级</span>
+                <span class="tag tag-muted">15 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                Transformer 架构详解
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                深入理解Transformer——当今所有LLM的基石架构。从Self-Attention到位置编码，逐层剖析。
+            </p>
+        </div>
+
+        <h2 id="section-intro">Attention Is All You Need</h2>
+        <p>2017年，Google发表了一篇改变整个AI领域的论文。他们证明：<strong>仅使用注意力机制，就足以构建最先进的语言模型</strong>，无需循环或卷积。</p>
+
+        <blockquote>
+            <strong>核心洞察：</strong>Self-Attention让序列中的每个位置都能直接"看到"所有其他位置。这解决了RNN的顺序瓶颈，也让模型能直接捕捉长距离依赖。
+        </blockquote>
+
+        <h2 id="section-architecture">架构总览</h2>
+        <p>Transformer由<strong>Encoder</strong>（编码器）和<strong>Decoder</strong>（解码器）组成。GPT系列只使用Decoder，BERT只使用Encoder。</p>
+
+        <h2 id="section-embedding">Tokenization 与 Embedding</h2>
+        <div class="code-block" style="margin: 24px 0;">
+            <div class="code-block-body">
+<pre><code class="language-python">from transformers import AutoTokenizer
+
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
+text = "AgentForge 是最好的学习平台"
+tokens = tokenizer.encode(text)
+decoded = [tokenizer.decode([t]) for t in tokens]
+
+print(f"原始文本: {text}")
+print(f"Tokens: {tokens}")
+print(f"解码: {decoded}")
+print(f"Token数量: {len(tokens)}")
+# 输出可能类似: ['Agent', 'For', 'ge', ' 是', '最好', '的', '学习', '平台']</code></pre>
+            </div>
+        </div>
+
+        <h2 id="section-attention">Self-Attention 机制</h2>
+        <p>Self-Attention是Transformer的核心。它的计算过程：</p>
+        <ol>
+            <li>将每个token映射为Query(Q)、Key(K)、Value(V)三个向量</li>
+            <li>计算Q与所有K的点积，得到注意力分数</li>
+            <li>用softmax归一化分数</li>
+            <li>加权求和V，得到每个位置的输出表示</li>
+        </ol>
+
+        <h3>Multi-Head Attention</h3>
+        <p>将Q、K、V拆分为多个"头"，每个头独立计算注意力，最后拼接。这让模型能同时关注不同层面的语义关系。</p>
+
+        <h2 id="section-positional">位置编码</h2>
+        <p>Transformer没有内置的顺序信息。位置编码（Positional Encoding）为每个位置添加了位置信息，让模型知道token的先后顺序。</p>
+
+        <h2 id="section-feedforward">前馈网络与残差连接</h2>
+        <p>每个Transformer层包含：</p>
+        <ul>
+            <li><strong>Multi-Head Self-Attention</strong></li>
+            <li><strong>残差连接 + LayerNorm</strong></li>
+            <li><strong>位置前馈网络（FFN）</strong></li>
+            <li><strong>残差连接 + LayerNorm</strong></li>
+        </ul>
+
+        <h2 id="section-decoder">Decoder与GPT</h2>
+        <p>GPT系列使用Decoder-only架构。每个token只能看到前面的token（Causal Attention），所以它是一次只生成一个词的"自回归"模型。</p>
+
+        <h2 id="section-further-reading">延伸阅读</h2>
+        <ul>
+            <li><a href="https://arxiv.org/abs/1706.03762" target="_blank" rel="noopener">[论文] Attention Is All You Need</a></li>
+            <li><a href="https://jalammar.github.io/illustrated-transformer/" target="_blank" rel="noopener">The Illustrated Transformer（可视化教程）</a></li>
+            <li><a href="#/llm/basics">→ LLM基础</a></li>
+        </ul>
+
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

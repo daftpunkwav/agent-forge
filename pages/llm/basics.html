@@ -1,0 +1,111 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px; display: flex; gap: 48px;">
+
+    <aside class="toc" style="width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start;">
+        <div class="toc-title">目录</div>
+    </aside>
+
+    <article class="article-content" style="flex: 1; min-width: 0; max-width: 760px;">
+
+        <div style="margin-bottom: 48px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <span class="tag tag-outline" style="border-color: var(--chart-5); color: var(--chart-5);">LLM基础</span>
+                <span class="tag tag-muted">入门</span>
+                <span class="tag tag-muted">8 min read</span>
+            </div>
+            <h1 style="font-family: var(--font-serif); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(28px, 4vw, 44px); line-height: 1.18; margin-bottom: 16px;">
+                LLM 基础：大语言模型入门
+            </h1>
+            <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px;">
+                理解大语言模型的基本原理——从Transformer架构到训练范式，为Agent开发打下坚实的理论基础。
+            </p>
+        </div>
+
+        <h2 id="section-intro">什么是大语言模型？</h2>
+        <p>
+            大语言模型（Large Language Model, LLM）是基于深度学习的大规模文本生成模型。通过在海量文本数据上进行预训练，LLM学会了语言的统计规律，获得了<strong>理解、生成和推理文本</strong>的能力。
+        </p>
+        <p>
+            当前主流的LLM都基于<strong>Transformer架构</strong>，采用"预测下一个token"的训练目标。GPT系列、Claude、Gemini、LLaMA等都是这一范式的代表。
+        </p>
+
+        <blockquote>
+            <strong>核心洞察：</strong>LLM的本质是一个"超级补全器"——给定一段文本，它预测最可能的下一个词。正是这个简单目标，涌现出了惊人的推理和生成能力。
+        </blockquote>
+
+        <h2 id="section-evolution">发展历程</h2>
+        <div style="margin: 24px 0; display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; gap: 16px; align-items: flex-start; padding: 14px 18px; background: var(--muted); border-radius: 12px;">
+                <span style="font: 700 12px/1 var(--font-mono); color: var(--muted-foreground); white-space: nowrap;">2017</span>
+                <div><strong>Transformer论文</strong> — "Attention Is All You Need"</div>
+            </div>
+            <div style="display: flex; gap: 16px; align-items: flex-start; padding: 14px 18px; background: var(--muted); border-radius: 12px;">
+                <span style="font: 700 12px/1 var(--font-mono); color: var(--muted-foreground); white-space: nowrap;">2018</span>
+                <div><strong>GPT-1 / BERT</strong> — 预训练+微调范式确立</div>
+            </div>
+            <div style="display: flex; gap: 16px; align-items: flex-start; padding: 14px 18px; background: var(--muted); border-radius: 12px;">
+                <span style="font: 700 12px/1 var(--font-mono); color: var(--primary); white-space: nowrap;">2020</span>
+                <div><strong>GPT-3 (175B)</strong> — 规模带来涌现能力，In-context Learning出现</div>
+            </div>
+            <div style="display: flex; gap: 16px; align-items: flex-start; padding: 14px 18px; background: var(--muted); border-radius: 12px;">
+                <span style="font: 700 12px/1 var(--font-mono); color: var(--primary); white-space: nowrap;">2022</span>
+                <div><strong>ChatGPT</strong> — RLHF对齐技术成熟，LLM进入大众视野</div>
+            </div>
+            <div style="display: flex; gap: 16px; align-items: flex-start; padding: 14px 18px; background: var(--muted); border-radius: 12px;">
+                <span style="font: 700 12px/1 var(--font-mono); color: var(--chart-3); white-space: nowrap;">2024</span>
+                <div><strong>多模态Agent时代</strong> — GPT-4o、Claude 3、Gemini，Agent框架爆发</div>
+            </div>
+        </div>
+
+        <h2 id="section-architecture">核心架构</h2>
+        <p>LLM建立在Transformer架构之上，关键组件包括：</p>
+        <ul>
+            <li><strong>Tokenization：</strong>将文本拆分为token序列</li>
+            <li><strong>Embedding：</strong>将token映射为向量表示</li>
+            <li><strong>Self-Attention：</strong>让每个token"看到"序列中的其他token</li>
+            <li><strong>Feed-Forward：</strong>对每个位置的表示进行非线性变换</li>
+            <li><strong>Layer Normalization：</strong>稳定训练过程</li>
+            <li><strong>Output Head：</strong>预测下一个token的概率分布</li>
+        </ul>
+
+        <h2 id="section-training">训练范式</h2>
+        <h3>预训练（Pre-training）</h3>
+        <p>在海量无标注文本上，使用"下一个token预测"目标训练基础模型。这是最昂贵的阶段。</p>
+
+        <h3>微调（Fine-tuning）</h3>
+        <p>在特定任务的有标注数据上继续训练，使模型适应特定领域或格式。</p>
+
+        <h3>RLHF / Alignment</h3>
+        <p>通过人类反馈强化学习，让模型输出更符合人类偏好——更安全、更有用、更诚实。</p>
+
+        <h2 id="section-capabilities">核心能力</h2>
+        <ul>
+            <li><strong>In-context Learning：</strong>通过示例学习新任务，无需更新权重</li>
+            <li><strong>Chain-of-Thought：</strong>逐步推理解决复杂问题</li>
+            <li><strong>Instruction Following：</strong>精确遵循自然语言指令</li>
+            <li><strong>Code Generation：</strong>编写、理解、调试代码</li>
+        </ul>
+
+        <h2 id="section-limitations">局限</h2>
+        <ul>
+            <li><strong>幻觉：</strong>自信地生成不准确的信息</li>
+            <li><strong>上下文窗口限制：</strong>能同时处理的信息量有限</li>
+            <li><strong>数学推理：</strong>复杂计算容易出错</li>
+            <li><strong>知识截止：</strong>训练数据截止后无法学习新信息</li>
+            <li><strong>不确定性量化：</strong>不知道"自己不知道什么"</li>
+        </ul>
+
+        <h2 id="section-further-reading">延伸阅读</h2>
+        <ul>
+            <li><a href="https://arxiv.org/abs/1706.03762" target="_blank" rel="noopener">[论文] Attention Is All You Need</a></li>
+            <li><a href="https://arxiv.org/abs/2005.14165" target="_blank" rel="noopener">[论文] Language Models are Few-Shot Learners (GPT-3)</a></li>
+            <li><a href="#/llm/transformers">→ Transformer架构详解</a></li>
+            <li><a href="#/llm/prompting">→ Prompting技术</a></li>
+        </ul>
+
+        <div style="margin-top: 64px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h3 style="font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 16px; color: var(--foreground);">讨论</h3>
+            <p style="font-size: 14px; color: var(--muted-foreground); font-style: italic;">评论功能即将推出，敬请期待。</p>
+        </div>
+    </article>
+</div>

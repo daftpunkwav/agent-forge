@@ -1,0 +1,205 @@
+<!-- SLOT: pageBody -->
+<div style="max-width: 1200px; margin: 0 auto; padding: 48px 24px;">
+
+    <div style="margin-bottom: 48px; text-align: center;">
+        <h1 style="font-family: var(--font-serif); font-weight: 700; letter-spacing: -0.03em; font-size: clamp(32px, 5vw, 52px); line-height: 1.15; margin-bottom: 16px;">
+            Agent 知识全景
+        </h1>
+        <p style="font-size: 17px; line-height: 1.7; color: var(--muted-foreground); max-width: 640px; margin: 0 auto;">
+            从推理模式到框架实践，从LLM基础到工程落地——系统化掌握AI Agent开发的完整知识体系。
+        </p>
+    </div>
+
+    <!-- 推理模式 -->
+    <div style="margin-bottom: 56px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+            <span style="font-size: 28px;">🧠</span>
+            <h2 style="font-family: var(--font-serif); font-size: 26px; font-weight: 600;">推理模式</h2>
+        </div>
+        <p style="font-size: 15px; color: var(--muted-foreground); margin-bottom: 20px; max-width: 600px;">
+            大语言模型如何"思考"？从简单的思维链到复杂的图谱推理，理解不同的推理范式。
+        </p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+
+            <a href="#/knowledge/react" class="card" style="text-decoration: none; color: inherit; display: block; padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border); transition: all 0.2s;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <span style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #f1481e, #ff6b4a); display: flex; align-items: center; justify-content: center; font-size: 18px;">🔄</span>
+                    <h3 style="font-size: 17px; font-weight: 600;">ReAct</h3>
+                </div>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 12px;">推理与行动交替进行。Agent在"思考"和"行动"之间循环，直到解决问题。</p>
+                <span class="tag tag-primary" style="font-size: 12px;">核心模式</span>
+            </a>
+
+            <a href="#/knowledge/cot" class="card" style="text-decoration: none; color: inherit; display: block; padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border); transition: all 0.2s;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <span style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #3b82f6, #60a5fa); display: flex; align-items: center; justify-content: center; font-size: 18px;">🔗</span>
+                    <h3 style="font-size: 17px; font-weight: 600;">CoT</h3>
+                </div>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 12px;">思维链。让模型逐步推理，将复杂问题分解为中间步骤。</p>
+                <span class="tag tag-primary" style="font-size: 12px;">核心模式</span>
+            </a>
+
+            <a href="#/knowledge/tot" class="card" style="text-decoration: none; color: inherit; display: block; padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border); transition: all 0.2s;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <span style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #8b5cf6, #a78bfa); display: flex; align-items: center; justify-content: center; font-size: 18px;">🌳</span>
+                    <h3 style="font-size: 17px; font-weight: 600;">ToT</h3>
+                </div>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 12px;">思维树。探索多条推理路径，评估后选择最优解，适合复杂规划。</p>
+                <span class="tag tag-secondary" style="font-size: 12px;">进阶</span>
+            </a>
+
+            <a href="#/knowledge/got" class="card" style="text-decoration: none; color: inherit; display: block; padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border); transition: all 0.2s;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <span style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #10b981, #34d399); display: flex; align-items: center; justify-content: center; font-size: 18px;">🕸️</span>
+                    <h3 style="font-size: 17px; font-weight: 600;">GoT</h3>
+                </div>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 12px;">图谱思维。将推理构建为图结构，支持拆分、聚合、精炼和回溯。</p>
+                <span class="tag tag-secondary" style="font-size: 12px;">进阶</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- 框架 -->
+    <div style="margin-bottom: 56px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+            <span style="font-size: 28px;">🛠️</span>
+            <h2 style="font-family: var(--font-serif); font-size: 26px; font-weight: 600;">开发框架</h2>
+        </div>
+        <p style="font-size: 15px; color: var(--muted-foreground); margin-bottom: 20px; max-width: 600px;">
+            三大主流Agent开发框架，各有侧重。从入门到进阶，选择适合你的工具。
+        </p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+
+            <a href="#/knowledge/frameworks/langchain" class="card" style="text-decoration: none; color: inherit; display: block; padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <span style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #1c1917, #44403c); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff;">🔗</span>
+                    <h3 style="font-size: 17px; font-weight: 600;">LangChain</h3>
+                </div>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 12px;">最全面的LLM应用框架。LCEL + LangGraph + LangSmith，灵活但学习曲线较陡。</p>
+                <div style="display: flex; gap: 6px;">
+                    <span class="tag tag-muted" style="font-size: 12px;">全面</span>
+                    <span class="tag tag-muted" style="font-size: 12px;">灵活</span>
+                </div>
+            </a>
+
+            <a href="#/knowledge/frameworks/autogen" class="card" style="text-decoration: none; color: inherit; display: block; padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <span style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #2563eb, #3b82f6); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff;">💬</span>
+                    <h3 style="font-size: 17px; font-weight: 600;">AutoGen</h3>
+                </div>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 12px;">微软多Agent对话框架。让Agent通过对话协作，最自然的协作方式。</p>
+                <div style="display: flex; gap: 6px;">
+                    <span class="tag tag-muted" style="font-size: 12px;">对话驱动</span>
+                    <span class="tag tag-muted" style="font-size: 12px;">多Agent</span>
+                </div>
+            </a>
+
+            <a href="#/knowledge/frameworks/crewai" class="card" style="text-decoration: none; color: inherit; display: block; padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <span style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #f1481e, #ff6b4a); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff;">👥</span>
+                    <h3 style="font-size: 17px; font-weight: 600;">CrewAI</h3>
+                </div>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6; margin-bottom: 12px;">角色扮演Agent框架。像管理团队一样管理AI，上手最简单。</p>
+                <div style="display: flex; gap: 6px;">
+                    <span class="tag tag-muted" style="font-size: 12px;">任务驱动</span>
+                    <span class="tag tag-muted" style="font-size: 12px;">易上手</span>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- 工程实践 -->
+    <div style="margin-bottom: 56px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+            <span style="font-size: 28px;">⚙️</span>
+            <h2 style="font-family: var(--font-serif); font-size: 26px; font-weight: 600;">工程实践</h2>
+        </div>
+        <p style="font-size: 15px; color: var(--muted-foreground); margin-bottom: 20px; max-width: 600px;">
+            Agent落地的关键技术：上下文管理、记忆系统、工具调用、评估体系。
+        </p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px;">
+
+            <a href="#/knowledge/context" class="card" style="text-decoration: none; color: inherit; display: block; padding: 20px; border-radius: 14px; background: var(--card); border: 1px solid var(--border);">
+                <span style="font-size: 22px; margin-bottom: 8px; display: block;">📦</span>
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 4px;">上下文管理</h3>
+                <p style="font-size: 13px; color: var(--muted-foreground);">滑动窗口、摘要压缩、RAG策略</p>
+            </a>
+
+            <a href="#/knowledge/memory" class="card" style="text-decoration: none; color: inherit; display: block; padding: 20px; border-radius: 14px; background: var(--card); border: 1px solid var(--border);">
+                <span style="font-size: 22px; margin-bottom: 8px; display: block;">💾</span>
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 4px;">记忆系统</h3>
+                <p style="font-size: 13px; color: var(--muted-foreground);">短期/工作/长期记忆与向量存储</p>
+            </a>
+
+            <a href="#/knowledge/tool-use" class="card" style="text-decoration: none; color: inherit; display: block; padding: 20px; border-radius: 14px; background: var(--card); border: 1px solid var(--border);">
+                <span style="font-size: 22px; margin-bottom: 8px; display: block;">🔧</span>
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 4px;">工具调用</h3>
+                <p style="font-size: 13px; color: var(--muted-foreground);">Function Calling机制与工具设计</p>
+            </a>
+
+            <a href="#/knowledge/evaluation" class="card" style="text-decoration: none; color: inherit; display: block; padding: 20px; border-radius: 14px; background: var(--card); border: 1px solid var(--border);">
+                <span style="font-size: 22px; margin-bottom: 8px; display: block;">📊</span>
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 4px;">评估系统</h3>
+                <p style="font-size: 13px; color: var(--muted-foreground);">正确性、效率、鲁棒性三维评估</p>
+            </a>
+
+            <a href="#/knowledge/prompt-eng" class="card" style="text-decoration: none; color: inherit; display: block; padding: 20px; border-radius: 14px; background: var(--card); border: 1px solid var(--border);">
+                <span style="font-size: 22px; margin-bottom: 8px; display: block;">✍️</span>
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 4px;">Prompt工程</h3>
+                <p style="font-size: 13px; color: var(--muted-foreground);">Few-shot、CoT、角色提示、模板设计</p>
+            </a>
+        </div>
+    </div>
+
+    <!-- 协议 -->
+    <div style="margin-bottom: 56px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+            <span style="font-size: 28px;">🔌</span>
+            <h2 style="font-family: var(--font-serif); font-size: 26px; font-weight: 600;">协议标准</h2>
+        </div>
+        <p style="font-size: 15px; color: var(--muted-foreground); margin-bottom: 20px; max-width: 600px;">
+            连接AI模型与外部世界的标准化协议。
+        </p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+            <a href="#/knowledge/mcp" class="card" style="text-decoration: none; color: inherit; display: block; padding: 24px; border-radius: 16px; background: var(--card); border: 1px solid var(--border);">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <span style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #6366f1, #818cf8); display: flex; align-items: center; justify-content: center; font-size: 18px;">🔌</span>
+                    <h3 style="font-size: 17px; font-weight: 600;">MCP</h3>
+                </div>
+                <p style="font-size: 14px; color: var(--muted-foreground); line-height: 1.6;">Model Context Protocol。Anthropic提出的开放协议，标准化AI模型与外部工具/资源的交互。</p>
+                <span class="tag tag-outline" style="font-size: 12px; border-color: var(--chart-5); color: var(--chart-5);">协议</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- 学习路径建议 -->
+    <div style="padding: 32px; border-radius: 20px; background: linear-gradient(135deg, rgba(241,72,30,0.06), rgba(241,72,30,0.02)); border: 1px solid rgba(241,72,30,0.15);">
+        <h2 style="font-family: var(--font-serif); font-size: 22px; font-weight: 600; margin-bottom: 20px;">🎯 推荐学习路径</h2>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; align-items: flex-start; gap: 16px;">
+                <span style="width: 28px; height: 28px; border-radius: 50%; background: var(--chart-5); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">1</span>
+                <div><strong>LLM基础</strong> — 理解Transformer、分词、预训练与微调</div>
+            </div>
+            <div style="display: flex; align-items: flex-start; gap: 16px;">
+                <span style="width: 28px; height: 28px; border-radius: 50%; background: var(--chart-5); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">2</span>
+                <div><strong>Prompt工程</strong> — 掌握与LLM有效沟通的核心技能</div>
+            </div>
+            <div style="display: flex; align-items: flex-start; gap: 16px;">
+                <span style="width: 28px; height: 28px; border-radius: 50%; background: var(--chart-5); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">3</span>
+                <div><strong>推理模式</strong> — ReAct → CoT → ToT/GoT，逐层深入</div>
+            </div>
+            <div style="display: flex; align-items: flex-start; gap: 16px;">
+                <span style="width: 28px; height: 28px; border-radius: 50%; background: var(--chart-5); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">4</span>
+                <div><strong>框架实践</strong> — LangChain/AutoGen/CrewAI三选一深入</div>
+            </div>
+            <div style="display: flex; align-items: flex-start; gap: 16px;">
+                <span style="width: 28px; height: 28px; border-radius: 50%; background: var(--chart-5); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">5</span>
+                <div><strong>工程进阶</strong> — 上下文管理、记忆系统、工具调用、评估体系</div>
+            </div>
+            <div style="display: flex; align-items: flex-start; gap: 16px;">
+                <span style="width: 28px; height: 28px; border-radius: 50%; background: var(--chart-5); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;">6</span>
+                <div><strong>协议与集成</strong> — MCP协议、Agent Loop工程</div>
+            </div>
+        </div>
+    </div>
+</div>
