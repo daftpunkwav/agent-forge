@@ -259,6 +259,13 @@ export const api = {
     }>('/settings/test-llm', { method: 'POST', body: '{}' }),
 
   // Agent
+  /** 清除服务端悬停讲解缓存（L2）；前端 L1 需另行 clearAllHoverCaches */
+  clearAgentCache: () =>
+    request<{ ok: boolean; cleared: number; scope: string; message: string }>(
+      '/agent/cache/clear',
+      { method: 'POST', body: '{}' },
+    ),
+
   agentProviders: () =>
     request<{
       providers: unknown[];

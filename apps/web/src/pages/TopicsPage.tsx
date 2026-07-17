@@ -188,6 +188,8 @@ export function TopicDetailPage() {
     { id: string; body: string; createdAt: string; author: { id: string; name: string } }[]
   >([]);
   const [body, setBody] = useState('');
+  const [replyErr, setReplyErr] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -236,16 +238,25 @@ export function TopicDetailPage() {
       {can('topic.post') ? (
         <div style={{ display: 'grid', gap: 8 }}>
           <TextArea value={body} onChange={(e) => setBody(e.target.value)} rows={3} />
+          {replyErr ? <p style={{ color: 'var(--destructive)', fontSize: 13, margin: 0 }}>{replyErr}</p> : null}
           <Button
-            disabled={!body.trim()}
+            disabled={submitting || !body.trim()}
             onClick={async () => {
-              await api.replyTopic(topic.id, body.trim());
-              setBody('');
-              const r = await api.getTopic(topic.id);
-              setReplies(r.replies);
+              setReplyErr('');
+              setSubmitting(true);
+              try {
+                await api.replyTopic(topic.id, body.trim());
+                setBody('');
+                const r = await api.getTopic(topic.id);
+                setReplies(r.replies);
+              } catch (ex) {
+                setReplyErr(ex instanceof Error ? ex.message : '回复失败');
+              } finally {
+                setSubmitting(false);
+              }
             }}
           >
-            回复
+            {submitting ? '提交中…' : '回复'}
           </Button>
         </div>
       ) : null}

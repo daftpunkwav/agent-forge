@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Link } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import { HomePage } from '@/pages/HomePage';
 import { KnowledgeOverviewPage } from '@/pages/KnowledgeOverviewPage';
@@ -46,6 +46,18 @@ export const router = createBrowserRouter([
       { path: 'author/animations/:id/edit', element: <AnimationEditorPage /> },
       { path: 'author/apply', element: <ApplyAuthorPage /> },
       { path: 'author/applications', element: <ApplicationsAdminPage /> },
+      {
+        path: '*',
+        // 404 兜底：未匹配路由也渲染在 AppShell 内；内联 JSX 避免本文件混入组件定义（fast refresh 限制）
+        element: (
+          <div className="container" style={{ padding: 64 }}>
+            <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 28, margin: '0 0 12px' }}>页面不存在</h1>
+            <p style={{ color: 'var(--muted-foreground)', margin: 0 }}>
+              你访问的地址没有匹配的页面。<Link to="/">返回首页</Link>
+            </p>
+          </div>
+        ),
+      },
     ],
   },
 ]);

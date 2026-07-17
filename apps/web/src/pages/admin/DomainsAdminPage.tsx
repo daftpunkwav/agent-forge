@@ -29,10 +29,16 @@ export function DomainsAdminPage() {
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     setError('');
+    // 后端校验 slug 正则 ^[a-z0-9-]+$，中文名自动生成的 slug 必被拒，提交前先校验并提示手动修改
+    const finalSlug = slug || name.toLowerCase().replace(/\s+/g, '-');
+    if (!/^[a-z0-9-]+$/.test(finalSlug)) {
+      setError('Slug 只能包含小写字母、数字和连字符（-），请在 Slug 输入框中手动修改');
+      return;
+    }
     try {
       await api.createDomain({
         name,
-        slug: slug || name.toLowerCase().replace(/\s+/g, '-'),
+        slug: finalSlug,
         description,
         track,
         published: true,

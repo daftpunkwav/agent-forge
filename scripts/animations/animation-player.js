@@ -12,6 +12,7 @@ class AnimationPlayer {
    * @param {boolean} config.loop - 是否循环播放
    * @param {Function} config.onStep - 每步回调 (stepIndex) => void
    * @param {Function} config.onComplete - 完成回调 () => void
+   * @param {number} config.autoPlayDelay - 自动播放步进间隔毫秒数 (默认1800)
    */
   constructor(container, config = {}) {
     this.container = container;
@@ -21,7 +22,7 @@ class AnimationPlayer {
     this.currentStep = 0;
     this.isPlaying = false;
     this.intervalId = null;
-    this.autoPlayDelay = 1800; // ms between steps
+    this.autoPlayDelay = config.autoPlayDelay || 1800; // ms between steps
     this.onStep = config.onStep || (() => {});
     this.onComplete = config.onComplete || (() => {});
   }

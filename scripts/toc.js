@@ -78,44 +78,46 @@ class TocManager {
   }
 
   _setupMobileToc(tocContainer) {
-    // Toggle button for mobile
-    if (!document.querySelector('.toc-toggle')) {
-      const toggle = document.createElement('button');
-      toggle.className = 'toc-toggle';
-      toggle.textContent = '目录';
-      toggle.setAttribute('aria-label', '目录');
-      toggle.style.cssText = `
-        display: none;
-        position: fixed;
-        bottom: 24px;
-        left: 24px;
-        z-index: 150;
-        width: 44px;
-        height: 44px;
-        border: 1px solid var(--border);
-        border-radius: 50%;
-        background: var(--card);
-        color: var(--foreground);
-        font-size: 18px;
-        box-shadow: var(--shadow-lg);
-        cursor: pointer;
-        align-items: center;
-        justify-content: center;
-      `;
-      document.body.appendChild(toggle);
+    // 移动端目录切换按钮：每个实例独立创建，destroy时移除
+    // 先清理可能残留的旧按钮（如旧实例未被destroy）
+    const stale = document.querySelector('.toc-toggle');
+    if (stale) stale.remove();
 
-      toggle.addEventListener('click', () => {
-        tocContainer.classList.toggle('open');
-      });
+    const toggle = document.createElement('button');
+    toggle.className = 'toc-toggle';
+    toggle.textContent = '目录';
+    toggle.setAttribute('aria-label', '目录');
+    toggle.style.cssText = `
+      display: none;
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      z-index: 150;
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      background: var(--card);
+      color: var(--foreground);
+      font-size: 18px;
+      box-shadow: var(--shadow-lg);
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+    `;
+    document.body.appendChild(toggle);
+    this._toggle = toggle;
 
-      // Show on mobile
-      if (window.innerWidth <= 768) {
-        toggle.style.display = 'flex';
-      }
-      window.addEventListener('resize', () => {
-        toggle.style.display = window.innerWidth <= 768 ? 'flex' : 'none';
-      });
-    }
+    toggle.addEventListener('click', () => {
+      tocContainer.classList.toggle('open');
+    });
+
+    // 仅在移动端显示
+    this._onResize = () => {
+      toggle.style.display = window.innerWidth <= 768 ? 'flex' : 'none';
+    };
+    this._onResize();
+    window.addEventListener('resize', this._onResize);
   }
 
   _setupScrollSpy(tocContainer) {
@@ -145,9 +147,19 @@ class TocManager {
   }
 
   destroy() {
-    if (this._observer) this._observer.disconnect();
-    const toggle = document.querySelector('.toc-toggle');
-    if (toggle) toggle.remove();
+    // 断开滚动监听，移除移动端按钮与resize监听
+    if (this._observer) {
+      this._observer.disconnect();
+      this._observer = null;
+    }
+    if (this._onResize) {
+      window.removeEventListener('resize', this._onResize);
+      this._onResize = null;
+    }
+    if (this._toggle) {
+      this._toggle.remove();
+      this._toggle = null;
+    }
   }
 }
 

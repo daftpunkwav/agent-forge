@@ -4,6 +4,12 @@ import { Button } from '@/components/ui/Button';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { streamAgent } from '@/lib/agentStream';
+import {
+  AGENT_CACHE_CLEARED_EVENT,
+  isSafeHoverDisplay,
+  looksLikeHoverPlanning,
+  sanitizeHoverDisplay,
+} from '@/lib/hoverExplainCache';
 import { MarkdownView } from './MarkdownView';
 import { findHoverTarget, highlightTarget, isKnowledgeRoute } from './hoverTarget';
 
@@ -64,6 +70,8 @@ export function AgentFloat() {
   /** 未完成请求：key → true，离开后禁止把半截当缓存命中 */
   const incompleteKeys = useRef<Set<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
+  /** 对话框 deepExplain/send 流的中断控制器（与悬停流分开） */
+  const chatAbortRef = useRef<AbortController | null>(null);
   const tipPinned = useRef(false);
   const conversationIdRef = useRef<string | null>(null);
   /** 当前会话：后台已预取，是否已过 2s 可展示 */
@@ -127,6 +135,31 @@ export function AgentFloat() {
       })
       .catch(() => undefined);
   }, [user]);
+
+  // 卸载时中断进行中的对话 / 深度讲解流
+  useEffect(
+    () => () => {
+      chatAbortRef.current?.abort();
+      chatAbortRef.current = null;
+    },
+    [],
+  );
+
+  /** 设置页「清除 Agent 缓存」：清空本组件 L1 Map / 半截标记 / 中断悬停流 */
+  useEffect(() => {
+    function onCacheCleared() {
+      hoverCache.current.clear();
+      incompleteKeys.current.clear();
+      inflightKeyRef.current = null;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      genRef.current += 1;
+      sessionRef.current = null;
+      setHoverTip(null);
+    }
+    window.addEventListener(AGENT_CACHE_CLEARED_EVENT, onCacheCleared);
+    return () => window.removeEventListener(AGENT_CACHE_CLEARED_EVENT, onCacheCleared);
+  }, []);
 
   /**
    * 视口坐标放置（position:fixed）。
@@ -278,19 +311,8 @@ export function AgentFloat() {
     }, HOVER_LEAVE_KEEP_MS);
   }
 
-  function looksLikePlanningClient(s: string): boolean {
-    return /思考过程|写作计划|我需要：|结构如下|###\s*Thought|推理过程|内部思考|让我先|首先分析/i.test(
-      (s || '').trim().slice(0, 120),
-    );
-  }
-
   function isCompleteHoverClient(s: string): boolean {
-    const t = (s || '').trim();
-    if (t.length < 12 || t.length > 900) return false;
-    if (looksLikePlanningClient(t)) return false;
-    if (/讲解失败|暂无讲解|暂无输出/i.test(t)) return false;
-    if (/[，、：:与和或及]$/.test(t)) return false;
-    return true;
+    return isSafeHoverDisplay(s);
   }
 
   function readCache(key: string): string | null {
@@ -301,7 +323,8 @@ export function AgentFloat() {
       hoverCache.current.delete(key);
       return null;
     }
-    if (!isCompleteHoverClient(hit.text)) {
+    // 脏缓存（思考过程）丢弃
+    if (!isSafeHoverDisplay(hit.text)) {
       hoverCache.current.delete(key);
       return null;
     }
@@ -312,7 +335,7 @@ export function AgentFloat() {
   }
 
   function pushCache(key: string, text: string) {
-    if (!isCompleteHoverClient(text)) return;
+    if (!isSafeHoverDisplay(text)) return;
     incompleteKeys.current.delete(key);
     if (hoverCache.current.has(key)) hoverCache.current.delete(key);
     hoverCache.current.set(key, { text, at: Date.now() });
@@ -324,15 +347,8 @@ export function AgentFloat() {
   }
 
   function sanitizeHoverAnswer(raw: string): string {
-    const s = (raw || '').trim();
-    if (!s) return '';
-    if (looksLikePlanningClient(s)) {
-      const parts = s.split(/\n{2,}/).filter((p) => p.trim().length > 12);
-      const last = [...parts].reverse().find((p) => !looksLikePlanningClient(p)) || '';
-      if (last.length >= 12) return smartTruncateClient(last);
-      return '';
-    }
-    return smartTruncateClient(s);
+    const cleaned = sanitizeHoverDisplay(raw);
+    return cleaned ? smartTruncateClient(cleaned) : '';
   }
 
   function smartTruncateClient(s: string, max = 560): string {
@@ -538,7 +554,7 @@ export function AgentFloat() {
             if (!s || s.gen !== gen) return;
 
             if (ev.type === 'status' || ev.type === 'thinking') {
-              // 思考通道：只维持 loading，绝不写入 buffer
+              // 思考通道：只维持 loading，绝不写入 buffer / 绝不展示思考正文
               if (!streamingShown) {
                 s.loading = true;
                 if (s.revealed && !s.complete) showTipForSession(s, true);
@@ -546,15 +562,35 @@ export function AgentFloat() {
               return;
             }
 
-            // 悬停流式正文
+            // 仅展示后端清洗后的 soft-stream；思考轨迹绝不进 buffer
             if (ev.type === 'delta' && ev.text) {
-              streamBuf += ev.text;
-              if (looksLikePlanningClient(streamBuf)) {
-                // 仍像策划：继续当思考中
+              if (ev.replace) streamBuf = ev.text;
+              else streamBuf += ev.text;
+              // 策划检测：不展示即可，禁止清空已累积缓冲（自伤）
+              if (looksLikeHoverPlanning(streamBuf)) {
                 if (s.revealed && !streamingShown) showTipForSession(s, true);
                 return;
               }
-              s.buffer = smartTruncateClient(streamBuf, 600);
+              // 未成句前缀：展示到最后一个句号；或完整安全正文
+              let show = '';
+              if (isSafeHoverDisplay(streamBuf)) {
+                show = streamBuf;
+              } else {
+                const lastEnd = Math.max(
+                  streamBuf.lastIndexOf('。'),
+                  streamBuf.lastIndexOf('！'),
+                  streamBuf.lastIndexOf('？'),
+                );
+                if (lastEnd >= 8) {
+                  const upto = streamBuf.slice(0, lastEnd + 1);
+                  if (isSafeHoverDisplay(upto)) show = upto;
+                }
+              }
+              if (!show) {
+                if (s.revealed && !streamingShown) showTipForSession(s, true);
+                return;
+              }
+              s.buffer = smartTruncateClient(show, 600);
               s.loading = false;
               streamingShown = true;
               if (s.revealed) showTipForSession(s, false);
@@ -563,16 +599,11 @@ export function AgentFloat() {
 
             if (ev.type === 'final' && ev.answer != null) {
               gotFinal = true;
-              const cleaned =
-                sanitizeHoverAnswer(ev.answer) ||
-                sanitizeHoverAnswer(streamBuf) ||
-                (ev.answer.trim() && !looksLikePlanningClient(ev.answer)
-                  ? smartTruncateClient(ev.answer.trim())
-                  : '');
-              const ok = isCompleteHoverClient(cleaned) || cleaned.length >= 12;
-              s.buffer = cleaned || streamBuf.trim() || '讲解生成失败，请再试一次';
+              // 只信 final.answer；禁止 streamBuf/原文回退成思考
+              const cleaned = sanitizeHoverAnswer(ev.answer);
+              s.buffer = cleaned || '讲解生成失败，请再试一次';
               s.loading = false;
-              s.complete = ok && !looksLikePlanningClient(s.buffer);
+              s.complete = isSafeHoverDisplay(s.buffer);
               if (s.complete) pushCache(key, s.buffer);
               else {
                 incompleteKeys.current.add(key);
@@ -580,11 +611,12 @@ export function AgentFloat() {
               }
               if (inflightKeyRef.current === key) inflightKeyRef.current = null;
               if (s.revealed) {
-                // 已在流式展示则直接覆盖为清洗后的 final
-                if (streamingShown) showTipForSession(s, false);
-                else {
+                if (streamingShown && cleaned) showTipForSession(s, false);
+                else if (cleaned) {
                   showTipForSession(s, true);
                   scheduleAnswerReveal(s, gen);
+                } else {
+                  showTipForSession(s, false);
                 }
               }
               return;
@@ -592,20 +624,23 @@ export function AgentFloat() {
 
             if (ev.type === 'done') {
               if (!gotFinal) {
+                // 无 final 时也不用 streamBuf 原文（可能含思考）
                 const fallback = sanitizeHoverAnswer(streamBuf);
-                s.buffer = fallback || streamBuf.trim() || '讲解生成失败，请再试一次';
+                s.buffer = fallback || '讲解生成失败，请再试一次';
                 s.loading = false;
-                s.complete = isCompleteHoverClient(s.buffer);
+                s.complete = isSafeHoverDisplay(s.buffer);
                 if (s.complete) pushCache(key, s.buffer);
                 else {
                   incompleteKeys.current.add(key);
                   hoverCache.current.delete(key);
                 }
                 if (s.revealed) {
-                  if (streamingShown) showTipForSession(s, false);
-                  else {
+                  if (streamingShown && fallback) showTipForSession(s, false);
+                  else if (fallback) {
                     showTipForSession(s, true);
                     scheduleAnswerReveal(s, gen);
+                  } else {
+                    showTipForSession(s, false);
                   }
                 }
               }
@@ -805,6 +840,10 @@ export function AgentFloat() {
     ]);
     let answer = '';
     let thinking = '';
+    // 发起前中断上一路对话流，避免卸载/重发后旧流继续运行
+    chatAbortRef.current?.abort();
+    const ac = new AbortController();
+    chatAbortRef.current = ac;
     try {
       await streamAgent(
         '/agent/explain/stream',
@@ -841,6 +880,7 @@ export function AgentFloat() {
             answer = `**错误**\n\n${ev.message}`;
           }
         },
+        ac.signal,
       );
       if (!answer.trim()) {
         try {
@@ -866,6 +906,8 @@ export function AgentFloat() {
         thinkingOpen: false,
       });
     } catch (err) {
+      // 主动中断（重发/卸载）不当作错误展示
+      if ((err as Error).name === 'AbortError') return;
       const msg = err instanceof Error ? err.message : '讲解失败';
       patchLastAssistant({ text: `**错误**\n\n${msg}`, streaming: false });
     } finally {
@@ -885,6 +927,10 @@ export function AgentFloat() {
     ]);
     let answer = '';
     let thinking = '';
+    // 发起前中断上一路对话流，避免卸载/重发后旧流继续运行
+    chatAbortRef.current?.abort();
+    const ac = new AbortController();
+    chatAbortRef.current = ac;
     try {
       await streamAgent(
         '/agent/chat/stream',
@@ -919,6 +965,7 @@ export function AgentFloat() {
           }
           if (ev.type === 'error') answer = `**错误**\n\n${ev.message}`;
         },
+        ac.signal,
       );
       if (!answer.trim()) {
         try {
@@ -940,6 +987,8 @@ export function AgentFloat() {
         thinkingOpen: false,
       });
     } catch (err) {
+      // 主动中断（重发/卸载）不当作错误展示
+      if ((err as Error).name === 'AbortError') return;
       const message = err instanceof Error ? err.message : '发送失败';
       patchLastAssistant({ text: `**错误**\n\n${message}`, streaming: false });
     } finally {

@@ -42,8 +42,10 @@ export function acquireExpand(id: string): Promise<void> {
     return Promise.resolve();
   }
 
-  // 取消同 id 的旧等待
+  // 取消同 id 的旧等待：先 reject 旧 waiter，避免其 Promise 永远悬挂
+  //（调用方 runExplain 已 try/catch，不会产生 unhandled rejection）
   if (waiter?.id === id) {
+    waiter.reject(new Error('superseded'));
     return new Promise<void>((resolve, reject) => {
       waiter = { id, resolve, reject };
     });

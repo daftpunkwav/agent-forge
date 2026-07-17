@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { validate } from '../middleware/validate.js';
-import { optionalAuth, requireAuth, requireRole } from '../middleware/auth.js';
+import { optionalAuth, requireAuth, requirePermission } from '../middleware/auth.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { param } from '../lib/params.js';
 import { toArticleSummary } from '../services/serialize.js';
@@ -133,7 +133,7 @@ domainsRouter.get('/:slug', optionalAuth, async (req, res, next) => {
 domainsRouter.post(
   '/',
   requireAuth,
-  requireRole('admin'),
+  requirePermission('domain.manage'),
   validate(createSchema),
   async (req, res, next) => {
     try {
@@ -163,7 +163,7 @@ domainsRouter.post(
 domainsRouter.patch(
   '/:id',
   requireAuth,
-  requireRole('admin'),
+  requirePermission('domain.manage'),
   validate(updateSchema),
   async (req, res, next) => {
     try {
@@ -195,7 +195,7 @@ domainsRouter.patch(
   },
 );
 
-domainsRouter.delete('/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
+domainsRouter.delete('/:id', requireAuth, requirePermission('domain.manage'), async (req, res, next) => {
   try {
     const id = param(req, 'id');
     const existing = await prisma.domain.findUnique({ where: { id } });

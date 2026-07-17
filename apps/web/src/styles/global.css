@@ -604,8 +604,9 @@ textarea {
 /* —— 行内悬停 Agent 文章卡片 —— */
 /* 高度：collapsed 固定 max-height；expanded 放宽 max-height 做平滑过渡 */
 .article-card-inline {
+  /* 悬停答案仅 2～3 句，expand 上限不必过大，高度随文增长更自然 */
   --card-base-h: 148px;
-  --card-expand-h: 520px;
+  --card-expand-h: 300px;
   box-sizing: border-box;
   text-decoration: none;
   color: inherit;
@@ -619,8 +620,8 @@ textarea {
   min-height: var(--card-base-h);
   max-height: var(--card-base-h);
   transition:
-    max-height 0.48s cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 0.4s ease,
+    max-height 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.35s ease,
     border-color 0.25s ease;
 }
 .article-card-inline-inner {
@@ -666,12 +667,14 @@ textarea {
   overflow: hidden;
   white-space: normal;
 }
-/* Agent 输出：完整展示 */
+/* Agent 输出：完整展示；流式时高度随文字自然增高 */
 .article-card-inline-text.is-answer {
   display: block;
   color: var(--foreground);
   overflow: visible;
   white-space: pre-wrap;
+  /* 轻微过渡减少逐 token 时的视觉生硬（不阻挡布局增高） */
+  transition: color 0.15s ease;
 }
 .article-card-inline-cta {
   align-self: center;
@@ -705,10 +708,10 @@ textarea {
   max-height: none;
 }
 
-/* feed：首页双列 */
+/* feed：首页双列；expand 贴合 2～3 句，避免空高 */
 .article-card-inline--feed {
   --card-base-h: 152px;
-  --card-expand-h: 560px;
+  --card-expand-h: 320px;
   padding: 14px 16px;
   flex-direction: row;
 }
@@ -729,7 +732,7 @@ textarea {
 /* grid：知识地图 / 领域 */
 .article-card-inline--grid {
   --card-base-h: 140px;
-  --card-expand-h: 480px;
+  --card-expand-h: 300px;
   padding: 12px 13px;
   flex-direction: column;
 }
@@ -755,7 +758,7 @@ textarea {
 /* list：横条列表 */
 .article-card-inline--list {
   --card-base-h: 80px;
-  --card-expand-h: 420px;
+  --card-expand-h: 280px;
   padding: 12px 16px;
   flex-direction: row;
   align-items: center;

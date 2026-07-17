@@ -269,25 +269,27 @@ function renderArticlesList(filter) {
     list.innerHTML = articles.map(a => {
         const statusColor = a.status === 'published' ? 'var(--chart-3)' : 'var(--chart-5)';
         const statusText = a.status === 'published' ? '已发布' : '草稿';
+        // id拼接进onclick属性，仅保留安全字符，防止属性逃逸
+        const safeId = String(a.id).replace(/[^\w-]/g, '');
         return `
         <div style="padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 200px;">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                    <span style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-1);">${a.category}</span>
+                    <span style="font: 700 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--chart-1);">${escapeHtml(a.category)}</span>
                     <span style="font-size: 10px; padding: 2px 8px; border-radius: 4px; background: ${statusColor}; color: #1a1714; font-weight: 600;">${statusText}</span>
                 </div>
-                <h4 style="font-family: var(--font-serif); font-size: 16px; font-weight: 600; margin-bottom: 4px;">${a.title}</h4>
-                <p style="font-size: 13px; color: var(--muted-foreground);">${a.summary || ''}</p>
+                <h4 style="font-family: var(--font-serif); font-size: 16px; font-weight: 600; margin-bottom: 4px;">${escapeHtml(a.title)}</h4>
+                <p style="font-size: 13px; color: var(--muted-foreground);">${escapeHtml(a.summary || '')}</p>
             </div>
             <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--muted-foreground);">
-                <span>${a.views || 0} 阅读</span>
+                <span>${escapeHtml(String(a.views || 0))} 阅读</span>
                 <span>${a.animations ? a.animations.length : 0} 动画</span>
-                <span>${a.updatedAt}</span>
+                <span>${escapeHtml(a.updatedAt || '')}</span>
             </div>
             <div style="display: flex; gap: 8px;">
-                <button class="btn btn-ghost btn-sm" onclick="editArticle('${a.id}')">编辑</button>
-                ${a.status === 'draft' ? `<button class="btn btn-primary btn-sm" onclick="publishArticle('${a.id}')">发布</button>` : ''}
-                <button class="btn btn-ghost btn-sm" style="color: #ef4444;" onclick="deleteArticle('${a.id}')">删除</button>
+                <button class="btn btn-ghost btn-sm" onclick="editArticle('${safeId}')">编辑</button>
+                ${a.status === 'draft' ? `<button class="btn btn-primary btn-sm" onclick="publishArticle('${safeId}')">发布</button>` : ''}
+                <button class="btn btn-ghost btn-sm" style="color: #ef4444;" onclick="deleteArticle('${safeId}')">删除</button>
             </div>
         </div>`;
     }).join('');
@@ -476,8 +478,11 @@ function parseInline(text) {
     text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
     // Inline code
     text = text.replace(/`(.+?)`/g, '<code style="background: var(--muted); padding: 2px 6px; border-radius: 4px; font: 12px/1 var(--font-mono);">$1</code>');
-    // Links
-    text = text.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" style="color: var(--chart-5); text-decoration: none;">$1</a>');
+    // Links（协议白名单：仅 http/https/mailto，其余替换为'#'；转义引号防止属性逃逸）
+    text = text.replace(/\[(.+?)\]\((.+?)\)/g, function(m, label, url) {
+        const safe = /^(https?:|mailto:)/i.test(url.trim()) ? url.replace(/"/g, '&quot;') : '#';
+        return '<a href="' + safe + '" style="color: var(--chart-5); text-decoration: none;">' + label + '</a>';
+    });
     return text;
 }
 
@@ -532,10 +537,14 @@ function showAnimationTool(type) {
                 controls.className = 'anim-controls';
                 controls.style.cssText = 'display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px 16px; background: var(--muted); border-top: 1px solid var(--border);';
                 controls.innerHTML = `
-                    <button class="anim-btn" onclick="anim.player.play()" style="...">PLAY</button>
-                    <button class="anim-btn" onclick="anim.player.pause()" style="...">PAUSE</button>
-                    <button class="anim-btn" onclick="anim.player.reset()" style="...">RESET</button>
+                    <button class="anim-btn" data-action="play" style="...">PLAY</button>
+                    <button class="anim-btn" data-action="pause" style="...">PAUSE</button>
+                    <button class="anim-btn" data-action="reset" style="...">RESET</button>
                 `;
+                // anim为局部变量，onclick无法访问，改用addEventListener绑定
+                controls.querySelector('[data-action="play"]').addEventListener('click', function() { player.play(); });
+                controls.querySelector('[data-action="pause"]').addEventListener('click', function() { player.pause(); });
+                controls.querySelector('[data-action="reset"]').addEventListener('click', function() { anim.reset(); });
                 container.appendChild(controls);
             }
         } catch(e) {

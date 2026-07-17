@@ -26,6 +26,9 @@ export function ArticleBody({
 
   const hasEmbedded = parts.some((p) => p.type === 'animation');
 
+  // 标题 id 序号跨 chunk 累计，避免不同 chunk 的同文本标题产生重复 id
+  let headingSeq = 0;
+
   return (
     <div className="article-prose" data-article-body data-agent-zone="knowledge">
       {!hasEmbedded && fallbackTemplate ? (
@@ -37,12 +40,13 @@ export function ArticleBody({
           if (anim) return <AnimationViewer key={`a-${i}`} animation={anim} />;
           return <TemplateAnimation key={`a-${i}`} template={part.id} name={part.id} />;
         }
-        const html = injectHeadingIds(renderMarkdown(part.content));
+        const heading = injectHeadingIds(renderMarkdown(part.content), headingSeq);
+        headingSeq = heading.next;
         return (
           <div
             key={`m-${i}`}
             className="article-md-chunk"
-            dangerouslySetInnerHTML={{ __html: html }}
+            dangerouslySetInnerHTML={{ __html: heading.html }}
           />
         );
       })}

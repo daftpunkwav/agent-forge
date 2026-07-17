@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { validate } from '../middleware/validate.js';
 import { optionalAuth, requireAuth, requireRole } from '../middleware/auth.js';
-import { badRequest, forbidden, notFound } from '../lib/errors.js';
+import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { slugify, toArticleDetail, toArticleSummary } from '../services/serialize.js';
 import { param } from '../lib/params.js';
 
@@ -221,7 +221,15 @@ articlesRouter.patch(
       if (body.level !== undefined) data.level = body.level;
       if (body.tags !== undefined) data.tags = JSON.stringify(body.tags);
       if (body.readMinutes !== undefined) data.readMinutes = body.readMinutes;
-      if (body.slug !== undefined) data.slug = body.slug;
+      if (body.slug !== undefined) {
+        // 与 POST 一致先 slugify 归一化；归一化后被其他文章占用则 409 冲突
+        const slug = slugify(body.slug);
+        if (slug !== existing.slug) {
+          const clash = await prisma.article.findUnique({ where: { slug } });
+          if (clash) throw conflict('slug 已被其他文章占用');
+        }
+        data.slug = slug;
+      }
       if (body.domainId !== undefined) data.domainId = body.domainId;
       if (body.status === 'published' && existing.status !== 'published') {
         data.status = 'published';

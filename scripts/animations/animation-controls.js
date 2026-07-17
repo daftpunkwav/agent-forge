@@ -7,6 +7,7 @@ class AnimationControls {
   constructor(player, options = {}) {
     this.player = player;
     this.stepFormat = options.stepFormat || '{current}/{total}';
+    this.viz = options.viz || null; // 可选：对应的viz实例，重置时联动清理
     this.container = player.container;
     this._build();
   }
@@ -52,7 +53,11 @@ class AnimationControls {
           case 'pause': this.player.pause(); break;
           case 'step': this.player.step(); break;
           case 'stepBack': this.player.stepBack(); break;
-          case 'reset': this.player.reset(); break;
+          case 'reset':
+            // 优先调用viz自身的reset（清理残留节点），其内部会再调player.reset()
+            if (this.viz && typeof this.viz.reset === 'function') this.viz.reset();
+            else this.player.reset();
+            break;
         }
         this._updateUI();
       });

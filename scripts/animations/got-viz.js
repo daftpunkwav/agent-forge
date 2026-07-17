@@ -100,6 +100,17 @@ class GotAnimation {
     const desc = this.container.querySelector('#got-desc');
     if (!desc) return;
 
+    // 循环回到起点：清空节点层并移除高亮，避免实体节点每轮叠加
+    if (step === 0) {
+      if (this.nodesLayer) this.nodesLayer.innerHTML = '';
+      this.svg.querySelectorAll('.got-relation').forEach(e => e.classList.remove('highlighted'));
+      this.svg.querySelectorAll('.got-label').forEach(e => {
+        e.style.fill = '';
+        e.style.fontWeight = '';
+      });
+      return;
+    }
+
     if (step <= this.entities.length) {
       const idx = step - 1;
       if (idx >= 0 && idx < this.entities.length) {

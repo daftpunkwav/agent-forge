@@ -15,6 +15,9 @@ import { errorHandler } from './middleware/errorHandler.js';
 export function createApp() {
   const app = express();
 
+  // 部署在反向代理后时，express-rate-limit v7 会因 X-Forwarded-For 校验抛错，需信任第一跳代理
+  app.set('trust proxy', 1);
+
   app.use(helmet());
   app.use(
     cors({

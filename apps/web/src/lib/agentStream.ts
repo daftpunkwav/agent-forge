@@ -16,7 +16,8 @@ export type StreamEvent =
     }
   | { type: 'status'; status: 'thinking' | 'answering' }
   | { type: 'thinking'; text: string }
-  | { type: 'delta'; text: string }
+  /** replace=true：用 text 覆盖已累计正文（策划切到讲解时的重同步） */
+  | { type: 'delta'; text: string; replace?: boolean }
   | { type: 'final'; answer?: string; thinking?: string }
   | { type: 'done' }
   | { type: 'error'; message: string };

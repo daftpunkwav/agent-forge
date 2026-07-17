@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { validate } from '../middleware/validate.js';
-import { requireAuth, requireRole } from '../middleware/auth.js';
+import { requireAuth, requirePermission, requireRole } from '../middleware/auth.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { param } from '../lib/params.js';
 
@@ -71,7 +71,7 @@ applicationsRouter.get('/', requireAuth, requireRole('admin'), async (_req, res,
 applicationsRouter.patch(
   '/:id',
   requireAuth,
-  requireRole('admin'),
+  requirePermission('user.manage'),
   validate(
     z.object({
       status: z.enum(['approved', 'rejected']),

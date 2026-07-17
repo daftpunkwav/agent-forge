@@ -72,10 +72,10 @@ async function main() {
 
   const admin = await prisma.user.upsert({
     where: { email },
+    // update 不写 passwordHash：避免每次 seed 重置管理员密码（仅 create 时设置）
     update: {
       role: 'admin',
       name,
-      passwordHash,
       adminLevel: 100,
       authorTier: 'elite',
     },
@@ -150,7 +150,7 @@ async function main() {
         tags: JSON.stringify(seed.tags),
         readMinutes: seed.readMinutes,
         status: 'published',
-        publishedAt: new Date(),
+        // update 不重置 publishedAt：保留首次发布时间（仅 create 时设置）
         authorId: admin.id,
         domainId: domainId || null,
       },

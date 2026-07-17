@@ -20,6 +20,7 @@ import {
   extractVisibleAnswer,
   formatMemoryBlock,
   isCompleteHoverAnswer,
+  isLikelyHoverTeaching,
   looksLikeHoverPlanning,
 } from '../lib/llm/agentPrompt.js';
 import type { ByokConfig } from '../lib/llm/types.js';
@@ -66,15 +67,28 @@ const chatSchema = z.object({
 
 function hoverCacheKey(topic: string, style: string): string {
   const norm = topic.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 400);
-  return createHash('sha256').update(`${style}::${norm}`).digest('hex').slice(0, 48);
+  // v5：过滤任务提示回声（bug-4），旧脏缓存自动失效
+  return createHash('sha256').update(`v5::${style}::${norm}`).digest('hex').slice(0, 48);
+}
+
+/** 悬停缓存/对外答案：2～3 句陈述 + 无旁白（思考/规则/改稿一律拒） */
+function isSafeHoverPublicAnswer(answer: string): boolean {
+  const a = (answer || '').trim();
+  if (!a) return false;
+  if (!isCompleteHoverAnswer(a)) return false;
+  if (looksLikeHoverPlanning(a)) return false;
+  if (/[？?]/.test(a)) return false;
+  if ((a.match(/[。！]/g) || []).length > 3) return false;
+  if (a.length > 260) return false;
+  return isLikelyHoverTeaching(a);
 }
 
 async function getHoverCache(topic: string, style: string): Promise<string | null> {
   const key = hoverCacheKey(topic, style);
   const row = await prisma.hoverExplainCache.findUnique({ where: { cacheKey: key } });
   if (!row) return null;
-  // 质检：历史脏数据直接删掉，避免半截答案反复命中
-  if (!isCompleteHoverAnswer(row.answer)) {
+  // 质检：历史脏数据（含思考过程）直接删掉，避免反复毒害
+  if (!isSafeHoverPublicAnswer(row.answer)) {
     void prisma.hoverExplainCache.delete({ where: { cacheKey: key } }).catch(() => undefined);
     return null;
   }
@@ -88,7 +102,7 @@ async function getHoverCache(topic: string, style: string): Promise<string | nul
 }
 
 async function setHoverCache(topic: string, style: string, answer: string) {
-  if (!isCompleteHoverAnswer(answer)) return;
+  if (!isSafeHoverPublicAnswer(answer)) return;
   const key = hoverCacheKey(topic, style);
   await prisma.hoverExplainCache.upsert({
     where: { cacheKey: key },
@@ -100,7 +114,8 @@ async function setHoverCache(topic: string, style: string, answer: string) {
 async function ensureConversation(userId: string | undefined, conversationId?: string) {
   if (conversationId) {
     const existing = await prisma.agentConversation.findUnique({ where: { id: conversationId } });
-    if (existing && (!userId || existing.userId === userId || !existing.userId)) {
+    // 访问控制：已登录仅本人会话；匿名仅允许无主（userId 为空）会话，其余按找不到处理（走下方新建）
+    if (existing && (userId ? existing.userId === userId : !existing.userId)) {
       return existing;
     }
   }
@@ -291,6 +306,24 @@ agentRouter.get('/meta', (_req, res) => {
   });
 });
 
+/**
+ * 清除悬停 Agent 服务端缓存（L2）。
+ * 清除后所有卡片/气泡讲解均需重新调用 LLM，不再命中历史脏数据。
+ */
+agentRouter.post('/cache/clear', requireAuth, async (_req, res, next) => {
+  try {
+    const result = await prisma.hoverExplainCache.deleteMany({});
+    res.json({
+      ok: true,
+      cleared: result.count,
+      scope: 'hover-explain-l2',
+      message: `已清除 ${result.count} 条悬停讲解缓存`,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 agentRouter.get('/providers', optionalAuth, async (req, res, next) => {
   try {
     let byokEnabled = false;
@@ -329,17 +362,27 @@ async function runExplain(
     ? `${body.selection.title}\n${body.selection.text}`
     : body.selection.text;
 
-  const userMsg = [
-    `【待讲解片段】\n${topic}`,
-    body.selection.context ? `【所在段落/上下文】\n${body.selection.context}` : '',
-    body.selection.route ? `页面：${body.selection.route}` : '',
-    body.selection.articleSlug ? `文章：${body.selection.articleSlug}` : '',
-    isHover
-      ? '请针对「待讲解片段」快速讲解，不要展开全文。'
-      : '请针对该知识点详细讲解，按 ReAct 风格结构输出。',
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+  // 悬停 user 只给知识点，约束放在 system，避免模型复述「要2-3句…」（bug-4）
+  const userMsg = isHover
+    ? [
+        (body.selection.title || '').trim() || topic.slice(0, 200),
+        body.selection.text &&
+        body.selection.text.trim() &&
+        body.selection.text.trim() !== (body.selection.title || '').trim()
+          ? body.selection.text.trim().slice(0, 280)
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : [
+        `【待讲解片段】\n${topic}`,
+        body.selection.context ? `【所在段落/上下文】\n${body.selection.context}` : '',
+        body.selection.route ? `页面：${body.selection.route}` : '',
+        body.selection.articleSlug ? `文章：${body.selection.articleSlug}` : '',
+        '请针对该知识点详细讲解，按 ReAct 风格结构输出。',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
 
   return {
     provider,
@@ -379,7 +422,7 @@ agentRouter.post('/explain', optionalAuth, validate(explainSchemaFixed), async (
       result = await callLlm(
         {
           mode: prep.isHover ? 'fast' : 'deep',
-          maxTokens: prep.isHover ? 700 : 2048,
+          maxTokens: prep.isHover ? 160 : 2048,
           messages: [
             { role: 'system', content: prep.system },
             { role: 'user', content: prep.userMsg },
@@ -390,10 +433,13 @@ agentRouter.post('/explain', optionalAuth, validate(explainSchemaFixed), async (
     } catch (e) {
       throw llmError(e);
     }
-    const explanation = prep.isHover
+    let explanation = prep.isHover
       ? extractHoverAnswer(result.thinking || '', result.text || '')
       : extractVisibleAnswer(result.thinking || '', result.text || '').answer;
-    if (prep.isHover && explanation) void setHoverCache(prep.topic, prep.style, explanation);
+    if (prep.isHover) {
+      if (explanation && !isSafeHoverPublicAnswer(explanation)) explanation = '';
+      if (explanation) void setHoverCache(prep.topic, prep.style, explanation);
+    }
     void rememberTopic(req.user?.id, prep.topic, body.mode);
     res.json({
       explanation,
@@ -452,10 +498,27 @@ agentRouter.post(
       try {
         let thinkingAcc = '';
         let textAcc = '';
+        /**
+         * 悬停硬规则（彻底杜绝「思考过程闪一下」）：
+         * 1) 生成过程中：thinking/text 只在服务端累计，客户端只收 status:thinking
+         * 2) 绝不把 thinking 通道渐进当 delta（StepFun 思考全文在此，过滤必漏）
+         * 3) 结束后 extract 清洗，仅把安全讲解 soft-stream 为 delta，再 final
+         */
+        let lastHoverStatusAt = 0;
+        const emitHoverThinkingStatus = () => {
+          const now = Date.now();
+          // 节流：避免每 token 刷 status
+          if (now - lastHoverStatusAt < 120) return;
+          lastHoverStatusAt = now;
+          sseWrite(res, { type: 'status', status: 'thinking' });
+        };
+
         for await (const chunk of streamLlm(
           {
             mode: prep.isHover ? 'fast' : 'deep',
-            maxTokens: prep.isHover ? 700 : 2048,
+            // 悬停：短输出硬上限，逼模型少写
+            maxTokens: prep.isHover ? 160 : 2048,
+            temperature: prep.isHover ? 0.15 : undefined,
             messages: [
               { role: 'system', content: prep.system },
               { role: 'user', content: prep.userMsg },
@@ -463,27 +526,21 @@ agentRouter.post(
           },
           prep.provider,
         )) {
-          // 客户端已断开：停止生成，且不写缓存
           if (res.writableEnded || res.destroyed) {
             return;
           }
           if (chunk.kind === 'thinking') {
             thinkingAcc += chunk.text;
-            // 悬停：思考通道只作状态，绝不推思考正文
             if (prep.isHover) {
-              sseWrite(res, { type: 'status', status: 'thinking' });
+              emitHoverThinkingStatus();
             } else {
               sseWrite(res, { type: 'thinking', text: chunk.text });
             }
           } else {
             textAcc += chunk.text;
             if (prep.isHover) {
-              // 悬停流式：仅推送看起来像正文的分片
-              if (!looksLikeHoverPlanning(textAcc)) {
-                sseWrite(res, { type: 'delta', text: chunk.text });
-              } else {
-                sseWrite(res, { type: 'status', status: 'thinking' });
-              }
+              // 正文通道也不中途推送：等结束后统一清洗，避免 CoT 混在 text 里泄漏
+              emitHoverThinkingStatus();
             } else {
               sseWrite(res, { type: 'delta', text: chunk.text });
             }
@@ -494,12 +551,28 @@ agentRouter.post(
         }
         if (prep.isHover) {
           let answer = extractHoverAnswer(thinkingAcc, textAcc);
-          // 仍空：从 text 做最后兜底（已滤策划）
-          if (!answer && textAcc.trim() && !looksLikeHoverPlanning(textAcc)) {
+          if (!answer && textAcc.trim() && isSafeHoverPublicAnswer(textAcc.trim())) {
             answer = textAcc.trim().slice(0, 560);
           }
-          if (answer && isCompleteHoverAnswer(answer)) {
+          // 仍不安全 → 空，前端显示失败态，绝不下发思考原文
+          if (answer && !isSafeHoverPublicAnswer(answer)) {
+            answer = '';
+          }
+          if (answer) {
             void setHoverCache(prep.topic, prep.style, answer);
+            // 洁净答案：按句 soft-stream（句间短延迟，高度随句渐进）
+            const pieces =
+              answer.match(/[^。！]*[。！]/g)?.filter((x) => x.trim()) ||
+              (answer ? [answer] : []);
+            for (let i = 0; i < pieces.length; i++) {
+              if (res.writableEnded || res.destroyed) return;
+              const piece = pieces[i];
+              if (!piece) continue;
+              sseWrite(res, { type: 'delta', text: piece });
+              if (i < pieces.length - 1) {
+                await new Promise((r) => setTimeout(r, 90));
+              }
+            }
           }
           sseWrite(res, {
             type: 'final',
@@ -666,6 +739,10 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
         },
         provider,
       )) {
+        // 客户端已断开：停止生成，且不入库
+        if (res.writableEnded || res.destroyed) {
+          return;
+        }
         if (chunk.kind === 'thinking') {
           thinkingAcc += chunk.text;
           if (mode === 'fast') {
@@ -681,6 +758,9 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
             sseWrite(res, { type: 'delta', text: chunk.text });
           }
         }
+      }
+      if (res.writableEnded || res.destroyed) {
+        return;
       }
       const visible = extractVisibleAnswer(thinkingAcc, textAcc);
       if (mode === 'fast') {

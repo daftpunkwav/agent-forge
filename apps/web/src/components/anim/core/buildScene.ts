@@ -312,7 +312,7 @@ function buildFlowScene(steps: AnimationStep[]): SceneModel {
     activeNodeIds: [nodes[i].id],
     activeEdgeIds: i > 0 ? [edges[i - 1].id] : [],
     doneNodeIds: nodes.slice(0, i).map((n) => n.id),
-    doneEdgeIds: edges.slice(0, Math.max(0, i)).map((e) => e.id).slice(0, i > 0 ? i : 0),
+    doneEdgeIds: edges.slice(0, Math.max(0, i - 1)).map((e) => e.id),
     caption: s.desc || s.label,
     logLine: `${i + 1}. ${s.label}`,
     packet: i > 0 ? { edgeId: edges[i - 1].id, t: 0.65 } : undefined,
@@ -366,11 +366,9 @@ function buildLayersScene(steps: AnimationStep[]): SceneModel {
   }));
   const frames: VizFrame[] = steps.map((s, i) => {
     const role = stepRole(s);
-    const idx = Math.max(
-      0,
-      layerIds.findIndex((id) => role.includes(id) || id.startsWith(role.slice(0, 4))),
-    );
-    const useIdx = idx >= 0 ? idx : Math.min(i, layerIds.length - 1);
+    const found = layerIds.findIndex((id) => role.includes(id) || id.startsWith(role.slice(0, 4)));
+    // 未匹配时按步骤序号落到对应层，而不是恒落第 0 层
+    const useIdx = found >= 0 ? found : Math.min(i, layerIds.length - 1);
     return {
       activeNodeIds: [layerIds[useIdx]],
       activeEdgeIds: useIdx > 0 ? [edges[useIdx - 1].id] : [],

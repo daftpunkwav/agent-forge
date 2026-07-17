@@ -13,7 +13,7 @@ export function ArticleEditorPage() {
   const { id } = useParams();
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
-  const { isAuthor, loading: authLoading } = useAuth();
+  const { isAuthor, isAdmin, loading: authLoading } = useAuth();
   const mdRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [title, setTitle] = useState('');
@@ -38,9 +38,10 @@ export function ArticleEditorPage() {
 
   useEffect(() => {
     if (isNew || !id) return;
-    // 通过 mine 列表找 slug 再拉详情不优雅；用 list 找 id
+    // 通过列表找 slug 再拉详情不优雅；用 list 找 id
+    // admin 可编辑任意文章：用 status=all 覆盖他人文章（pageSize 取后端上限 48）；非 admin 仅本人文章
     api
-      .listArticles({ mine: true })
+      .listArticles(isAdmin ? { status: 'all', pageSize: 48 } : { mine: true })
       .then(async (r) => {
         const found = r.items.find((a) => a.id === id);
         if (!found) throw new Error('文章不存在');
@@ -58,7 +59,7 @@ export function ArticleEditorPage() {
         setSelectedAnimIds(a.animations?.map((x) => x.id) || []);
       })
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'));
-  }, [id, isNew]);
+  }, [id, isNew, isAdmin]);
 
   const previewAnims = useMemo(
     () => animations.filter((a) => selectedAnimIds.includes(a.id)),

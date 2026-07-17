@@ -75,6 +75,8 @@
   // ── 全局状态 ──
   let themeManager = null;
   let currentRoute = '';
+  let tocManager = null; // 当前文章页的TocManager实例
+  let loadSeq = 0; // 页面加载序号，用于丢弃过期响应
 
   // ── 初始化 ──
   function init() {
@@ -162,6 +164,13 @@
   async function loadPage(hash) {
     if (hash === currentRoute) return;
     currentRoute = hash;
+    const seq = ++loadSeq;
+
+    // 离开旧页面前销毁TOC实例（断开observer、移除移动端目录按钮）
+    if (tocManager) {
+      tocManager.destroy();
+      tocManager = null;
+    }
 
     const url = ROUTES[hash];
     if (!url) {
@@ -183,8 +192,14 @@
 
       let html = await response.text();
 
+      // 过期守卫：等待期间已切换到其他路由，丢弃本次响应
+      if (seq !== loadSeq) return;
+
       // 注入页面内容
       main.innerHTML = html;
+
+      // innerHTML注入的<script>不会执行，重建节点触发执行
+      execPageScripts(main);
 
       // 设置导航状态
       const navKey = ROUTE_NAV_KEYS[hash] || '';
@@ -193,10 +208,9 @@
         updateActiveNav(navKey);
       }
 
-      // 页面初始化回调
-      const pageInitScript = html.match(/<script>([\s\S]*?pageInit[\s\S]*?)<\/script>/);
       // 页面特定初始化
       setTimeout(() => {
+        if (seq !== loadSeq) return; // 初始化前再次确认未过期
         initPageScripts(hash);
         // 触发入场动画
         main.style.opacity = '1';
@@ -204,6 +218,7 @@
       }, 50);
 
     } catch (err) {
+      if (seq !== loadSeq) return; // 过期请求的错误直接忽略
       console.error('Failed to load page:', url, err);
       main.innerHTML = `
         <div style="text-align:center; padding:80px 20px;">
@@ -216,6 +231,27 @@
       main.style.transform = 'translateY(0)';
     }
   }
+
+  // ── 执行注入页面中的脚本 ──
+  // innerHTML注入的<script>不会执行，需重建节点（复制src或textContent）替换原节点
+  function execPageScripts(container) {
+    container.querySelectorAll('script').forEach(oldScript => {
+      const script = document.createElement('script');
+      if (oldScript.src) {
+        script.src = oldScript.src;
+      } else {
+        // 此时DOMContentLoaded早已触发，将页面脚本的DOMContentLoaded监听改为立即执行
+        script.textContent = oldScript.textContent.replace(
+          /document\.addEventListener\(\s*(['"])DOMContentLoaded\1\s*,/g,
+          'window.__afPageInit('
+        );
+      }
+      oldScript.replaceWith(script);
+    });
+  }
+
+  // 页面脚本DOMContentLoaded兼容垫片：立即执行回调
+  window.__afPageInit = function (fn) { fn(); };
 
   // ── 更新导航高亮 ──
   function updateActiveNav(navKey) {
@@ -240,9 +276,10 @@
     // 文章页TOC初始化
     if (hash.startsWith('#/knowledge') || hash.startsWith('#/llm')) {
       setTimeout(() => {
+        if (hash !== currentRoute) return; // 延迟期间已切页则放弃
         if (window.TocManager) {
-          const toc = new TocManager();
-          toc.init();
+          tocManager = new TocManager();
+          tocManager.init();
         }
       }, 100);
     }
@@ -300,7 +337,7 @@
 
     const anim = new ReactAnimation(container);
     const player = anim.player;
-    new AnimationControls(player);
+    new AnimationControls(player, { viz: anim });
   }
 
   function initCotAnimation() {
@@ -310,7 +347,7 @@
 
     const anim = new CotAnimation(container);
     const player = anim.player;
-    new AnimationControls(player);
+    new AnimationControls(player, { viz: anim });
   }
 
   function initTotAnimation() {
@@ -320,7 +357,7 @@
 
     const anim = new TotAnimation(container);
     const player = anim.player;
-    new AnimationControls(player);
+    new AnimationControls(player, { viz: anim });
   }
 
   function initGotAnimation() {
@@ -330,7 +367,7 @@
 
     const anim = new GotAnimation(container);
     const player = anim.player;
-    new AnimationControls(player);
+    new AnimationControls(player, { viz: anim });
   }
 
   function initMcpAnimation() {
@@ -340,7 +377,7 @@
 
     const anim = new McpAnimation(container);
     const player = anim.player;
-    new AnimationControls(player);
+    new AnimationControls(player, { viz: anim });
   }
 
   function initLoopAnimation() {
@@ -350,7 +387,7 @@
 
     const anim = new LoopAnimation(container);
     const player = anim.player;
-    new AnimationControls(player);
+    new AnimationControls(player, { viz: anim });
   }
 
   // ── 认证页面 ──

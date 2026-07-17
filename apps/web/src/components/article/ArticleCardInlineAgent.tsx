@@ -6,6 +6,7 @@ import { streamAgent } from '@/lib/agentStream';
 import {
   hoverCacheKey,
   isCompleteHoverText,
+  isSafeHoverDisplay,
   looksLikeHoverPlanning,
   readHoverCache,
   sanitizeHoverDisplay,
@@ -102,6 +103,10 @@ export function ArticleCardInlineAgent({
         beginCollapse(lockId);
         endCollapse(lockId);
         hasLock.current = false;
+      } else {
+        // collapse() 把 beginCollapse 推迟到 fadeTimer 回调；
+        // 若卸载先于回调触发，补一次释放，防止锁泄漏卡死后续卡片
+        endCollapse(lockId);
       }
     },
     [clearAllTimers, lockId],
@@ -117,8 +122,11 @@ export function ArticleCardInlineAgent({
     }, FADE_MS);
   }
 
-  /** 在锁已持有 + 最短思考时间满足后揭晓答案 */
-  function tryRevealAnswer(gen: number) {
+  /**
+   * 揭晓/更新正文：流式路径无 fade，避免整段替换导致高度突变；
+   * 缓存命中或首次非流式揭晓才用短 fade。
+   */
+  function tryRevealAnswer(gen: number, opts?: { streamed?: boolean }) {
     if (gen !== genRef.current || !sessionOn.current) return;
     if (!hasLock.current) return; // 还在等上一张收起
     const text = pendingAnswer.current;
@@ -132,17 +140,73 @@ export function ArticleCardInlineAgent({
       if (gen !== genRef.current || !sessionOn.current || !hasLock.current) return;
       const finalText = pendingAnswer.current;
       if (finalText == null) return;
+      // 流式已在展示：直接覆盖，不打断布局
+      if (opts?.streamed) {
+        pendingAnswer.current = null;
+        setExpanded(true);
+        setPhase('answer');
+        setAnswer(finalText);
+        setBodyVisible(true);
+        return;
+      }
       pendingAnswer.current = null;
       setBody(() => {
+        setExpanded(true);
         setAnswer(finalText);
         setPhase('answer');
       });
     }, wait);
   }
 
+  /**
+   * 仅写入「安全讲解」。思考中不撑高卡片；首句到达再 expand，高度随文字增长。
+   */
+  function applySafePartial(gen: number, partial: string) {
+    if (gen !== genRef.current || !sessionOn.current) return;
+    if (!partial || !isSafeHoverDisplay(partial)) return;
+    // 仅展示到完整句号（不展示？与半截）
+    let show = partial;
+    if (!/[。！]$/.test(show)) {
+      const lastEnd = Math.max(show.lastIndexOf('。'), show.lastIndexOf('！'));
+      if (lastEnd < 8) return;
+      show = show.slice(0, lastEnd + 1);
+      if (!isSafeHoverDisplay(show)) return;
+    }
+    pendingAnswer.current = show;
+    if (!hasLock.current) return;
+
+    const reveal = () => {
+      if (gen !== genRef.current || !sessionOn.current || !hasLock.current) return;
+      const t = pendingAnswer.current;
+      if (!t || !isSafeHoverDisplay(t)) return;
+      // 有正文再展开，避免「思考中」时空高卡片
+      setExpanded(true);
+      setPhase('answer');
+      setAnswer(t);
+      setBodyVisible(true);
+    };
+
+    const elapsed = Date.now() - thinkStartedAt.current;
+    if (elapsed < MIN_THINK_MS) {
+      if (thinkTimer.current) clearTimeout(thinkTimer.current);
+      thinkTimer.current = setTimeout(() => {
+        thinkTimer.current = null;
+        reveal();
+      }, MIN_THINK_MS - elapsed);
+      return;
+    }
+
+    if (thinkTimer.current) {
+      clearTimeout(thinkTimer.current);
+      thinkTimer.current = null;
+    }
+    reveal();
+  }
+
   async function runExplain() {
     const gen = ++genRef.current;
-    const key = hoverCacheKey(topic);
+    // 与实际请求的 style: 'concise' 保持一致，否则缓存永远 miss
+    const key = hoverCacheKey(topic, 'concise');
     const cached = readHoverCache(key);
 
     thinkStartedAt.current = Date.now();
@@ -154,15 +218,19 @@ export function ArticleCardInlineAgent({
       setAnswer('');
     });
 
-    const storeAnswer = (text: string) => {
+    const storeAnswer = (text: string, opts?: { streamed?: boolean }) => {
       if (gen !== genRef.current || !sessionOn.current) return;
-      pendingAnswer.current = text;
-      tryRevealAnswer(gen);
+      // 非安全文案：用失败提示，绝不展示思考原文
+      const safe = isSafeHoverDisplay(text) ? text : sanitizeHoverDisplay(text);
+      pendingAnswer.current =
+        safe ||
+        (text.startsWith('讲解') ? text : '讲解生成失败，请再悬停试一次');
+      tryRevealAnswer(gen, opts);
     };
 
     // 并行拉答案（等锁时也在生成/读缓存）
     const fetchAnswer = async () => {
-      if (cached) {
+      if (cached && isSafeHoverDisplay(cached)) {
         storeAnswer(cached);
         return;
       }
@@ -172,6 +240,7 @@ export function ArticleCardInlineAgent({
       try {
         let finalText = '';
         let streamBuf = '';
+        let didStream = false;
         await streamAgent(
           '/agent/explain/stream',
           {
@@ -186,22 +255,38 @@ export function ArticleCardInlineAgent({
           },
           (ev) => {
             if (gen !== genRef.current) return;
-            // 卡片也支持流式：有锁且已过最短思考后，边收边显示
+            // status/thinking：保持思考中，绝不写正文
+            if (ev.type === 'status' || ev.type === 'thinking') {
+              return;
+            }
+            // 后端仅在清洗后 soft-stream 洁净答案；仍做前端门控
             if (ev.type === 'delta' && ev.text) {
-              streamBuf += ev.text;
-              if (looksLikeHoverPlanning(streamBuf)) return;
-              if (hasLock.current && Date.now() - thinkStartedAt.current >= MIN_THINK_MS) {
-                const partial = streamBuf.trim();
-                pendingAnswer.current = partial;
-                // 流式更新 UI（已展开且过最短思考）
-                setPhase('answer');
-                setAnswer(partial);
-                setBodyVisible(true);
+              if (ev.replace) streamBuf = ev.text;
+              else streamBuf += ev.text;
+              const partial = streamBuf.trim();
+              // 旁白/规则：不展示（不清空缓冲，等后续洁净句）
+              if (looksLikeHoverPlanning(partial) && !isSafeHoverDisplay(partial)) {
+                return;
               }
+              // 只展示到最后一个 。！
+              let show = '';
+              if (isSafeHoverDisplay(partial) && /[。！]$/.test(partial)) {
+                show = partial;
+              } else {
+                const lastEnd = Math.max(partial.lastIndexOf('。'), partial.lastIndexOf('！'));
+                if (lastEnd >= 8) {
+                  const upto = partial.slice(0, lastEnd + 1);
+                  if (isSafeHoverDisplay(upto)) show = upto;
+                }
+              }
+              if (!show) return;
+              didStream = true;
+              applySafePartial(gen, show);
               return;
             }
             if (ev.type === 'final') {
-              finalText = (ev.answer || streamBuf || '').trim();
+              // 只信 final.answer；禁止用 streamBuf 回退成思考原文
+              finalText = (ev.answer || '').trim();
             }
           },
           ac.signal,
@@ -209,15 +294,24 @@ export function ArticleCardInlineAgent({
         if (gen !== genRef.current || !sessionOn.current) return;
         const cleaned =
           sanitizeHoverDisplay(finalText) ||
-          sanitizeHoverDisplay(streamBuf) ||
-          finalText ||
-          streamBuf.trim();
-        const text =
-          cleaned && !looksLikeHoverPlanning(cleaned)
-            ? cleaned
-            : cleaned || '讲解生成失败，请再悬停试一次';
+          (didStream ? sanitizeHoverDisplay(streamBuf) : '') ||
+          '';
+        const text = cleaned || '讲解生成失败，请再悬停试一次';
         if (isCompleteHoverText(text)) writeHoverCache(key, text);
-        storeAnswer(text);
+        if (didStream && isSafeHoverDisplay(text)) {
+          pendingAnswer.current = text;
+          if (hasLock.current && Date.now() - thinkStartedAt.current >= MIN_THINK_MS) {
+            setExpanded(true);
+            setAnswer(text);
+            setPhase('answer');
+            setBodyVisible(true);
+            pendingAnswer.current = null;
+          } else {
+            storeAnswer(text, { streamed: true });
+          }
+        } else {
+          storeAnswer(text);
+        }
       } catch (e) {
         if ((e as Error).name === 'AbortError') return;
         if (gen !== genRef.current || !sessionOn.current) return;
@@ -240,8 +334,7 @@ export function ArticleCardInlineAgent({
       return;
     }
     hasLock.current = true;
-    setExpanded(true);
-    // 锁到手后再尝试揭晓（答案可能已在等锁时就绪）
+    // 不在「思考中」就撑高卡片；有安全正文时再 expand
     tryRevealAnswer(gen);
   }
 
@@ -261,7 +354,6 @@ export function ArticleCardInlineAgent({
     const had = hasLock.current;
     if (had) {
       hasLock.current = false;
-      beginCollapse(lockId);
     }
 
     setBodyVisible(false);
@@ -270,7 +362,10 @@ export function ArticleCardInlineAgent({
       fadeTimer.current = null;
       setPhase('summary');
       setAnswer('');
+      // 收起动画（max-height 过渡）从这次渲染才真正开始
       setExpanded(false);
+      // 锁的 500ms 从收起动画开始时才起算，避免下一张在本卡仍在收起时就展开
+      if (had) beginCollapse(lockId);
       requestAnimationFrame(() => setBodyVisible(true));
       // 等 CSS max-height 收起后再放行下一张（beginCollapse 内已有定时器）
       // 若本卡从未拿到锁，无需 endCollapse

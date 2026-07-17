@@ -13,6 +13,15 @@ marked.setOptions({
  * - ![alt](url){agent="讲解"} 或 {agent=讲解} → 图片可悬停
  */
 export function preprocessAgentMarkup(md: string): string {
+  // 先按围栏代码块分段：代码块内的示例文本（如语法说明里的 [[术语]]）不做替换
+  return md
+    .split(/(```[\s\S]*?(?:```|$))/g)
+    .map((seg) => (seg.startsWith('```') ? seg : replaceAgentMarkup(seg)))
+    .join('');
+}
+
+/** 在单个非代码段内执行作者标注替换 */
+function replaceAgentMarkup(md: string): string {
   let out = md;
 
   // 图片：![alt](url){agent="hint"} / {agent=hint}
@@ -66,7 +75,6 @@ export function renderMarkdown(md: string): string {
       'data-agent-hint',
       'data-agent-zone',
     ],
-    ADD_TAGS: ['iframe'],
   });
 }
 
@@ -96,10 +104,10 @@ export function splitMarkdownWithAnimations(
   return parts;
 }
 
-/** 为 h2/h3 注入 id，便于 TOC */
-export function injectHeadingIds(html: string): string {
-  let i = 0;
-  return html.replace(/<h([23])([^>]*)>([\s\S]*?)<\/h\1>/gi, (_full, level, attrs, inner) => {
+/** 为 h2/h3 注入 id，便于 TOC；start 为起始序号，返回注入后的 html 与下一可用序号（跨片段保持 id 唯一） */
+export function injectHeadingIds(html: string, start = 0): { html: string; next: number } {
+  let i = start;
+  const out = html.replace(/<h([23])([^>]*)>([\s\S]*?)<\/h\1>/gi, (_full, level, attrs, inner) => {
     if (/\sid=/.test(attrs)) return _full;
     const text = inner.replace(/<[^>]+>/g, '').trim();
     const id =
@@ -113,4 +121,5 @@ export function injectHeadingIds(html: string): string {
         .slice(0, 40);
     return `<h${level}${attrs} id="${id}">${inner}</h${level}>`;
   });
+  return { html: out, next: i };
 }

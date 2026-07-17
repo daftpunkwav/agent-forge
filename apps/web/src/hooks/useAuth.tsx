@@ -9,7 +9,7 @@ import {
 } from 'react';
 import type { PublicUser } from '@agentforge/shared';
 import { can, isAdminLike, isAuthorLike, roleLabel } from '@agentforge/shared';
-import { api, setToken } from '@/lib/api';
+import { api, ApiError, setToken } from '@/lib/api';
 
 interface AuthCtx {
   user: PublicUser | null;
@@ -42,9 +42,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const { user: u } = await api.me();
       setUser(u);
-    } catch {
-      setToken(null);
-      setUser(null);
+    } catch (e) {
+      // 仅凭证失效（401/403）才清 token 强制登出；网络/5xx 等错误保留登录态
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+        setToken(null);
+        setUser(null);
+      }
     }
   }, []);
 

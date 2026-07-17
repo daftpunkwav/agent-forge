@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ACCENTS, useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError } from '@/lib/api';
+import { clearAllHoverCaches } from '@/lib/hoverExplainCache';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select } from '@/components/ui/Input';
 import { Tag } from '@/components/ui/Tag';
@@ -37,6 +38,11 @@ export function SettingsPage() {
   const [saved, setSaved] = useState('');
   const [testMsg, setTestMsg] = useState('');
   const [testing, setTesting] = useState(false);
+  const [cacheMsg, setCacheMsg] = useState('');
+  const [clearingCache, setClearingCache] = useState(false);
+  // 设置加载成功前禁止保存，避免用默认值覆盖已有 BYOK 配置
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     localStorage.setItem('agentforge-autoplay', autoplay ? '1' : '0');
@@ -51,6 +57,8 @@ export function SettingsPage() {
     api
       .getSettings()
       .then((r) => {
+        setSettingsLoaded(true);
+        setLoadError('');
         setStyles(r.agentStyles || []);
         setFormats(r.apiFormats || []);
         setServerProviders(r.serverProviders || r.providers || []);
@@ -80,7 +88,10 @@ export function SettingsPage() {
           setByokHasKey(Boolean(b.hasApiKey));
         }
       })
-      .catch(() => undefined);
+      .catch(() => {
+        // 加载失败时表单停留在默认值，提示错误并禁止保存，防止覆盖已有 BYOK 配置
+        setLoadError('设置加载失败，请刷新页面重试；为避免覆盖已有 BYOK 配置，保存已暂时禁用');
+      });
   }, [user]);
 
   async function saveAll() {
@@ -134,6 +145,38 @@ export function SettingsPage() {
       setTestMsg(e instanceof ApiError ? e.message : '测试失败');
     } finally {
       setTesting(false);
+    }
+  }
+
+  /** 清除 L1（浏览器）+ L2（服务端）悬停讲解缓存，强制全部重新生成 */
+  async function clearAgentCache() {
+    if (!user) {
+      setCacheMsg('请先登录后再清除服务端缓存');
+      return;
+    }
+    const ok = window.confirm(
+      '确定清除全部 Agent 悬停讲解缓存？\n\n清除后卡片/气泡将重新请求模型生成，不再使用任何历史缓存。',
+    );
+    if (!ok) return;
+
+    setClearingCache(true);
+    setCacheMsg('清除中…');
+    try {
+      // 先清浏览器 L1（并通知 AgentFloat 清空其 Map）
+      const l1 = clearAllHoverCaches();
+      const r = await api.clearAgentCache();
+      setCacheMsg(
+        `已清除：浏览器缓存 ${l1} 条 · 服务端缓存 ${r.cleared} 条。请回到首页重新悬停卡片。`,
+      );
+    } catch (e) {
+      // 服务端失败时 L1 已清，仍提示
+      setCacheMsg(
+        e instanceof ApiError
+          ? `浏览器缓存已清，服务端失败：${e.message}`
+          : '清除失败，请稍后重试',
+      );
+    } finally {
+      setClearingCache(false);
     }
   }
 
@@ -288,6 +331,27 @@ export function SettingsPage() {
         </Field>
       </section>
 
+      <section className="card" style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 18, margin: '0 0 4px' }}>Agent 缓存</h2>
+        <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--muted-foreground)', lineHeight: 1.6 }}>
+          悬停讲解会缓存到浏览器（L1）与服务器（L2），以便重复悬停更快。若出现过时或错误的讲解内容，可在此全部清除；
+          之后所有卡片/知识点都需重新调用模型生成，无法再读取旧缓存。
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={clearingCache}
+            onClick={() => void clearAgentCache()}
+          >
+            {clearingCache ? '清除中…' : '清除 Agent 缓存'}
+          </Button>
+          {cacheMsg ? (
+            <span style={{ fontSize: 13, color: 'var(--muted-foreground)' }}>{cacheMsg}</span>
+          ) : null}
+        </div>
+      </section>
+
       {/* BYOK */}
       <section className="card" style={{ marginBottom: 20 }}>
         <h2 style={{ fontSize: 18, margin: '0 0 4px' }}>BYOK · 自带模型密钥</h2>
@@ -361,11 +425,14 @@ export function SettingsPage() {
         </label>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          <Button onClick={() => void saveAll()}>保存设置</Button>
-          <Button variant="secondary" disabled={testing} onClick={() => void testLlm()}>
+          <Button disabled={!settingsLoaded} onClick={() => void saveAll()}>
+            保存设置
+          </Button>
+          <Button variant="secondary" disabled={testing || !settingsLoaded} onClick={() => void testLlm()}>
             {testing ? '测试中…' : '测试连通'}
           </Button>
         </div>
+        {loadError ? <p style={{ fontSize: 13, color: 'var(--destructive)' }}>{loadError}</p> : null}
         {saved ? <p style={{ fontSize: 13, color: 'var(--chart-3)' }}>{saved}</p> : null}
         {testMsg ? (
           <p style={{ fontSize: 13, color: testMsg.includes('成功') ? 'var(--chart-3)' : 'var(--destructive)' }}>
