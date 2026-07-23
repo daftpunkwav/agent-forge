@@ -40,10 +40,12 @@
 ### 2.2 当前实现（Current）
 
 - API：`POST /api/v1/agent/explain`、`/explain/stream`，`mode: hover`
-- Prompt：`buildHoverSystem`（Fast Direct 规则）
-- 记忆：`loadUserContext` → `formatMemoryBlock` 注入 system
-- 缓存：服务端 `HoverExplainCache`（热 key 延长 TTL）+ 前端 L1
-- 流式：正文 `delta`；thinking 不入展示；`extractHoverAnswer` 清洗 final
+- Prompt：`buildHoverSystem`（Fast Direct 规则；硬上限 2～3 句、≤220 字）
+- 记忆：`loadUserContext` → `formatMemoryBlock` 注入 system（已掌握/学习中/最近话题/偏好；匿名仅含 route）
+- 缓存：服务端 `HoverExplainCache`（默认 TTL 2h；`hits≥8` 延长至 24h；超过硬上限失效；`isCompleteHoverAnswer` 质检；命中时直接返回 `cached: true`）。前端 `apps/web/src/lib/hoverExplainCache.ts` 提供 L1
+- 流式：正文 `delta`（悬停按句 soft-stream，每句间 ~90ms 渐显）；thinking **不在 UI 暴露**，仅推送 `status: thinking` 节流（120ms）
+- 清洗：`extractHoverAnswer` 联合 `finalizeHoverCardText` + `looksLikeHoverPlanning` + `isLikelyHoverTeaching`，过滤策划稿、改稿残骸、规则回声、半截输出
+- 缓存清理：`POST /api/v1/agent/cache/clear`（需登录）
 - **未做**：独立悬停会话表、跨设备同步悬停历史
 
 ### 2.3 后续增强（悬停侧，仍保持轻量）
@@ -140,14 +142,16 @@ User Message
 
 | 项 | 状态 |
 |----|------|
-| API | `POST /agent/chat`、`/chat/stream`；`mode: deep` 为主 |
-| Prompt | `buildDeepSystem`：Prompted 结构 `Thought/Explain/Practice/Next` |
-| 工具循环 | **未实现**（无真实 Tool Call / Observation） |
-| 会话 | `AgentConversation` + `AgentMessage` 持久化；system 注入近期轮次与 summary |
-| 记忆 | 读 `AgentMemory` + `LearningProgress`；写「请记住」类启发式 + 进度 API |
-| 流式 | thinking / delta / final；UI 默认收起思考 |
-| 推理模式切换 | **未产品化**（仅 deep/fast 粗分） |
-| MCP | 状态接口与 `services/mcp` 文档占位 |
+| API | `POST /agent/chat`、`/chat/stream`；`mode: fast | deep`（粗分，未产品化为推理模式选择器） |
+| Prompt | `buildDeepSystem`：结构 `Thought / Explain / Practice / Next`（prompted ReAct 骨架，**非真 tool-loop**） |
+| 工具循环 | **未实现**（无真实 Tool Call / Observation，无工具状态 SSE） |
+| 会话 | `AgentConversation` + `AgentMessage` 持久化；system 注入近期轮次（取最近 12 条）与 summary |
+| 会话摘要 | 消息 > 24 条时滚动压缩最旧 8 条到 `AgentConversation.summary` |
+| 记忆 | 读 `AgentMemory` + `LearningProgress`；写：「请记住/我的偏好/以后…用」启发式 upsert；`POST /progress` 在 `mastered` 时追加 `mastered:<slug>` 记忆 |
+| 流式 | thinking / delta / final；`mode=fast` 不推送 thinking，正文仅软流；UI 默认收起思考 |
+| 推理模式切换 UI | **未实现**（仅 fast/deep 内部区分；无 `react / plan_execute / deep_teach / socratic / chat` 选择） |
+| MCP | 状态接口与 `services/mcp` 文档占位；**MCP 进程未实现** |
+| Provider | `mode=fast` 控 `maxTokens`（流式 500 / 同步 700）；`mode=deep` 控 2048；BYOK 优先，服务端默认 Provider 兜底 |
 
 ### 3.3 面板落地路线（建议）
 
@@ -218,5 +222,6 @@ User Message
 
 | 日期 | 说明 |
 |------|------|
+| 2026-07-23 | 对照代码纠正：缓存 TTL 2h/24h 与 `isCompleteHoverAnswer` 质检；面板 `mode=fast|deep` 内部区分；Provider 三种 API 格式；MCP/独立 Agent Runtime 未实现 |
 | 2026-07-12 | 明确双 Agent 目标：面板 = 完整可工具智能体；悬停 = 速度优先 + 记忆/上下文 |
 | 更早 | 描述当时「Prompted ReAct 骨架 / Fast Direct」实现 |

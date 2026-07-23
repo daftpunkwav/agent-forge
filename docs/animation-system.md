@@ -18,15 +18,20 @@ components/anim/
 
 ## 可视化类型 (VisualKind)
 
+实际定义在 `apps/web/src/components/anim/core/types.ts`：
+
 | kind | 用途 | 模板示例 |
 |------|------|----------|
 | ring | 环状循环 | react, loop |
-| chain | 链式推理 | cot, prompting |
+| chain | 链式推理 | cot, prompting, llm-basics, transformers, tokenization, fine-tuning, prompt-eng |
 | tree | 树搜索 | tot |
 | graph | 关系图 | got |
-| flow | 流程图 | tool, harness |
+| flow | 流程图 | tool, harness, evaluation, frameworks-langchain, frameworks-autogen, frameworks-crewai |
 | dataflow | 动态请求/响应包 | mcp |
 | layers | 分层结构 | memory |
+| timeline | 通用时间线（兜底） | 未匹配任何模板时 |
+
+模板 → `VisualKind` 映射在 `apps/web/src/components/anim/core/buildScene.ts` 的 `TEMPLATE_KIND` 中，未识别的模板统一回退到 `timeline`。
 
 ## ReAct 环
 

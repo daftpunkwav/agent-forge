@@ -1,7 +1,9 @@
 # AgentForge — 产品与实施计划（修订版）
 
-> 状态：已确认技术路径与关键决策，待开工实现  
-> 最后更新：2026-07-11
+> 状态：已确认技术路径与关键决策；已实现核心读者/作者/管理/双 Agent 主路径；未实现：工具循环、推理模式切换、MCP 进程、独立 Agent Runtime、批注 API
+> 最后更新：2026-07-23
+
+阶段实现情况详见 `docs/dev-progress.md`。
 
 ---
 
@@ -240,41 +242,48 @@ components/
 
 ## 7. 实施阶段（可验证）
 
+> 逐阶段实现情况以 `docs/dev-progress.md` 为准；此处仅保留原则与目标。
+
 ### Phase A — 脚手架与设计系统
 - monorepo、web/api、tokens（修复 `:root` + dark）、AppShell、路由骨架  
-**验收：** dev 起双端，主题切换正常
+**验收：** dev 起双端，主题切换正常 → **已完成**
 
 ### Phase B — 共享组件 + 动画引擎
 - UI 组件、ArticleLayout、TOC、AnimationPlayer、至少 2 个模板（react + loop）  
-**验收：** 示例文章可分步播放
+**验收：** 示例文章可分步播放 → **已完成**（8 种 `VisualKind`，16 个模板映射）
 
 ### Phase C — 后端骨架 + Auth + RBAC
 - Prisma、注册登录、me、中间件、agent 501  
-**验收：** curl 登录拿到 token；无 token 不能 POST 文章
+**验收：** curl 登录拿到 token；无 token 不能 POST 文章 → **已完成**（agent 路由已实装，不再 501）
 
 ### Phase D — 作者端 CMS
 - 工作台、MD 编辑器、动画模板编辑器、发布 API  
-**验收：** 作者可写草稿、插动画、发布；读者可见
+**验收：** 作者可写草稿、插动画、发布；读者可见 → **已完成**
 
 ### Phase E — 种子内容导入
 - 全部 slug 长文 + 动画 JSON seed 脚本  
-**验收：** 知识总览无死链；核心篇字数与结构达标
+**验收：** 知识总览无死链；核心篇字数与结构达标 → **已完成**（`apps/api/prisma/seed-content.ts`）
 
 ### Phase F — 读者体验打磨
 - 首页 Grid/List、申请作者、admin 审批、设置/个人页、资讯  
-**验收：** 完整主路径手测
+**验收：** 完整主路径手测 → **已完成**
 
 ### Phase G — 上线准备
 - build、env、security checklist、architecture 文档、legacy 归档  
-**验收：** `npm run build` 通过；安全清单勾选
+**验收：** `npm run build` 通过；安全清单勾选 → **进行中**（build 已通，安全 checklist 见 `docs/security.md`）
 
 ---
 
 ## 8. 明确不做（本版本）
 
-- 站内 Agent 对话 / 悬停讲解 / 用户学习记忆智能体 / BYOK 调模型  
+> 当前未实现项与文档说明：详见 `docs/agent-modes.md` §3.2 与 `docs/dev-progress.md`。
+
+- 站内 Agent 工具循环（tool-loop）/ 推理模式切换 UI / 完整智能体编排  
+- 批注（`Annotation`）写入/审核 API（模型已建立，路由缺失）  
 - 评论真实发布与审核  
 - 自由画布级动画编排器  
+- MCP Server 进程（仅占位接口）  
+- 独立 Agent Runtime 服务（仅 README 占位）  
 - 多租户计费、OAuth 社交登录（可后续）
 
 ---
