@@ -15,6 +15,7 @@ import {
 import {
   AGENT_MODE_META,
   buildDeepSystem,
+  buildHoverRetrySystem,
   buildHoverSystem,
   extractHoverAnswer,
   extractVisibleAnswer,
@@ -23,7 +24,7 @@ import {
   isLikelyHoverTeaching,
   looksLikeHoverPlanning,
 } from '../lib/llm/agentPrompt.js';
-import type { ByokConfig } from '../lib/llm/types.js';
+import type { ByokConfig, ProviderConfig } from '../lib/llm/types.js';
 
 export const agentRouter = Router();
 
@@ -67,8 +68,8 @@ const chatSchema = z.object({
 
 function hoverCacheKey(topic: string, style: string): string {
   const norm = topic.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 400);
-  // v5：过滤任务提示回声（bug-4），旧脏缓存自动失效
-  return createHash('sha256').update(`v5::${style}::${norm}`).digest('hex').slice(0, 48);
+  // v7：堵住「等下要准确/每句结尾句号」口令泄漏与 strip 空回退
+  return createHash('sha256').update(`v7::${style}::${norm}`).digest('hex').slice(0, 48);
 }
 
 /** 悬停缓存/对外答案：2～3 句陈述 + 无旁白（思考/规则/改稿一律拒） */
@@ -81,6 +82,47 @@ function isSafeHoverPublicAnswer(answer: string): boolean {
   if ((a.match(/[。！]/g) || []).length > 3) return false;
   if (a.length > 260) return false;
   return isLikelyHoverTeaching(a);
+}
+
+/** 按句 soft-stream；句间短延迟提升可读性 */
+async function softStreamHoverAnswer(res: Response, answer: string, gapMs = 36) {
+  const pieces =
+    answer.match(/[^。！]*[。！]/g)?.filter((x) => x.trim()) || (answer ? [answer] : []);
+  for (let i = 0; i < pieces.length; i++) {
+    if (res.writableEnded || res.destroyed) return;
+    const piece = pieces[i];
+    if (!piece) continue;
+    sseWrite(res, { type: 'delta', text: piece });
+    if (i < pieces.length - 1) {
+      await new Promise((r) => setTimeout(r, gapMs));
+    }
+  }
+}
+
+/** 空答案时极简重试一次（无记忆、关 thinking） */
+async function retryHoverExplain(
+  provider: ProviderConfig,
+  userMsg: string,
+): Promise<string> {
+  try {
+    const result = await callLlm(
+      {
+        mode: 'fast',
+        maxTokens: 220,
+        temperature: 0.1,
+        messages: [
+          { role: 'system', content: buildHoverRetrySystem() },
+          { role: 'user', content: userMsg.slice(0, 400) },
+        ],
+      },
+      provider,
+    );
+    const answer = extractHoverAnswer(result.thinking || '', result.text || '');
+    if (answer && isSafeHoverPublicAnswer(answer)) return answer;
+    return '';
+  } catch {
+    return '';
+  }
 }
 
 async function getHoverCache(topic: string, style: string): Promise<string | null> {
@@ -422,7 +464,8 @@ agentRouter.post('/explain', optionalAuth, validate(explainSchemaFixed), async (
       result = await callLlm(
         {
           mode: prep.isHover ? 'fast' : 'deep',
-          maxTokens: prep.isHover ? 160 : 2048,
+          maxTokens: prep.isHover ? 220 : 2048,
+          temperature: prep.isHover ? 0.15 : undefined,
           messages: [
             { role: 'system', content: prep.system },
             { role: 'user', content: prep.userMsg },
@@ -438,6 +481,9 @@ agentRouter.post('/explain', optionalAuth, validate(explainSchemaFixed), async (
       : extractVisibleAnswer(result.thinking || '', result.text || '').answer;
     if (prep.isHover) {
       if (explanation && !isSafeHoverPublicAnswer(explanation)) explanation = '';
+      if (!explanation) {
+        explanation = await retryHoverExplain(prep.provider, prep.userMsg);
+      }
       if (explanation) void setHoverCache(prep.topic, prep.style, explanation);
     }
     void rememberTopic(req.user?.id, prep.topic, body.mode);
@@ -499,85 +545,109 @@ agentRouter.post(
         let thinkingAcc = '';
         let textAcc = '';
         /**
-         * 悬停硬规则（彻底杜绝「思考过程闪一下」）：
-         * 1) 生成过程中：thinking/text 只在服务端累计，客户端只收 status:thinking
-         * 2) 绝不把 thinking 通道渐进当 delta（StepFun 思考全文在此，过滤必漏）
-         * 3) 结束后 extract 清洗，仅把安全讲解 soft-stream 为 delta，再 final
+         * 悬停硬规则：
+         * 1) 生成过程中：thinking/text 只服务端累计，客户端只收 status:thinking
+         * 2) 累计中周期性 extract；一旦得到 ≥2 句安全讲解 → 早停上游 LLM
+         * 3) 结束后仍空 → 极简重试一次；再空则 final.answer=""（前端失败态）
+         * 4) 仅把安全讲解 soft-stream 为 delta；final.thinking 恒 ""
          */
         let lastHoverStatusAt = 0;
+        let lastProbeAt = 0;
+        let lastProbeLen = 0;
+        let earlyAnswer = '';
+        const llmAbort = new AbortController();
+        // 客户端断开时取消上游
+        req.on('close', () => {
+          if (!res.writableEnded) llmAbort.abort();
+        });
+
         const emitHoverThinkingStatus = () => {
           const now = Date.now();
-          // 节流：避免每 token 刷 status
-          if (now - lastHoverStatusAt < 120) return;
+          if (now - lastHoverStatusAt < 100) return;
           lastHoverStatusAt = now;
           sseWrite(res, { type: 'status', status: 'thinking' });
         };
 
-        for await (const chunk of streamLlm(
-          {
-            mode: prep.isHover ? 'fast' : 'deep',
-            // 悬停：短输出硬上限，逼模型少写
-            maxTokens: prep.isHover ? 160 : 2048,
-            temperature: prep.isHover ? 0.15 : undefined,
-            messages: [
-              { role: 'system', content: prep.system },
-              { role: 'user', content: prep.userMsg },
-            ],
-          },
-          prep.provider,
-        )) {
-          if (res.writableEnded || res.destroyed) {
-            return;
+        const probeEarlyAnswer = () => {
+          if (!prep.isHover || earlyAnswer) return;
+          const total = thinkingAcc.length + textAcc.length;
+          const now = Date.now();
+          if (now - lastProbeAt < 220 && total - lastProbeLen < 60) return;
+          lastProbeAt = now;
+          lastProbeLen = total;
+          const candidate = extractHoverAnswer(thinkingAcc, textAcc);
+          // 早停要求至少 2 句，避免半截单句抢跑
+          const n = (candidate.match(/[。！]/g) || []).length;
+          if (candidate && n >= 2 && isSafeHoverPublicAnswer(candidate)) {
+            earlyAnswer = candidate;
+            llmAbort.abort();
           }
-          if (chunk.kind === 'thinking') {
-            thinkingAcc += chunk.text;
-            if (prep.isHover) {
-              emitHoverThinkingStatus();
-            } else {
-              sseWrite(res, { type: 'thinking', text: chunk.text });
+        };
+
+        try {
+          for await (const chunk of streamLlm(
+            {
+              mode: prep.isHover ? 'fast' : 'deep',
+              maxTokens: prep.isHover ? 220 : 2048,
+              temperature: prep.isHover ? 0.15 : undefined,
+              signal: prep.isHover ? llmAbort.signal : undefined,
+              messages: [
+                { role: 'system', content: prep.system },
+                { role: 'user', content: prep.userMsg },
+              ],
+            },
+            prep.provider,
+          )) {
+            if (res.writableEnded || res.destroyed) {
+              llmAbort.abort();
+              return;
             }
-          } else {
-            textAcc += chunk.text;
-            if (prep.isHover) {
-              // 正文通道也不中途推送：等结束后统一清洗，避免 CoT 混在 text 里泄漏
-              emitHoverThinkingStatus();
+            if (earlyAnswer) break;
+            if (chunk.kind === 'thinking') {
+              thinkingAcc += chunk.text;
+              if (prep.isHover) {
+                emitHoverThinkingStatus();
+                probeEarlyAnswer();
+              } else {
+                sseWrite(res, { type: 'thinking', text: chunk.text });
+              }
             } else {
-              sseWrite(res, { type: 'delta', text: chunk.text });
+              textAcc += chunk.text;
+              if (prep.isHover) {
+                emitHoverThinkingStatus();
+                probeEarlyAnswer();
+              } else {
+                sseWrite(res, { type: 'delta', text: chunk.text });
+              }
             }
+          }
+        } catch (e) {
+          // 早停 abort 为预期；其它错误上抛到外层
+          if (!(e instanceof Error && e.name === 'AbortError') && !earlyAnswer && !llmAbort.signal.aborted) {
+            throw e;
           }
         }
         if (res.writableEnded || res.destroyed) {
           return;
         }
         if (prep.isHover) {
-          let answer = extractHoverAnswer(thinkingAcc, textAcc);
-          if (!answer && textAcc.trim() && isSafeHoverPublicAnswer(textAcc.trim())) {
-            answer = textAcc.trim().slice(0, 560);
-          }
-          // 仍不安全 → 空，前端显示失败态，绝不下发思考原文
+          let answer = earlyAnswer || extractHoverAnswer(thinkingAcc, textAcc);
           if (answer && !isSafeHoverPublicAnswer(answer)) {
             answer = '';
           }
+          // 空答案：极简重试一次，显著降低「讲解生成失败」率
+          if (!answer) {
+            sseWrite(res, { type: 'status', status: 'thinking' });
+            answer = await retryHoverExplain(prep.provider, prep.userMsg);
+          }
           if (answer) {
             void setHoverCache(prep.topic, prep.style, answer);
-            // 洁净答案：按句 soft-stream（句间短延迟，高度随句渐进）
-            const pieces =
-              answer.match(/[^。！]*[。！]/g)?.filter((x) => x.trim()) ||
-              (answer ? [answer] : []);
-            for (let i = 0; i < pieces.length; i++) {
-              if (res.writableEnded || res.destroyed) return;
-              const piece = pieces[i];
-              if (!piece) continue;
-              sseWrite(res, { type: 'delta', text: piece });
-              if (i < pieces.length - 1) {
-                await new Promise((r) => setTimeout(r, 90));
-              }
-            }
+            await softStreamHoverAnswer(res, answer, 36);
           }
           sseWrite(res, {
             type: 'final',
             answer: answer || '',
-            thinking: '', // 悬停永不暴露 thinking
+            thinking: '',
             complete: Boolean(answer),
           });
         } else {
@@ -591,10 +661,12 @@ agentRouter.post(
         sseWrite(res, { type: 'done' });
         void rememberTopic(req.user?.id, prep.topic, body.mode);
       } catch (e) {
-        sseWrite(res, {
-          type: 'error',
-          message: e instanceof Error ? e.message : String(e),
-        });
+        if (!(e instanceof Error && e.name === 'AbortError')) {
+          sseWrite(res, {
+            type: 'error',
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
       }
       res.end();
     } catch (e) {

@@ -20,6 +20,8 @@ export function styleInstruction(style?: string): string {
 /**
  * 悬停 Agent：极短、直给。
  * 产品契约：2～3 句中文陈述句，无列表/无思考/无规则复述。
+ *
+ * 设计要点：少写「禁止…」清单（模型易复述）；用正例锚定格式。
  */
 export function buildHoverSystem(style?: string, memoryBlock?: string): string {
   const tone =
@@ -28,15 +30,21 @@ export function buildHoverSystem(style?: string, memoryBlock?: string): string {
       : style === 'sassy'
         ? '语气可略俏皮。'
         : '语气简洁。';
+  // 刻意不写「每句句号/不要别的」等易被模型复述的元指令
   return [
-    '用中文讲解知识点。',
-    '只输出 2 或 3 句完整话，每句以。结尾。',
-    '禁止列表、标题、英文指令、自我检查、复述本段说明。',
+    '你是知识点快讲助手。直接写讲解正文，不要写作过程或自我提醒。',
+    '写 2 到 3 句完整中文陈述。',
+    '示例：ReAct 把推理与行动交替执行，让模型边想边调用工具。它用 Thought→Action→Observation 循环，适合需要查资料或算例的任务。',
     tone,
-    memoryBlock ? `背景：${memoryBlock.slice(0, 160)}` : '',
+    memoryBlock ? `学员背景（勿复述）：${memoryBlock.slice(0, 120)}` : '',
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+/** 空答案时的极简重试 prompt（措辞避免可复述的格式口令） */
+export function buildHoverRetrySystem(): string {
+  return '直接讲解该知识点，写两句完整中文陈述。不要自我提醒。';
 }
 
 /** 悬停卡片答案硬上限 */
@@ -92,25 +100,25 @@ const HOVER_META =
  * 命中任一项 → 该片段/整段不可当讲解。
  */
 const SYSTEM_ECHO =
-  /只输出最终|禁止任何写作|自我检查|反复修改|每句必须写完|禁止半截|硬性输出|写作过程|对提示词|Fast Direct|禁止输出写作|适合卡片快览|不要讨论|不要任何写作|精炼[：:]\s*[。2]|禁止[「「:]|中文[，,]\s*精炼|以[。．]\s*[-•]|禁止[：:].{0,8}首先|快讲助手|单轮生成|不调用工具/i;
+  /只输出最终|禁止任何写作|自我检查|反复修改|每句必须写完|禁止半截|硬性输出|写作过程|对提示词|Fast Direct|禁止输出写作|适合卡片快览|不要讨论|不要任何写作|精炼[：:]\s*[。2]|禁止[「「:]|中文[，,]\s*精炼|以[。．]\s*[-•]|禁止[：:].{0,8}首先|快讲助手|单轮生成|不调用工具|不要别的|不要自我提醒/i;
 
 /**
- * bug-4：模型复述 user/system 任务指令（「用户现在需要讲解…要2-3句…第二句：」）。
- * 与知识点正文不同，是 meta 任务叙述。
+ * bug-4 / 2026-08 新泄漏：复述任务指令或格式口令
+ * 「等下要准确，每句结尾句号，不要别的。」是对 system 的口语化复述。
  */
 const TASK_ECHO =
-  /用户现在需要|用户需要讲解|需要讲解.{0,12}知识点|要\s*2\s*[-~～到至]?\s*3\s*句|每句句号|句号结尾|只输出讲解|只写\s*2|请用\s*2|知识点[，,].{0,8}要|第[一二三1-3]句\s*[：:]|输出\s*2\s*或\s*3\s*句|完整话[，,].*结尾/i;
+  /用户现在需要|用户需要讲解|需要讲解.{0,12}知识点|要\s*2\s*[-~～到至]?\s*3\s*句|每句句号|每句结尾句号|结尾句号|句号结尾|只输出讲解|只写\s*2|请用\s*2|知识点[，,].{0,8}要|第[一二三1-3]句\s*[：:]|输出\s*2\s*或\s*3\s*句|完整话[，,].*结尾|不要别的|要准确.{0,8}句号|写两句完整|只输出这两句/i;
 
 /**
- * 自我改稿 / 写作自检（bug-1 / bug-2）
- * 出现在全文任意位置即视为「草稿过程」，不可直接展示。
+ * 自我改稿 / 写作自检（bug-1 / bug-2 / 等下要准确）
+ * 「等下」后未必有标点（等下要准确），不能只写 等下[，,:]
  */
 const SELF_REVISION =
-  /那调整下|哦调整|调整下[：:]|等下[，,：:]|哦对[，,：:]|有没有冗余|没有元叙述|符合要求|符合卡片|卡片快览|2\s*[-~～到至]?\s*4\s*句|不要铺垫|要精炼|要短[，,]?\s*不要长|第一句讲|然后讲|类比的话|要不要加|每句完整|直接讲正文|这样三句|首先第一句|对[，,]\s*要短|对[，,]\s*这样|还要提一下|讲清楚了|再顺一点|有没有要避免|或者再顺|两句[，,]讲|核心[、,，]作用[、,，]定位/i;
+  /那调整下|哦调整|调整下[：:]|等下[，,：:]?|哦对[，,：:]|有没有冗余|没有元叙述|符合要求|符合卡片|卡片快览|2\s*[-~～到至]?\s*4\s*句|不要铺垫|要精炼|要短[，,]?\s*不要长|第一句讲|然后讲|类比的话|要不要加|每句完整|每句结尾句号|直接讲正文|这样三句|首先第一句|对[，,]\s*要短|对[，,]\s*这样|还要提一下|讲清楚了|再顺一点|有没有要避免|或者再顺|两句[，,]讲|核心[、,，]作用[、,，]定位|不要别的/i;
 
 /** 写作过程旁白短语（可嵌在句中，不能只靠句首匹配） */
 const SELF_TALK_PHRASE =
-  /还要提一下|讲清楚了|有没有要避免|再顺一点|要不要加|有没有冗余|符合要求|符合卡片|卡片快览|不要铺垫|要精炼|那调整|哦调整|调整下|类比的话|每句完整|直接讲正文|没有元叙述|要短[，,]?\s*不要长|2\s*[-~～到至]?\s*4\s*句|核心[、,，]作用[、,，]定位|或者有没有|或者再顺/i;
+  /还要提一下|讲清楚了|有没有要避免|再顺一点|要不要加|有没有冗余|符合要求|符合卡片|卡片快览|不要铺垫|要精炼|那调整|哦调整|调整下|等下要|类比的话|每句完整|每句结尾句号|直接讲正文|没有元叙述|要短[，,]?\s*不要长|2\s*[-~～到至]?\s*4\s*句|核心[、,，]作用[、,，]定位|或者有没有|或者再顺|不要别的/i;
 
 /** 单句/单行是否像「作者旁白 / 自检 / 提示词回声」而非知识点讲解 */
 function isSelfTalkSentence(s: string): boolean {
@@ -152,6 +160,23 @@ function isSelfTalkSentence(s: string): boolean {
   // 提纲枚举：核心、作用、定位
   if (/^[\u4e00-\u9fff]{1,8}([、,，][\u4e00-\u9fff]{1,8}){1,4}[。.]?$/.test(t)) return true;
   if (/符合要求|没有冗余|都是核心点|不要铺垫|精炼一下|讲清楚了|没有多余/.test(t)) return true;
+  // 示例口吻开头（prompt 泄漏）：比如“ / 例如：
+  if (/^(比如|例如|譬如)[：:「"“]?/.test(t)) return true;
+  // 句末半截：拆得越清晰的step，越。
+  if (looksTruncatedTeachingTail(t)) return true;
+  return false;
+}
+
+/** 句末是否像被截断的半截陈述（…越。 / …的。 / 未闭合引号） */
+function looksTruncatedTeachingTail(s: string): boolean {
+  const t = (s || '').trim();
+  if (!t) return true;
+  const body = t.replace(/[。！]+$/, '');
+  if (/[的与和及于在被把将可更越很太]$/.test(body) && body.length < 80) return true;
+  // 打开了引号未闭合
+  const opens = (t.match(/[“「"]/g) || []).length;
+  const closes = (t.match(/[”」"]/g) || []).length;
+  if (opens > closes) return true;
   return false;
 }
 
@@ -257,6 +282,23 @@ function cleanDraftPart(part: string): string {
 }
 
 /**
+ * 末稿是否像被 maxTokens 截断（原文无句号 + 尾部半截）。
+ * bug-1：「…能力上限」被截后强行补「。」会变成假完整句。
+ */
+function looksTruncatedDraft(raw: string): boolean {
+  const r = (raw || '').trim().replace(/^[-*•]\s+/, '');
+  if (!r) return true;
+  if (/[。！？]["'」』）)\]]*$/.test(r)) return false;
+  // 定义体「X：Y」且足够长，可视为完整
+  if (/^.{1,48}[：:].{16,}$/.test(r) && !/[，、的与和及]$/.test(r)) return false;
+  if (r.length < 36) return true;
+  // 尾部停在连接/修饰成分 → 半截
+  if (/[，、的与和及于在被把将可会能要]$/.test(r)) return true;
+  if (/(上限|能力|表现|组件|语法|过程|循环|步骤)$/.test(r) && r.length < 64) return true;
+  return false;
+}
+
+/**
  * 从改稿长文中抽出「最近一版纯讲解」。
  * 策略：按「调整下」切开，从后往前找第一段完整讲解（末稿常被截断）。
  */
@@ -265,15 +307,20 @@ export function stripSelfRevisionDraft(raw: string): string {
   if (!s) return '';
 
   const revParts = s
-    .split(/(?:那|哦)?调整[一一下下]*[：:]|(?:最终版|改成如下|重写如下|正文如下)[：:]/i)
+    .split(
+      /(?:那|哦)?调整[一一下下]*[：:]|(?:最终版|改成如下|重写如下|正文如下|调整为|改为)[：:]/i,
+    )
     .map((p) => p.trim())
     .filter(Boolean);
 
   // 从最后一稿往前：末稿被 maxTokens 截断时回退上一完整版
   if (revParts.length > 1) {
     for (let i = revParts.length - 1; i >= 0; i--) {
-      const cleaned = cleanDraftPart(revParts[i]);
-      if (cleaned.length >= 20) return cleaned;
+      const part = revParts[i];
+      if (looksTruncatedDraft(part) && i > 0) continue;
+      const cleaned = cleanDraftPart(part);
+      if (cleaned.length >= 20 && isLikelyHoverTeaching(cleaned)) return cleaned;
+      if (cleaned.length >= 28 && /[。！]/.test(cleaned)) return cleaned;
     }
   }
 
@@ -291,7 +338,7 @@ export function isLikelyHoverTeaching(s: string): boolean {
   }
   if (looksLikeHoverPlanning(t)) return false;
   if (HOVER_META.test(t.slice(0, 160))) return false;
-  if (/^(我|让我|用户想|用户问|用户需要|嗯|好的|总之|综上所述|对[，,]\s*(要短|这样)|哦对|还要提)/.test(t)) {
+  if (/^(我|让我|用户想|用户问|用户需要|嗯|好的|总之|综上所述|对[，,]\s*(要短|这样)|哦对|还要提|等下|比如|例如|譬如)/.test(t)) {
     return false;
   }
   if (/^(首先|其次|然后|最后)(得|要|分析|考虑|判断|想|我|第)/.test(t)) return false;
@@ -303,6 +350,8 @@ export function isLikelyHoverTeaching(s: string): boolean {
 
   const cn = (t.match(/[\u4e00-\u9fff]/g) || []).length;
   if (cn < 8) return false;
+  const units = t.split(/(?<=[。！])/).map((x) => x.trim()).filter(Boolean);
+  if (units.some((u) => isSelfTalkSentence(u) || looksTruncatedTeachingTail(u))) return false;
   // 陈述句
   if (/[。！]/.test(t)) return true;
   // 术语定义「X：Y」（可无句号）
@@ -380,23 +429,32 @@ function stripSentenceOrdinal(sent: string): string {
 
 /**
  * 单句是否可作为悬停卡片讲解（白名单式，偏严）。
+ * 必须与 isSelfTalkSentence 对齐，避免 strip 已剔除的旁白被 finalize 重新收进来。
  */
 function isCleanHoverSentence(sent: string): boolean {
   let t = stripSentenceOrdinal(sent);
   if (t.length < 8 || t.length > 110) return false;
+  if (isSelfTalkSentence(t)) return false;
   if (SYSTEM_ECHO.test(t) || TASK_ECHO.test(t) || SELF_REVISION.test(t) || SELF_TALK_PHRASE.test(t)) {
     return false;
   }
   if (HOVER_META.test(t) || PLANNING_HINT.test(t)) return false;
   if (/[？?]/.test(t)) return false;
   // 整句在讲「怎么写」而不是知识点
-  if (/要\s*\d\s*[-~～到]?\s*\d\s*句|句号结尾|只输出|需要讲解/.test(t)) return false;
+  if (/要\s*\d\s*[-~～到]?\s*\d\s*句|句号结尾|每句结尾句号|只输出|需要讲解|不要别的/.test(t)) {
+    return false;
+  }
   // 仅拦旁白句首，不误杀「首先，ReAct 是…」类教学句
-  if (/^(对[，,]\s*(要短|这样|符合)|哦|嗯|还要提|或者有没有|禁止|只输出|不要输出|中文[，,]|精炼|用户)/.test(t)) {
+  if (
+    /^(对[，,]\s*(要短|这样|符合)|哦|嗯|等下|还要提|或者有没有|禁止|只输出|不要输出|中文[，,]|精炼|用户|比如|例如|譬如)/.test(
+      t,
+    )
+  ) {
     return false;
   }
   if (/^(首先|然后).{0,8}讲/.test(t)) return false;
   if (/禁止|必须写完|写作过程|自我检查|反复修改|只输出最终/.test(t)) return false;
+  if (looksTruncatedTeachingTail(t)) return false;
   const cn = (t.match(/[\u4e00-\u9fff]/g) || []).length;
   if (cn < 6) return false;
   return true;
@@ -405,12 +463,16 @@ function isCleanHoverSentence(sent: string): boolean {
 /**
  * 最终卡片文案：最多 3 句、约 220 字，仅完整陈述句。
  * 任何旁白/规则回声/改稿过程一律剔除。
+ *
+ * 关键：strip 清空后禁止 || raw 回填（否则纯指令句会原样漏出）。
  */
 export function finalizeHoverCardText(raw: string): string {
-  const cleaned = stripSelfRevisionDraft(raw) || (raw || '').trim();
-  if (!cleaned) return '';
+  const stripped = stripSelfRevisionDraft(raw);
+  // strip 为空 = 全文旁白；改为对原文按句硬过滤，仍空则失败
+  const source = stripped || (raw || '').trim();
+  if (!source) return '';
 
-  const units = cleaned
+  const units = source
     .replace(/\s*[-•]\s+/g, '\n')
     .split(/(?<=[。！])|\n+/)
     .map((x) => x.trim())
@@ -429,6 +491,9 @@ export function finalizeHoverCardText(raw: string): string {
     kept.push(sent);
     if (kept.length >= HOVER_CARD_MAX_SENTENCES) break;
   }
+
+  // strip 已空且硬过滤也空 → 失败（绝不回退脏原文）
+  if (!kept.length) return '';
 
   let out = kept.join('');
   if (out.length > HOVER_CARD_MAX_CHARS) {
@@ -464,6 +529,9 @@ export function finalizeHoverCardText(raw: string): string {
       if (end > 0) out = out.slice(0, end + 1);
     } else return '';
   }
+  // 任一句半截 → 整段不可用
+  const sentences = out.split(/(?<=[。！])/).map((x) => x.trim()).filter(Boolean);
+  if (sentences.some((s) => looksTruncatedTeachingTail(s) || isSelfTalkSentence(s))) return '';
   return out.slice(0, HOVER_CARD_MAX_CHARS + 20);
 }
 
@@ -476,6 +544,7 @@ export function progressiveHoverAnswer(thinking: string, text: string): string {
 
 /**
  * 悬停专用：统一出口 — 清洗 + 截断为 2～3 句卡片文案。
+ * 优先返回 ≥2 句的完整讲解；单句仅作次选（且须过完整门）。
  */
 export function extractHoverAnswer(thinking: string, text: string): string {
   const t = (text || '').trim();
@@ -487,10 +556,17 @@ export function extractHoverAnswer(thinking: string, text: string): string {
     finalizeHoverCardText(extractTeachingSpan(th)),
     finalizeHoverCardText(stripSelfRevisionDraft(`${th}\n${t}`)),
   ];
-  for (const a of tries) {
-    if (a && isLikelyHoverTeaching(a) && !looksLikeHoverPlanning(a)) return a;
-  }
-  // 次选仍须完整卡片契约，禁止放宽到脏短串
+  const scored = tries
+    .filter((a) => a && isLikelyHoverTeaching(a) && !looksLikeHoverPlanning(a) && isCompleteHoverAnswer(a))
+    .sort((a, b) => {
+      const na = (a.match(/[。！]/g) || []).length;
+      const nb = (b.match(/[。！]/g) || []).length;
+      // 多句优先；同句数取更长
+      if (nb !== na) return nb - na;
+      return b.length - a.length;
+    });
+  if (scored[0]) return scored[0];
+  // 次选：完整卡片契约（可能单句）
   for (const a of tries) {
     if (a && isCompleteHoverAnswer(a)) return a;
   }
@@ -536,10 +612,14 @@ export function isCompleteHoverAnswer(s: string): boolean {
     return false;
   }
   if (HOVER_META.test(t.slice(0, 160))) return false;
-  if (/讲解失败|暂无讲解|暂无输出|思考过程|推理过程|内部思考|只输出最终|自我检查|用户现在需要|要\s*2\s*[-~]?\s*3\s*句/.test(t)) {
+  if (
+    /讲解失败|暂无讲解|暂无输出|思考过程|推理过程|内部思考|只输出最终|自我检查|用户现在需要|要\s*2\s*[-~]?\s*3\s*句|每句结尾句号|不要别的/.test(
+      t,
+    )
+  ) {
     return false;
   }
-  if (/^(我|让我|用户想|用户问|用户需要|首先得|首先要|首先分析|对[，,]|哦|首先第|还要|或者)/.test(t)) {
+  if (/^(我|让我|用户想|用户问|用户需要|首先得|首先要|首先分析|对[，,]|哦|首先第|还要|或者|等下|比如|例如|譬如)/.test(t)) {
     return false;
   }
   if (/[，、与和或及]$/.test(t)) return false;
@@ -547,6 +627,14 @@ export function isCompleteHoverAnswer(s: string): boolean {
   if (!/[。！]/.test(t)) return false;
   const n = (t.match(/[。！]/g) || []).length;
   if (n < 1 || n > HOVER_CARD_MAX_SENTENCES) return false;
+  // 拒「半截补句号」：极短单句或典型截断尾（bug-1「…能力上限。」）
+  if (n === 1 && t.length < 18) return false;
+  if (n === 1 && /(?:上限|能力|表现|组件|语法|过程)。$/.test(t) && t.length < 36) return false;
+  // 单句且以「第二句壳」残留开头
+  if (/^第[一二三1-3]句/.test(t)) return false;
+  // 任一句旁白或半截 → 不合格（防止脏全文过缓存门）
+  const units = t.split(/(?<=[。！])/).map((x) => x.trim()).filter(Boolean);
+  if (units.some((u) => isSelfTalkSentence(u) || looksTruncatedTeachingTail(u))) return false;
   return true;
 }
 

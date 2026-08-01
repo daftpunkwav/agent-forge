@@ -18,9 +18,11 @@ export default defineConfig({
     // 固定端口，避免被其他项目占用 5173 后误开「别的网站」
     port: 5280,
     strictPort: true,
+    // Windows 上默认可能只绑 [::1]，导致 127.0.0.1 / 部分浏览器「连接被拒绝」
+    host: '127.0.0.1',
     proxy: {
       '/api': {
-        target: 'http://localhost:3002',
+        target: 'http://127.0.0.1:3002',
         changeOrigin: true,
       },
     },

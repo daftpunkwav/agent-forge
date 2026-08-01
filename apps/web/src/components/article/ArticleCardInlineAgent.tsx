@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { ArticleSummary } from '@agentforge/shared';
 import { Tag } from '@/components/ui/Tag';
+import { MarkdownView } from '@/components/agent/MarkdownView';
 import { streamAgent } from '@/lib/agentStream';
 import {
   hoverCacheKey,
@@ -22,10 +23,11 @@ import {
 type Phase = 'summary' | 'thinking' | 'answer';
 export type ArticleCardLayout = 'feed' | 'grid' | 'list';
 
-const MIN_THINK_MS = 618;
-const HOVER_ENTER_MS = 280;
-const HOVER_LEAVE_MS = 420;
-const FADE_MS = 220;
+/** 最短思考展示：缓存命中也略等，避免闪一下；尽量短以提升体感速度 */
+const MIN_THINK_MS = 200;
+const HOVER_ENTER_MS = 140;
+const HOVER_LEAVE_MS = 320;
+const FADE_MS = 160;
 
 /**
  * 文章外卡片：悬停行内 Agent
@@ -290,6 +292,7 @@ export function ArticleCardInlineAgent({
             }
           },
           ac.signal,
+          { timeoutMs: 28_000 },
         );
         if (gen !== genRef.current || !sessionOn.current) return;
         const cleaned =
@@ -463,14 +466,15 @@ export function ArticleCardInlineAgent({
               <span className="agent-thinking-dot" style={{ animationDelay: '0.4s' }} />
               <span>思考中…</span>
             </div>
+          ) : phase === 'answer' ? (
+            <MarkdownView
+              source={answer}
+              compact
+              className="article-card-inline-text is-answer"
+            />
           ) : (
-            <p
-              className={[
-                'article-card-inline-text',
-                phase === 'answer' ? 'is-answer' : 'is-summary',
-              ].join(' ')}
-            >
-              {phase === 'answer' ? answer : preview || '暂无简介'}
+            <p className="article-card-inline-text is-summary">
+              {preview || '暂无简介'}
             </p>
           )}
         </div>

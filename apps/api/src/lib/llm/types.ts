@@ -20,6 +20,8 @@ export interface LlmRequest {
   temperature?: number;
   /** 多模态：data URL 或 http 图片（若 provider 支持） */
   images?: string[];
+  /** 取消进行中的上游 LLM 请求（悬停早停用） */
+  signal?: AbortSignal;
 }
 
 export interface LlmResponse {

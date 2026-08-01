@@ -197,7 +197,11 @@ function buildAnthropicBody(p: ProviderConfig, req: LlmRequest, stream: boolean)
     messages,
     stream,
   };
-  // 不强制 disabled thinking：StepFun 流式几乎只推 thinking_delta
+  // 悬停 fast：尽量关闭 extended thinking，减少 CoT 泄漏与延迟
+  // StepFun/部分兼容网关可能忽略该字段；忽略时仍靠 extract 净化
+  if (req.mode === 'fast') {
+    body.thinking = { type: 'disabled' };
+  }
   return body;
 }
 
@@ -216,10 +220,40 @@ async function* streamAnthropicMessages(
       accept: 'text/event-stream',
     },
     body: JSON.stringify(buildAnthropicBody(p, req, true)),
+    signal: req.signal,
   });
 
   if (!res.ok) {
     const raw = await res.text();
+    // 若因关闭 thinking 被拒，回退一次不带 thinking 字段
+    if (req.mode === 'fast' && (res.status === 400 || res.status === 422)) {
+      try {
+        const fallbackReq = { ...req, mode: 'deep' as const };
+        // 用 deep 只是为了不带 thinking.disabled；仍用原 maxTokens
+        const body = buildAnthropicBody(p, fallbackReq, true);
+        delete body.thinking;
+        body.max_tokens = req.maxTokens ?? 220;
+        body.temperature = req.temperature ?? 0.15;
+        const retry = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-api-key': p.apiKey,
+            authorization: `Bearer ${p.apiKey}`,
+            'anthropic-version': '2023-06-01',
+            accept: 'text/event-stream',
+          },
+          body: JSON.stringify(body),
+          signal: req.signal,
+        });
+        if (retry.ok && retry.body) {
+          yield* readAnthropicSse(retry, p, req);
+          return;
+        }
+      } catch {
+        /* fallthrough */
+      }
+    }
     try {
       const full = await callAnthropicMessages(p, req);
       if (full.thinking) yield { kind: 'thinking' as const, text: full.thinking };
@@ -237,66 +271,88 @@ async function* streamAnthropicMessages(
     return;
   }
 
+  yield* readAnthropicSse(res, p, req);
+}
+
+async function* readAnthropicSse(
+  res: Response,
+  p: ProviderConfig,
+  req: LlmRequest,
+): AsyncGenerator<StreamChunk, void, unknown> {
+  if (!res.body) return;
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = '';
   let textBuf = '';
   let thinkingBuf = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const parts = buf.split(/\r?\n/);
-    buf = parts.pop() || '';
-    for (const line of parts) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('data:')) continue;
-      const payload = trimmed.slice(5).trim();
-      if (!payload || payload === '[DONE]') continue;
-      try {
-        const evt = JSON.parse(payload) as {
-          type?: string;
-          delta?: { type?: string; text?: string; thinking?: string };
-          content_block?: { type?: string; text?: string; thinking?: string };
-        };
-
-        if (evt.type === 'content_block_start' && evt.content_block) {
-          const cb = evt.content_block;
-          if (cb.type === 'text' && cb.text) {
-            textBuf += cb.text;
-            yield { kind: 'text' as const, text: cb.text };
-          }
-          if (cb.type === 'thinking' && cb.thinking) {
-            thinkingBuf += cb.thinking;
-            yield { kind: 'thinking' as const, text: cb.thinking };
-          }
+  try {
+    while (true) {
+      if (req.signal?.aborted) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore */
         }
+        break;
+      }
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split(/\r?\n/);
+      buf = parts.pop() || '';
+      for (const line of parts) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const payload = trimmed.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          const evt = JSON.parse(payload) as {
+            type?: string;
+            delta?: { type?: string; text?: string; thinking?: string };
+            content_block?: { type?: string; text?: string; thinking?: string };
+          };
 
-        if (evt.type === 'content_block_delta' && evt.delta) {
-          const d = evt.delta;
-          if ((d.type === 'text_delta' || d.type === 'text') && d.text) {
-            textBuf += d.text;
-            yield { kind: 'text' as const, text: d.text };
-            continue;
+          if (evt.type === 'content_block_start' && evt.content_block) {
+            const cb = evt.content_block;
+            if (cb.type === 'text' && cb.text) {
+              textBuf += cb.text;
+              yield { kind: 'text' as const, text: cb.text };
+            }
+            if (cb.type === 'thinking' && cb.thinking) {
+              thinkingBuf += cb.thinking;
+              yield { kind: 'thinking' as const, text: cb.thinking };
+            }
           }
-          if (
-            (d.type === 'thinking_delta' || d.type === 'thinking') &&
-            typeof d.thinking === 'string' &&
-            d.thinking
-          ) {
-            thinkingBuf += d.thinking;
-            yield { kind: 'thinking' as const, text: d.thinking };
+
+          if (evt.type === 'content_block_delta' && evt.delta) {
+            const d = evt.delta;
+            if ((d.type === 'text_delta' || d.type === 'text') && d.text) {
+              textBuf += d.text;
+              yield { kind: 'text' as const, text: d.text };
+              continue;
+            }
+            if (
+              (d.type === 'thinking_delta' || d.type === 'thinking') &&
+              typeof d.thinking === 'string' &&
+              d.thinking
+            ) {
+              thinkingBuf += d.thinking;
+              yield { kind: 'thinking' as const, text: d.thinking };
+            }
           }
+        } catch {
+          /* ignore */
         }
-      } catch {
-        /* ignore */
       }
     }
+  } catch (e) {
+    if (req.signal?.aborted || (e instanceof Error && e.name === 'AbortError')) return;
+    throw e;
   }
 
   // 若全程无分片，非流式回退
-  if (!textBuf.trim() && !thinkingBuf.trim()) {
+  if (!textBuf.trim() && !thinkingBuf.trim() && !req.signal?.aborted) {
     const full = await callAnthropicMessages(p, req);
     if (full.thinking) yield { kind: 'thinking' as const, text: full.thinking };
     if (full.text) yield { kind: 'text' as const, text: full.text };
@@ -309,6 +365,18 @@ async function* streamOpenAiChat(
 ): AsyncGenerator<StreamChunk, void, unknown> {
   const url = resolveOpenAiChatUrl(p.baseUrl);
   const messages = req.messages.map((m) => ({ role: m.role, content: m.content }));
+  const body: Record<string, unknown> = {
+    model: p.model,
+    messages,
+    stream: true,
+    max_tokens: req.maxTokens ?? (req.mode === 'fast' ? 512 : 1600),
+    temperature: req.temperature ?? (req.mode === 'fast' ? 0.25 : 0.55),
+  };
+  // 部分 OpenAI 兼容网关用这些字段关 reasoning
+  if (req.mode === 'fast') {
+    body.enable_thinking = false;
+    body.reasoning_effort = 'none';
+  }
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -316,13 +384,8 @@ async function* streamOpenAiChat(
       authorization: `Bearer ${p.apiKey}`,
       accept: 'text/event-stream',
     },
-    body: JSON.stringify({
-      model: p.model,
-      messages,
-      stream: true,
-      max_tokens: req.maxTokens ?? (req.mode === 'fast' ? 512 : 1600),
-      temperature: req.temperature ?? (req.mode === 'fast' ? 0.25 : 0.55),
-    }),
+    body: JSON.stringify(body),
+    signal: req.signal,
   });
   if (!res.ok) {
     const raw = await res.text();
@@ -336,28 +399,41 @@ async function* streamOpenAiChat(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const parts = buf.split(/\r?\n/);
-    buf = parts.pop() || '';
-    for (const line of parts) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('data:')) continue;
-      const payload = trimmed.slice(5).trim();
-      if (!payload || payload === '[DONE]') continue;
-      try {
-        const evt = JSON.parse(payload) as {
-          choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>;
-        };
-        const d = evt.choices?.[0]?.delta;
-        if (d?.reasoning_content) yield { kind: 'thinking' as const, text: d.reasoning_content };
-        if (d?.content) yield { kind: 'text' as const, text: d.content };
-      } catch {
-        /* ignore */
+  try {
+    while (true) {
+      if (req.signal?.aborted) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore */
+        }
+        break;
+      }
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split(/\r?\n/);
+      buf = parts.pop() || '';
+      for (const line of parts) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const payload = trimmed.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          const evt = JSON.parse(payload) as {
+            choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>;
+          };
+          const d = evt.choices?.[0]?.delta;
+          if (d?.reasoning_content) yield { kind: 'thinking' as const, text: d.reasoning_content };
+          if (d?.content) yield { kind: 'text' as const, text: d.content };
+        } catch {
+          /* ignore */
+        }
       }
     }
+  } catch (e) {
+    if (req.signal?.aborted || (e instanceof Error && e.name === 'AbortError')) return;
+    throw e;
   }
 }
 
@@ -400,25 +476,38 @@ async function callAnthropicMessages(p: ProviderConfig, req: LlmRequest): Promis
     system: system || undefined,
     messages,
   };
-  // 注意：StepFun 上 thinking.disabled 未必生效，且流里常只有 thinking_delta
+  // 悬停：尽量关闭 thinking（网关可能忽略；忽略时靠 extract 净化）
+  if (req.mode === 'fast') {
+    body.thinking = { type: 'disabled' };
+  }
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': p.apiKey,
-      authorization: `Bearer ${p.apiKey}`,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify(body),
-  });
+  const doFetch = async (payload: Record<string, unknown>) => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': p.apiKey,
+        authorization: `Bearer ${p.apiKey}`,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(payload),
+      signal: req.signal,
+    });
+    const raw = await res.text();
+    let data: Record<string, unknown> = {};
+    try {
+      data = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      data = { raw: raw.slice(0, 300) };
+    }
+    return { res, raw, data };
+  };
 
-  const raw = await res.text();
-  let data: Record<string, unknown> = {};
-  try {
-    data = JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    data = { raw: raw.slice(0, 300) };
+  let { res, raw, data } = await doFetch(body);
+
+  if (!res.ok && req.mode === 'fast' && body.thinking && (res.status === 400 || res.status === 422)) {
+    delete body.thinking;
+    ({ res, raw, data } = await doFetch(body));
   }
 
   if (!res.ok) {

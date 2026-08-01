@@ -26,21 +26,32 @@ export function clearAllHoverCaches(): number {
 
 /** 与后端 SELF_REVISION / SELF_TALK_PHRASE 对齐（全文扫描） */
 const SELF_REVISION =
-  /那调整下|哦调整|调整下[：:]|等下[，,：:]|哦对[，,：:]|有没有冗余|没有元叙述|符合要求|符合卡片|卡片快览|2\s*[-~～到至]?\s*4\s*句|不要铺垫|要精炼|要短[，,]?\s*不要长|第一句讲|然后讲|讲核心|讲边界|讲接口|类比的话|要不要加|用户说|每句完整|直接讲正文|这样三句|1\s*个类比|一个类比|要自然|首先第一句|对[，,]\s*要短|对[，,]\s*这样|还要提一下|没有多余|讲清楚了|再顺一点|有没有要避免|或者再顺|两句[，,]讲|核心[、,，]作用[、,，]定位/i;
+  /那调整下|哦调整|调整下[：:]|等下[，,：:]?|哦对[，,：:]|有没有冗余|没有元叙述|符合要求|符合卡片|卡片快览|2\s*[-~～到至]?\s*4\s*句|不要铺垫|要精炼|要短[，,]?\s*不要长|第一句讲|然后讲|讲核心|讲边界|讲接口|类比的话|要不要加|用户说|每句完整|每句结尾句号|直接讲正文|这样三句|1\s*个类比|一个类比|要自然|首先第一句|对[，,]\s*要短|对[，,]\s*这样|还要提一下|没有多余|讲清楚了|再顺一点|有没有要避免|或者再顺|两句[，,]讲|核心[、,，]作用[、,，]定位|不要别的/i;
 
 const SELF_TALK_PHRASE =
-  /还要提一下|没有多余|讲清楚了|有没有要避免|再顺一点|要不要加|有没有冗余|符合要求|符合卡片|卡片快览|不要铺垫|要精炼|那调整|哦调整|调整下|类比的话|用户说|每句完整|直接讲正文|没有元叙述|要短[，,]?\s*不要长|2\s*[-~～到至]?\s*4\s*句|核心[、,，]作用[、,，]定位|或者有没有|或者再/i;
+  /还要提一下|没有多余|讲清楚了|有没有要避免|再顺一点|要不要加|有没有冗余|符合要求|符合卡片|卡片快览|不要铺垫|要精炼|那调整|哦调整|调整下|等下要|类比的话|用户说|每句完整|每句结尾句号|直接讲正文|没有元叙述|要短[，,]?\s*不要长|2\s*[-~～到至]?\s*4\s*句|核心[、,，]作用[、,，]定位|或者有没有|或者再|不要别的/i;
 
 const PLANNING =
   /思考过程|写作计划|(?:^|[。！？\n])我需要[:：]|结构如下|###\s*Thought|Thought\s*[:：]|推理过程|内部思考|内部独白|讲解失败|暂无讲解|用户想|用户问|用户需要|用户悬停|让我先|我应该|我得先|首先分析|首先得|判断用户|当前学习|当前用户|检查清单|自我提醒|提纲|大纲|水平与策略|Action\s*[:：]|Observation\s*[:：]|Fast Direct|硬性输出|禁止输出/i;
 
 /** bug-3：复述 system 规则 */
 const SYSTEM_ECHO =
-  /只输出最终|禁止任何写作|自我检查|反复修改|每句必须写完|禁止半截|硬性输出|写作过程|对提示词|Fast Direct|禁止输出写作|适合卡片快览|不要讨论|不要任何写作|精炼[：:]\s*[。2]|中文[，,]\s*精炼|快讲助手|单轮生成|不调用工具/i;
+  /只输出最终|禁止任何写作|自我检查|反复修改|每句必须写完|禁止半截|硬性输出|写作过程|对提示词|Fast Direct|禁止输出写作|适合卡片快览|不要讨论|不要任何写作|精炼[：:]\s*[。2]|中文[，,]\s*精炼|快讲助手|单轮生成|不调用工具|不要别的|不要自我提醒/i;
 
-/** bug-4：复述任务指令 */
+/** bug-4 / 格式口令复述 */
 const TASK_ECHO =
-  /用户现在需要|用户需要讲解|需要讲解.{0,12}知识点|要\s*2\s*[-~～到至]?\s*3\s*句|每句句号|句号结尾|只输出讲解|第[一二三1-3]句\s*[：:]|输出\s*2\s*或\s*3\s*句/i;
+  /用户现在需要|用户需要讲解|需要讲解.{0,12}知识点|要\s*2\s*[-~～到至]?\s*3\s*句|每句句号|每句结尾句号|结尾句号|句号结尾|只输出讲解|第[一二三1-3]句\s*[：:]|输出\s*2\s*或\s*3\s*句|不要别的|要准确.{0,8}句号|写两句完整|只输出这两句/i;
+
+function looksTruncatedTeachingTail(s: string): boolean {
+  const t = (s || '').trim();
+  if (!t) return true;
+  const body = t.replace(/[。！]+$/, '');
+  if (/[的与和及于在被把将可更越很太]$/.test(body) && body.length < 80) return true;
+  const opens = (t.match(/[“「"]/g) || []).length;
+  const closes = (t.match(/[”」"]/g) || []).length;
+  if (opens > closes) return true;
+  return false;
+}
 
 function isSelfTalkSentence(s: string): boolean {
   const t = (s || '').trim().replace(/^[-*•]\s+/, '');
@@ -56,7 +67,7 @@ function isSelfTalkSentence(s: string): boolean {
   }
   if (/精炼[：:]\s*[。．]?$/.test(t) || /（以[。．]?$/.test(t)) return true;
   if (
-    /^(对[，,！!]|哦|嗯|等下|首先第|然后讲|接着讲|最后讲|讲[核心边界接口]|要短|不要|符合|有没有|类比|要不要|用户说|第一句|那可以|那调整|还要|或者)/.test(
+    /^(对[，,！!]|哦|嗯|等下|首先第|然后讲|接着讲|最后讲|讲[核心边界接口]|要短|不要|符合|有没有|类比|要不要|用户说|第一句|那可以|那调整|还要|或者|比如|例如|譬如)/.test(
       t,
     )
   ) {
@@ -72,6 +83,8 @@ function isSelfTalkSentence(s: string): boolean {
   }
   if (/^[\u4e00-\u9fff]{1,8}([、,，][\u4e00-\u9fff]{1,8}){1,4}[。.]?$/.test(t)) return true;
   if (/符合要求|没有冗余|都是核心点|不要铺垫|讲清楚了|没有多余/.test(t)) return true;
+  if (/^(比如|例如|譬如)[：:「"“]?/.test(t)) return true;
+  if (looksTruncatedTeachingTail(t)) return true;
   return false;
 }
 
@@ -174,7 +187,7 @@ export function isLikelyHoverTeachingClient(s: string): boolean {
   if (SYSTEM_ECHO.test(t) || TASK_ECHO.test(t) || SELF_REVISION.test(t) || SELF_TALK_PHRASE.test(t)) {
     return false;
   }
-  if (/^(我|让我|用户想|用户问|用户需要|嗯|好的|总之|对[，,]|哦|首先第|还要|或者)/.test(t)) {
+  if (/^(我|让我|用户想|用户问|用户需要|嗯|好的|总之|对[，,]|哦|首先第|还要|或者|等下|比如|例如|譬如)/.test(t)) {
     return false;
   }
   if (/^(首先|其次|然后|最后)(得|要|分析|考虑|判断|想|我|第)/.test(t)) return false;
@@ -184,6 +197,8 @@ export function isLikelyHoverTeachingClient(s: string): boolean {
   if (q > 0 && q >= Math.max(1, p)) return false;
   const cn = (t.match(/[\u4e00-\u9fff]/g) || []).length;
   if (cn < 8) return false;
+  const units = t.split(/(?<=[。！])/).map((x) => x.trim()).filter(Boolean);
+  if (units.some((u) => isSelfTalkSentence(u) || looksTruncatedTeachingTail(u))) return false;
   if (/[。！]/.test(t)) return true;
   if (/^.{1,48}[：:].{4,}/.test(t) && !/[？?]/.test(t)) return true;
   return false;
@@ -197,13 +212,23 @@ export function isSafeHoverDisplay(s: string): boolean {
   if (SYSTEM_ECHO.test(t) || TASK_ECHO.test(t) || SELF_REVISION.test(t) || SELF_TALK_PHRASE.test(t)) {
     return false;
   }
-  if (/讲解失败|暂无讲解|暂无输出|思考过程|推理过程|只输出最终|自我检查|用户现在需要|要\s*2\s*[-~]?\s*3\s*句/.test(t)) {
+  if (
+    /讲解失败|暂无讲解|暂无输出|思考过程|推理过程|只输出最终|自我检查|用户现在需要|要\s*2\s*[-~]?\s*3\s*句|每句结尾句号|不要别的/.test(
+      t,
+    )
+  ) {
     return false;
   }
   if (/[？?]/.test(t)) return false;
   if (!isLikelyHoverTeachingClient(t)) return false;
   const n = (t.match(/[。！]/g) || []).length;
   if (n < 1 || n > 3) return false;
+  // 与后端对齐：拒半截补句号 / 极短单句
+  if (n === 1 && t.length < 18) return false;
+  if (n === 1 && /(?:上限|能力|表现|组件|语法|过程)。$/.test(t) && t.length < 36) return false;
+  if (/^第[一二三1-3]句/.test(t)) return false;
+  const units = t.split(/(?<=[。！])/).map((x) => x.trim()).filter(Boolean);
+  if (units.some((u) => isSelfTalkSentence(u) || looksTruncatedTeachingTail(u))) return false;
   return true;
 }
 
@@ -252,13 +277,29 @@ export function looksLikeHoverPlanning(s: string): boolean {
 }
 
 /**
- * 展示用清洗：剥改稿 → 只返回安全讲解；否则空。
+ * 展示用清洗：始终按句剥离旁白；禁止「看起来完整」就原样放行脏全文。
  */
 export function sanitizeHoverDisplay(raw: string): string {
   const s = (raw || '').trim();
   if (!s) return '';
-  if (isSafeHoverDisplay(s)) return s.slice(0, 600);
+  // 先剥改稿 / 旁白
   const stripped = stripSelfRevisionClient(s);
-  if (stripped && isSafeHoverDisplay(stripped)) return stripped;
+  if (stripped && isSafeHoverDisplay(stripped)) return stripped.slice(0, 600);
+  // 原文按句硬过滤
+  const units = s
+    .replace(/\s*[-•]\s+/g, '\n')
+    .split(/(?<=[。！])|\n+/)
+    .map((x) => x.trim().replace(/^[-*•]\s+/, ''))
+    .filter((u) => u && !isSelfTalkSentence(u) && !looksTruncatedTeachingTail(u));
+  const kept: string[] = [];
+  for (const u of units) {
+    const sent = /[。！]$/.test(u) ? u : `${u}。`;
+    if (sent.length < 8) continue;
+    if (isSelfTalkSentence(sent) || looksTruncatedTeachingTail(sent)) continue;
+    kept.push(sent);
+    if (kept.length >= 3) break;
+  }
+  const out = kept.join('');
+  if (out && isSafeHoverDisplay(out)) return out.slice(0, 600);
   return '';
 }

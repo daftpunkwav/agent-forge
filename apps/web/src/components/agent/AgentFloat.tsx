@@ -6,9 +6,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { streamAgent } from '@/lib/agentStream';
 import {
   AGENT_CACHE_CLEARED_EVENT,
+  hoverCacheKey,
   isSafeHoverDisplay,
   looksLikeHoverPlanning,
+  readHoverCache,
   sanitizeHoverDisplay,
+  writeHoverCache,
 } from '@/lib/hoverExplainCache';
 import { MarkdownView } from './MarkdownView';
 import { findHoverTarget, highlightTarget, isKnowledgeRoute } from './hoverTarget';
@@ -34,7 +37,7 @@ type HoverTipState = {
 
 /**
  * 快速 Agent（悬停）vs Agent 助手（面板）
- * - 快速：悬停即后台思考，满 2s 才显示；不展示思考/流式中间态
+ * - 快速：悬停即后台预取，约 0.7s 揭示；不展示思考过程；按句流式
  * - 助手：Deep 结构化详解，思考默认收起
  */
 export function AgentFloat() {
@@ -52,32 +55,23 @@ export function AgentFloat() {
   const tipRef = useRef<HTMLDivElement>(null);
   /** 目标稳定 debounce（防嵌套元素抖动） */
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** 满 2s 才展示 */
+  /** 满约 0.7s 才展示气泡 */
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeEl = useRef<HTMLElement | null>(null);
-  /**
-   * L1 浏览器缓存（工业策略）
-   * - TTL 20 分钟：同会话反复悬停零延迟
-   * - 最多 64 条 LRU
-   * - 仅存「完整 final」；中断/半截绝不写入
-   */
-  const hoverCache = useRef<Map<string, { text: string; at: number }>>(new Map());
-  const HOVER_CACHE_TTL_MS = 20 * 60 * 1000;
-  const HOVER_CACHE_MAX = 64;
-  /** 未完成请求：key → true，离开后禁止把半截当缓存命中 */
+  /** 未完成请求：禁止把半截当缓存命中（与共享 L1 配合） */
   const incompleteKeys = useRef<Set<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
   /** 对话框 deepExplain/send 流的中断控制器（与悬停流分开） */
   const chatAbortRef = useRef<AbortController | null>(null);
   const tipPinned = useRef(false);
   const conversationIdRef = useRef<string | null>(null);
-  /** 当前会话：后台已预取，是否已过 2s 可展示 */
+  /** 当前会话：后台已预取，是否已过揭示延迟可展示 */
   const sessionRef = useRef<{
     gen: number;
-    /** 请求/缓存 key（文案） */
+    /** 请求/缓存 key（style::topic） */
     key: string;
     /** 稳定身份（跨 DOM 重绘） */
     stableKey: string;
@@ -104,22 +98,19 @@ export function AgentFloat() {
   /** 短窗内请求计数 */
   const requestWindow = useRef<{ t0: number; n: number }>({ t0: 0, n: 0 });
 
-  const HOVER_SETTLE_MS = 80;
-  /** 悬停满 2s 才显示气泡（后台 0s 起就开始思考/读缓存） */
-  const HOVER_REVEAL_MS = 2000;
-  /**
-   * 气泡出现后至少展示「思考中」的时长（含缓存命中）。
-   * 避免缓存瞬间出字，体验过于突兀。
-   */
-  const HOVER_MIN_THINK_MS = 420;
+  const HOVER_SETTLE_MS = 60;
+  /** 悬停满 ~0.7s 显示气泡（后台立即预取） */
+  const HOVER_REVEAL_MS = 700;
+  /** 气泡出现后最短「思考中」；尽量短以提升体感 */
+  const HOVER_MIN_THINK_MS = 160;
   /** 移出后保留 3s；指针在对话框内不消失 */
   const HOVER_LEAVE_KEEP_MS = 3000;
-  const FADE_MS = 220;
+  const FADE_MS = 180;
   const cacheRevealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 新目标请求最小间隔 */
-  const REQUEST_COOLDOWN_MS = 400;
+  const REQUEST_COOLDOWN_MS = 280;
   /** 10s 内最多 N 次新请求 */
-  const MAX_REQUESTS_PER_WINDOW = 6;
+  const MAX_REQUESTS_PER_WINDOW = 8;
   const REQUEST_WINDOW_MS = 10_000;
 
   const location = useLocation();
@@ -145,10 +136,9 @@ export function AgentFloat() {
     [],
   );
 
-  /** 设置页「清除 Agent 缓存」：清空本组件 L1 Map / 半截标记 / 中断悬停流 */
+  /** 设置页「清除 Agent 缓存」：清空半截标记 / 中断悬停流（L1 由 clearAllHoverCaches 清） */
   useEffect(() => {
     function onCacheCleared() {
-      hoverCache.current.clear();
       incompleteKeys.current.clear();
       inflightKeyRef.current = null;
       abortRef.current?.abort();
@@ -311,39 +301,15 @@ export function AgentFloat() {
     }, HOVER_LEAVE_KEEP_MS);
   }
 
-  function isCompleteHoverClient(s: string): boolean {
-    return isSafeHoverDisplay(s);
-  }
-
   function readCache(key: string): string | null {
     if (incompleteKeys.current.has(key)) return null;
-    const hit = hoverCache.current.get(key);
-    if (!hit) return null;
-    if (Date.now() - hit.at > HOVER_CACHE_TTL_MS) {
-      hoverCache.current.delete(key);
-      return null;
-    }
-    // 脏缓存（思考过程）丢弃
-    if (!isSafeHoverDisplay(hit.text)) {
-      hoverCache.current.delete(key);
-      return null;
-    }
-    // LRU：重新插入到末尾
-    hoverCache.current.delete(key);
-    hoverCache.current.set(key, { text: hit.text, at: Date.now() });
-    return hit.text;
+    return readHoverCache(key);
   }
 
   function pushCache(key: string, text: string) {
     if (!isSafeHoverDisplay(text)) return;
     incompleteKeys.current.delete(key);
-    if (hoverCache.current.has(key)) hoverCache.current.delete(key);
-    hoverCache.current.set(key, { text, at: Date.now() });
-    while (hoverCache.current.size > HOVER_CACHE_MAX) {
-      const first = hoverCache.current.keys().next().value;
-      if (first) hoverCache.current.delete(first);
-      else break;
-    }
+    writeHoverCache(key, text);
   }
 
   function sanitizeHoverAnswer(raw: string): string {
@@ -354,7 +320,8 @@ export function AgentFloat() {
   function smartTruncateClient(s: string, max = 560): string {
     if (s.length <= max) return s.trim();
     const cut = s.slice(0, max);
-    const end = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('！'), cut.lastIndexOf('？'));
+    // 悬停答案不以？为合法句末（改稿自问）
+    const end = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('！'));
     if (end >= Math.floor(max * 0.45)) return cut.slice(0, end + 1).trim();
     return cut.replace(/[A-Za-z]{1,12}$/, '').trim();
   }
@@ -423,7 +390,7 @@ export function AgentFloat() {
   /**
    * 悬停策略：
    * 1) 目标稳定后立即后台预取
-   * 2) 同一目标连续悬停满 2s 才显示内容
+   * 2) 同一目标连续悬停满约 0.7s 才显示内容
    * 3) 离开保留 3s；指针在 tip 内不关
    * 4) 切换目标 / 扫射：abort + cooldown，防并发
    * 5) 用 stableKey，动画重绘不中断
@@ -438,8 +405,6 @@ export function AgentFloat() {
       x: number;
       y: number;
     }) {
-      const key = info.text.slice(0, 200);
-
       // 同一稳定目标已在飞：只刷新 el，不改锚定坐标
       if (sessionRef.current?.stableKey === info.stableKey) {
         sessionRef.current.el = info.el;
@@ -458,6 +423,8 @@ export function AgentFloat() {
 
       const gen = ++genRef.current;
       const topic = info.text.slice(0, 80);
+      // 与卡片共用 L1：style::topic
+      const key = hoverCacheKey(info.text.slice(0, 400), style);
       // 未完成的旧请求标记：禁止读半截缓存
       const cached = incompleteKeys.current.has(key) ? null : readCache(key);
 
@@ -491,7 +458,7 @@ export function AgentFloat() {
         highlightTarget(info.el, true);
       }
 
-      // 2s 后出气泡：一律先显示思考中；答案（含缓存/已返回）再延迟一小段
+      // 揭示延迟后出气泡：一律先显示思考中；答案再最短思考后揭晓
       revealTimer.current = setTimeout(() => {
         const s = sessionRef.current;
         if (!s || s.gen !== gen) return;
@@ -502,7 +469,7 @@ export function AgentFloat() {
           s.loading = false;
         }
         showTipForSession(s, true);
-        // 答案已就绪（缓存或 2s 内网络已返回）→ 最短思考后再揭晓
+        // 答案已就绪（缓存或延迟内网络已返回）→ 最短思考后再揭晓
         if (s.buffer && !s.loading) {
           scheduleAnswerReveal(s, gen);
         }
@@ -530,7 +497,7 @@ export function AgentFloat() {
         requestWindow.current.n += 1;
         inflightKeyRef.current = key;
         incompleteKeys.current.add(key);
-        hoverCache.current.delete(key);
+        // 清除可能的半截 L1（共享缓存只存完整安全答案，此处仅标记 incomplete）
         const ac = new AbortController();
         abortRef.current = ac;
         let gotFinal = false;
@@ -567,20 +534,16 @@ export function AgentFloat() {
               if (ev.replace) streamBuf = ev.text;
               else streamBuf += ev.text;
               // 策划检测：不展示即可，禁止清空已累积缓冲（自伤）
-              if (looksLikeHoverPlanning(streamBuf)) {
+              if (looksLikeHoverPlanning(streamBuf) && !isSafeHoverDisplay(streamBuf)) {
                 if (s.revealed && !streamingShown) showTipForSession(s, true);
                 return;
               }
-              // 未成句前缀：展示到最后一个句号；或完整安全正文
+              // 未成句前缀：只展示到最后一个 。！（不用？——改稿自问）
               let show = '';
-              if (isSafeHoverDisplay(streamBuf)) {
+              if (isSafeHoverDisplay(streamBuf) && /[。！]$/.test(streamBuf)) {
                 show = streamBuf;
               } else {
-                const lastEnd = Math.max(
-                  streamBuf.lastIndexOf('。'),
-                  streamBuf.lastIndexOf('！'),
-                  streamBuf.lastIndexOf('？'),
-                );
+                const lastEnd = Math.max(streamBuf.lastIndexOf('。'), streamBuf.lastIndexOf('！'));
                 if (lastEnd >= 8) {
                   const upto = streamBuf.slice(0, lastEnd + 1);
                   if (isSafeHoverDisplay(upto)) show = upto;
@@ -607,7 +570,6 @@ export function AgentFloat() {
               if (s.complete) pushCache(key, s.buffer);
               else {
                 incompleteKeys.current.add(key);
-                hoverCache.current.delete(key);
               }
               if (inflightKeyRef.current === key) inflightKeyRef.current = null;
               if (s.revealed) {
@@ -632,7 +594,6 @@ export function AgentFloat() {
                 if (s.complete) pushCache(key, s.buffer);
                 else {
                   incompleteKeys.current.add(key);
-                  hoverCache.current.delete(key);
                 }
                 if (s.revealed) {
                   if (streamingShown && fallback) showTipForSession(s, false);
@@ -651,16 +612,15 @@ export function AgentFloat() {
               s.loading = false;
               s.complete = false;
               incompleteKeys.current.add(key);
-              hoverCache.current.delete(key);
               if (inflightKeyRef.current === key) inflightKeyRef.current = null;
               if (s.revealed) showTipForSession(s, false);
             }
           },
           ac.signal,
+          { timeoutMs: 28_000 },
         ).catch((err: Error) => {
           if (err.name === 'AbortError') {
             incompleteKeys.current.add(key);
-            hoverCache.current.delete(key);
             if (inflightKeyRef.current === key) inflightKeyRef.current = null;
             return;
           }
@@ -670,7 +630,6 @@ export function AgentFloat() {
           s.loading = false;
           s.complete = false;
           incompleteKeys.current.add(key);
-          hoverCache.current.delete(key);
           if (inflightKeyRef.current === key) inflightKeyRef.current = null;
           if (s.revealed) showTipForSession(s, false);
         });
@@ -766,11 +725,10 @@ export function AgentFloat() {
       clearRevealTimer();
 
       if (!wasRevealed) {
-        // 未满 2s / 未完成：中止请求，标记 incomplete，禁止下次复用半截
+        // 未满揭示时长 / 未完成：中止请求，标记 incomplete，禁止下次复用半截
         const k = sessionRef.current?.key;
         if (k) {
           incompleteKeys.current.add(k);
-          hoverCache.current.delete(k);
         }
         abortRef.current?.abort();
         abortRef.current = null;

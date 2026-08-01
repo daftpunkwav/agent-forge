@@ -21,7 +21,13 @@ export function LoginPage() {
       await login(email, password);
       navigate('/profile');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '登录失败');
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else if (err instanceof TypeError || (err instanceof Error && /fetch|network|Failed/i.test(err.message))) {
+        setError('无法连接服务器，请确认 API 已启动后重试');
+      } else {
+        setError(err instanceof Error ? err.message : '登录失败');
+      }
     } finally {
       setLoading(false);
     }

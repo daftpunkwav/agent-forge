@@ -22,12 +22,13 @@ export type StreamEvent =
   | { type: 'done' }
   | { type: 'error'; message: string };
 
-/** 读取 SSE 流（agent explain/chat stream） */
+/** 读取 SSE 流（agent explain/chat stream）；默认 28s 超时防悬挂 */
 export async function streamAgent(
   path: '/agent/explain/stream' | '/agent/chat/stream',
   body: unknown,
   onEvent: (ev: StreamEvent) => void,
   signal?: AbortSignal,
+  opts?: { timeoutMs?: number },
 ): Promise<void> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -36,49 +37,69 @@ export async function streamAgent(
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal,
-  });
-
-  if (!res.ok) {
-    let msg = res.statusText;
-    try {
-      const j = (await res.json()) as { error?: { message?: string } };
-      if (j?.error?.message) msg = j.error.message;
-    } catch {
-      /* ignore */
-    }
-    throw new Error(msg || `HTTP ${res.status}`);
+  const timeoutMs = opts?.timeoutMs ?? 28_000;
+  const timeoutAc = new AbortController();
+  const timer = setTimeout(() => timeoutAc.abort(), timeoutMs);
+  const onOuterAbort = () => timeoutAc.abort();
+  if (signal) {
+    if (signal.aborted) timeoutAc.abort();
+    else signal.addEventListener('abort', onOuterAbort, { once: true });
   }
 
-  if (!res.body) {
-    throw new Error('浏览器不支持流式读取');
-  }
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: timeoutAc.signal,
+    });
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buf = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const lines = buf.split(/\r?\n/);
-    buf = lines.pop() || '';
-    for (const line of lines) {
-      const t = line.trim();
-      if (!t.startsWith('data:')) continue;
-      const payload = t.slice(5).trim();
-      if (!payload) continue;
+    if (!res.ok) {
+      let msg = res.statusText;
       try {
-        const ev = JSON.parse(payload) as StreamEvent;
-        onEvent(ev);
+        const j = (await res.json()) as { error?: { message?: string } };
+        if (j?.error?.message) msg = j.error.message;
       } catch {
         /* ignore */
       }
+      throw new Error(msg || `HTTP ${res.status}`);
     }
+
+    if (!res.body) {
+      throw new Error('浏览器不支持流式读取');
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split(/\r?\n/);
+      buf = lines.pop() || '';
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:')) continue;
+        const payload = t.slice(5).trim();
+        if (!payload) continue;
+        try {
+          const ev = JSON.parse(payload) as StreamEvent;
+          onEvent(ev);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      if (signal?.aborted) throw e;
+      throw new Error('讲解超时，请再悬停试一次');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', onOuterAbort);
   }
 }

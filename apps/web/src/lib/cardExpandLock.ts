@@ -3,7 +3,7 @@
  * 新卡片在上一张完成收起动画前不得展开，可先显示「思考中」。
  */
 
-const COLLAPSE_MS = 500; // 与 CSS max-height 过渡一致
+const COLLAPSE_MS = 420; // 与 CSS max-height 0.4s 过渡对齐
 
 type Waiter = {
   id: string;

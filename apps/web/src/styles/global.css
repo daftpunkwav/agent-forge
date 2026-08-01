@@ -668,7 +668,8 @@ textarea {
   white-space: normal;
 }
 /* Agent 输出：完整展示；流式时高度随文字自然增高 */
-.article-card-inline-text.is-answer {
+.article-card-inline-text.is-answer,
+.article-card-inline .agent-md.article-card-inline-text {
   display: block;
   color: var(--foreground);
   overflow: visible;
