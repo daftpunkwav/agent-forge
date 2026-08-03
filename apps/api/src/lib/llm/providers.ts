@@ -271,7 +271,7 @@ export async function callLlm(req: LlmRequest, provider?: ProviderConfig | null)
         );
         throw new LlmCallError(408, '模型响应超时，请稍后重试', { url: '', raw: '' });
       }
-      // B-06：失败打点
+      // B-06：失败打点（TypeError=网络层失败，标记 NETWORK 便于日志聚合区分）
       logger.error(
         {
           event: 'llm_call',
@@ -280,7 +280,7 @@ export async function callLlm(req: LlmRequest, provider?: ProviderConfig | null)
           mode: req.mode,
           ms: Date.now() - startedAt,
           ok: false,
-          status: e instanceof LlmCallError ? e.status : undefined,
+          status: e instanceof LlmCallError ? e.status : e instanceof TypeError ? 'NETWORK' : undefined,
         },
         'llm call failed',
       );

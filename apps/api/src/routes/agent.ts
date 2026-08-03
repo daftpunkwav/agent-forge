@@ -420,6 +420,8 @@ agentRouter.post(
       try {
         let thinkingAcc = '';
         let textAcc = '';
+        // I3：仅累积通过 per-delta 门控的安全思考片段，final 用它保持流式/最终一致
+        let safeThinking = '';
         /**
          * 悬停硬规则：
          * 1) 生成过程中：thinking/text 只服务端累计，客户端只收 status:thinking
@@ -471,7 +473,8 @@ agentRouter.post(
               mode: prep.isHover ? 'fast' : 'deep',
               maxTokens: prep.isHover ? 220 : 2048,
               temperature: prep.isHover ? 0.15 : undefined,
-              signal: prep.isHover ? llmAbort.signal : undefined,
+              // I2：统一挂 llmAbort 信号——hover 用于早停，click/deep 用于客户端断开时取消上游
+              signal: llmAbort.signal,
               messages: [
                 { role: 'system', content: prep.system },
                 { role: 'user', content: prep.userMsg },
@@ -495,6 +498,7 @@ agentRouter.post(
                   logger.warn({ event: 'thinking_echo_blocked' }, 'thinking echo chunk dropped');
                   continue;
                 }
+                safeThinking += chunk.text;
                 sseWrite(res, { type: 'thinking', text: chunk.text });
               }
             } else {
@@ -513,6 +517,8 @@ agentRouter.post(
             throw e;
           }
         }
+        // 早停（hover）正是通过 llmAbort.abort() 触发的，此处不能以 aborted 为返回条件；
+        // 客户端断开由 writableEnded/destroyed 判定（I2 已让 click 模式信号达上游）
         if (res.writableEnded || res.destroyed) {
           return;
         }
@@ -545,7 +551,9 @@ agentRouter.post(
           sseWrite(res, {
             type: 'final',
             answer: visible.answer,
-            thinking: visible.thinking,
+            // I3：final 用流式中已过 per-delta 门控的安全 thinking，
+            // 避免整串 isSystemEcho 把已展示的合法思考一并清空
+            thinking: safeThinking,
           });
         }
         sseWrite(res, { type: 'done' });
@@ -647,6 +655,8 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
     try {
       let thinkingAcc = '';
       let textAcc = '';
+      // I3：仅累积通过 per-delta 门控的安全思考片段，final 用它保持流式/最终一致
+      let safeThinking = '';
       const llmAbort = new AbortController();
       // 客户端断开时取消上游 LLM，避免 token 空转
       req.on('close', () => {
@@ -682,6 +692,7 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
                 logger.warn({ event: 'thinking_echo_blocked' }, 'thinking echo chunk dropped');
                 continue;
               }
+              safeThinking += chunk.text;
               sseWrite(res, { type: 'thinking', text: chunk.text });
             }
           } else {
@@ -709,17 +720,21 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
       }
       // A-04 兜底：answer 被规则复述门控清空时不回传空回复、不持久化空消息
       const answer = visible.answer || '抱歉，这一轮没有生成有效讲解，换个问法再试一次。';
+      // I3：final 用流式中已过门控的安全 thinking，避免整串 isSystemEcho 误清已展示的合法思考
+      const thinking = safeThinking || visible.thinking;
+      // I5：先持久化再发 final/done——done 之后客户端已视为结束，
+      // persist 失败若再发 error 会用错误文案覆盖已交付的正确答案
+      await finalizeChatTurn(conv.id, req.user?.id, body.message, answer, thinking);
       if (mode === 'fast') {
         sseWrite(res, { type: 'final', answer, thinking: '' });
       } else {
         sseWrite(res, {
           type: 'final',
           answer,
-          thinking: visible.thinking,
+          thinking,
         });
       }
       sseWrite(res, { type: 'done' });
-      await finalizeChatTurn(conv.id, req.user?.id, body.message, answer, visible.thinking);
     } catch (e) {
       if (!(e instanceof Error && e.name === 'AbortError') && !res.writableEnded && !res.destroyed) {
         // A-01：SSE 错误消息只发安全文案，不泄露 url/raw

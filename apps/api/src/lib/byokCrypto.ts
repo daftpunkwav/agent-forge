@@ -20,6 +20,11 @@ function key(): Buffer {
   return createHash('sha256').update(`byok-encryption-v1:${raw}`).digest();
 }
 
+/** 是否为 A-03 加密格式（用于调用方判断「解密失败保留的密文」是否需要再加密） */
+export function isEncryptedByokKey(stored: string): boolean {
+  return stored.startsWith(PREFIX);
+}
+
 export function encryptByokKey(plain: string): string {
   if (!plain) return plain;
   const iv = randomBytes(12);
@@ -59,8 +64,21 @@ export function decryptByokConfig(byok?: ByokConfig | null): ByokConfig | null {
 /**
  * 设置保存时取「应入库的明文 key」：旧值可能是密文（A-03 后）也可能是历史明文。
  * 二次保存（留空不修改）时必须先解密，否则会对密文再加密，导致 BYOK 静默失效。
+ * 解密失败（密钥轮换/密文损坏）时保留原密文，绝不落空——空提交不应摧毁可恢复的数据，
+ * 只有显式 clearByokKey 才允许清空（由调用方决定）。
  */
 export function resolveByokApiKeyToStore(prevApiKey: string | undefined, submitted: string): string {
-  const prev = decryptByokKey(prevApiKey || '');
-  return submitted && !submitted.includes('••••') ? submitted : prev;
+  const prev = prevApiKey || '';
+  // 已提交新 key（非掩码占位）：直接使用。前端留空时提交空串，掩码仅作防御——精确匹配占位串，避免误伤含「••••」的真实 key
+  if (submitted && submitted !== '••••') return submitted;
+  // 未提交新 key：尝试解密旧值；解密失败则原样保留密文（等待密钥回滚或用户重填）
+  if (prev.startsWith(PREFIX)) {
+    const plain = decryptByokKey(prev);
+    if (!plain) {
+      logger.warn({ event: 'byok_key_decrypt_failed_kept' }, 'BYOK key decrypt failed; ciphertext kept');
+      return prev;
+    }
+    return plain;
+  }
+  return prev;
 }

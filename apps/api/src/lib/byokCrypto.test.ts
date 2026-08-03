@@ -6,6 +6,7 @@ import {
   decryptByokConfig,
   decryptByokKey,
   encryptByokKey,
+  isEncryptedByokKey,
   resolveByokApiKeyToStore,
 } from './byokCrypto.js';
 
@@ -79,5 +80,17 @@ describe('resolveByokApiKeyToStore（C1 回归：设置二次保存不得对密�
   });
   it('无旧值 + 空提交 → 空串', () => {
     expect(resolveByokApiKeyToStore('', '')).toBe('');
+  });
+  it('密钥轮换后保存：解密失败 → 保留原密文，绝不落空销毁（I1 回归）', () => {
+    const enc = encryptByokKey('sk-original');
+    process.env.JWT_SECRET = 'rotated-secret-key-0123456789abcdef';
+    const kept = resolveByokApiKeyToStore(enc, '');
+    expect(kept).toBe(enc);
+    expect(isEncryptedByokKey(kept)).toBe(true);
+  });
+  it('密钥轮换后提交新 key → 正常覆盖（不因旧密文卡死）', () => {
+    const enc = encryptByokKey('sk-original');
+    process.env.JWT_SECRET = 'rotated-secret-key-0123456789abcdef';
+    expect(resolveByokApiKeyToStore(enc, 'sk-new')).toBe('sk-new');
   });
 });

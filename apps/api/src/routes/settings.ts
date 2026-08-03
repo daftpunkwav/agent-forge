@@ -3,10 +3,21 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { validate } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
-import { listPublicProviders, maskApiKey, LlmCallError } from '../lib/llm/providers.js';
+import {
+  callLlm,
+  listPublicProviders,
+  maskApiKey,
+  LlmCallError,
+  resolveProvider,
+} from '../lib/llm/providers.js';
 import { API_FORMATS, type ByokConfig } from '../lib/llm/types.js';
 import { parsePrefs } from '../lib/prefs.js';
-import { decryptByokConfig, encryptByokKey, resolveByokApiKeyToStore } from '../lib/byokCrypto.js';
+import {
+  decryptByokConfig,
+  encryptByokKey,
+  isEncryptedByokKey,
+  resolveByokApiKeyToStore,
+} from '../lib/byokCrypto.js';
 
 export const settingsRouter = Router();
 
@@ -102,7 +113,8 @@ settingsRouter.patch(
 
       if (body.byok) {
         const prev = (preferences.byok || {}) as Partial<ByokConfig>;
-        // 二次保存（留空不修改）时 prev 已是密文——必须解密后入库，避免对密文再加密
+        // 二次保存（留空不修改）时 prev 已是密文——必须解密后入库，避免对密文再加密；
+        // 解密失败（密钥轮换）时保留原密文，绝不落空销毁
         let apiKey = resolveByokApiKeyToStore(prev.apiKey, body.byok.apiKey || '');
         if (body.clearByokKey) apiKey = '';
         preferences.byok = {
@@ -111,9 +123,10 @@ settingsRouter.patch(
           model: body.byok.model || '',
           format: body.byok.format || 'anthropic_messages',
           name: body.byok.name || 'BYOK',
-          vision: body.byok.vision !== false,
-          // A-03：写入前静态加密，数据库不留明文 key
-          apiKey: apiKey ? encryptByokKey(apiKey) : '',
+          // 未提交 vision 时保留旧值，避免部分更新把用户的 vision:false 重置为 true
+          vision: body.byok.vision !== undefined ? body.byok.vision : (prev.vision ?? true),
+          // A-03：写入前静态加密，数据库不留明文 key；已是密文（解密失败保留）则原样入库
+          apiKey: isEncryptedByokKey(apiKey) ? apiKey : apiKey ? encryptByokKey(apiKey) : '',
         } satisfies ByokConfig;
       }
 
@@ -139,7 +152,6 @@ settingsRouter.patch(
 /** 测试当前 BYOK / 服务端配置是否可用 */
 settingsRouter.post('/test-llm', requireAuth, async (req, res, next) => {
   try {
-    const { callLlm, resolveProvider } = await import('../lib/llm/providers.js');
     const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
     const preferences = parsePrefs(user?.preferences);
     // A-03：库中为密文，测试前先解密
@@ -171,9 +183,11 @@ settingsRouter.post('/test-llm', requireAuth, async (req, res, next) => {
     });
   } catch (e) {
     // 上游 LLM 失败：给 502 与脱敏文案（A-01），与 agent.ts llmError 语义一致
-    if (e instanceof LlmCallError) {
+    // TypeError = 网络层失败（fetch 连不上/中断），同样视为上游问题而非服务器 bug
+    if (e instanceof LlmCallError || e instanceof TypeError) {
+      const message = e instanceof LlmCallError ? e.messageForClient : '无法连接模型服务，请检查网络后重试';
       res.status(502).json({
-        error: { code: 'LLM_ERROR', message: e.messageForClient },
+        error: { code: 'LLM_ERROR', message },
       });
       return;
     }
