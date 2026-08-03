@@ -62,7 +62,7 @@
 
 | ID | 位置 | 等级 | 描述 |
 |----|------|------|------|
-| Q-17 | 整个仓库 | 🟠 高 | 无 `vitest`/`jest`/`playwright`；`apps/api/scripts/` 与 `apps/web/scripts/` 仅遗留 `theme-manager.js` `toc.js` `debug-white-screen.mjs`（无断言）。`extractHoverAnswer / isCompleteHoverAnswer / ensureConversation` 等关键函数没有任何回归用例 |
+| Q-17 | 整个仓库 | 🟠 高 | 无 `vitest`/`jest`/`playwright`；`apps/api/scripts/` 与 `apps/web/scripts/` 仅遗留 `theme-manager.js` `toc.js` `debug-white-screen.mjs`（无断言）。`extractHoverAnswer / isCompleteHoverAnswer / ensureConversation` 等关键函数没有任何回归用例（2026-08-02 起已接入 Vitest：`apps/api/src/lib/llm/agentPrompt.hover.test.ts` 11 例） |
 | Q-18 | `apps/web/src/lib/hoverExplainCache.ts` vs `apps/api/src/lib/llm/agentPrompt.ts` | 🟠 高 | 同一净化规则双实现，前端没法在 CI 拦截「规则漂移」；建议在 `packages/shared/src/sanitize.ts` 抽出统一规则，前后端共用 |
 
 ### 1.6 类型安全

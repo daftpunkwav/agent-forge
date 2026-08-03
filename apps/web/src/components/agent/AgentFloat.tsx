@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
-import { streamAgent } from '@/lib/agentStream';
+import { streamAgent, type StreamEvent } from '@/lib/agentStream';
 import {
   AGENT_CACHE_CLEARED_EVENT,
   hoverCacheKey,
@@ -788,14 +788,20 @@ export function AgentFloat() {
     });
   }
 
-  async function deepExplain(text: string, title?: string, articleSlug?: string) {
-    setBusy(true);
-    const userLine = `请详细讲解：${title || text.slice(0, 80)}`;
-    setMessages((m) => [
-      ...m,
-      { role: 'user', text: userLine },
-      { role: 'assistant', text: '', thinking: '', streaming: true, thinkingOpen: false },
-    ]);
+  /**
+   * 面板流式请求公共流程：中断上一路 → 流式累加 → 空答兜底非流式 → 统一收尾。
+   * deepExplain / send 共用，保证两路行为一致（busy、abort、错误文案、结尾兜底）。
+   */
+  async function runPanelStream(
+    path: '/agent/explain/stream' | '/agent/chat/stream',
+    body: unknown,
+    opts: {
+      onMeta?: (ev: StreamEvent & { type: 'meta' }) => void;
+      onPatch: (patch: Partial<ChatMsg>) => void;
+      fallback?: () => Promise<string>;
+      errorLabel: string;
+    },
+  ) {
     let answer = '';
     let thinking = '';
     // 发起前中断上一路对话流，避免卸载/重发后旧流继续运行
@@ -803,61 +809,36 @@ export function AgentFloat() {
     const ac = new AbortController();
     chatAbortRef.current = ac;
     try {
-      await streamAgent(
-        '/agent/explain/stream',
-        {
-          mode: 'click',
-          style,
-          selection: {
-            text: text.slice(0, 3500),
-            title,
-            articleSlug,
-            route: location.pathname,
-          },
-        },
-        (ev) => {
-          if (ev.type === 'thinking' && ev.text) {
-            thinking += ev.text;
-            patchLastAssistant({ thinking, streaming: true });
-          }
-          if (ev.type === 'delta' && ev.text) {
-            answer += ev.text;
-            patchLastAssistant({ text: answer, streaming: true });
-          }
-          if (ev.type === 'final') {
-            if (ev.answer != null) answer = ev.answer;
-            if (ev.thinking != null) thinking = ev.thinking;
-            patchLastAssistant({
-              text: answer,
-              thinking,
-              streaming: false,
-              thinkingOpen: false,
-            });
-          }
-          if (ev.type === 'error') {
-            answer = `**错误**\n\n${ev.message}`;
-          }
-        },
-        ac.signal,
-      );
-      if (!answer.trim()) {
+      await streamAgent(path, body, (ev) => {
+        if (ev.type === 'meta') {
+          opts.onMeta?.(ev as StreamEvent & { type: 'meta' });
+          return;
+        }
+        if (ev.type === 'thinking' && ev.text) {
+          thinking += ev.text;
+          opts.onPatch({ thinking, streaming: true, thinkingOpen: false });
+        }
+        if (ev.type === 'delta' && ev.text) {
+          answer += ev.text;
+          opts.onPatch({ text: answer, streaming: true });
+        }
+        if (ev.type === 'final') {
+          if (ev.answer != null) answer = ev.answer;
+          if (ev.thinking != null) thinking = ev.thinking;
+          opts.onPatch({ text: answer, thinking, streaming: false, thinkingOpen: false });
+        }
+        if (ev.type === 'error') {
+          answer = `**错误**\n\n${ev.message}`;
+        }
+      }, ac.signal);
+      if (!answer.trim() && opts.fallback) {
         try {
-          const r = await api.agentExplain({
-            mode: 'click',
-            style,
-            selection: {
-              text: text.slice(0, 3500),
-              title,
-              articleSlug,
-              route: location.pathname,
-            },
-          });
-          answer = r.explanation || '';
+          answer = (await opts.fallback()) || '';
         } catch {
           /* keep */
         }
       }
-      patchLastAssistant({
+      opts.onPatch({
         text: answer.trim() || '**暂无输出**\n\n请检查 BYOK 配置后重试。',
         thinking,
         streaming: false,
@@ -866,11 +847,51 @@ export function AgentFloat() {
     } catch (err) {
       // 主动中断（重发/卸载）不当作错误展示
       if ((err as Error).name === 'AbortError') return;
-      const msg = err instanceof Error ? err.message : '讲解失败';
-      patchLastAssistant({ text: `**错误**\n\n${msg}`, streaming: false });
+      const msg = err instanceof Error ? err.message : opts.errorLabel;
+      opts.onPatch({ text: `**错误**\n\n${msg}`, streaming: false });
     } finally {
       setBusy(false);
     }
+  }
+
+  async function deepExplain(text: string, title?: string, articleSlug?: string) {
+    setBusy(true);
+    const userLine = `请详细讲解：${title || text.slice(0, 80)}`;
+    setMessages((m) => [
+      ...m,
+      { role: 'user', text: userLine },
+      { role: 'assistant', text: '', thinking: '', streaming: true, thinkingOpen: false },
+    ]);
+    await runPanelStream(
+      '/agent/explain/stream',
+      {
+        mode: 'click',
+        style,
+        selection: {
+          text: text.slice(0, 3500),
+          title,
+          articleSlug,
+          route: location.pathname,
+        },
+      },
+      {
+        onPatch: patchLastAssistant,
+        errorLabel: '讲解失败',
+        fallback: () =>
+          api
+            .agentExplain({
+              mode: 'click',
+              style,
+              selection: {
+                text: text.slice(0, 3500),
+                title,
+                articleSlug,
+                route: location.pathname,
+              },
+            })
+            .then((r) => r.explanation || ''),
+      },
+    );
   }
 
   async function send() {
@@ -883,75 +904,32 @@ export function AgentFloat() {
       { role: 'user', text: msg },
       { role: 'assistant', text: '', thinking: '', streaming: true, thinkingOpen: false },
     ]);
-    let answer = '';
-    let thinking = '';
-    // 发起前中断上一路对话流，避免卸载/重发后旧流继续运行
-    chatAbortRef.current?.abort();
-    const ac = new AbortController();
-    chatAbortRef.current = ac;
-    try {
-      await streamAgent(
-        '/agent/chat/stream',
-        {
-          message: msg,
-          style,
-          mode: 'deep',
-          conversationId: conversationIdRef.current || undefined,
-          context: { route: location.pathname },
+    await runPanelStream(
+      '/agent/chat/stream',
+      {
+        message: msg,
+        style,
+        mode: 'deep',
+        conversationId: conversationIdRef.current || undefined,
+        context: { route: location.pathname },
+      },
+      {
+        onPatch: patchLastAssistant,
+        errorLabel: '发送失败',
+        onMeta: (ev) => {
+          if (ev.conversationId) conversationIdRef.current = ev.conversationId;
         },
-        (ev) => {
-          if (ev.type === 'meta' && (ev as { conversationId?: string }).conversationId) {
-            conversationIdRef.current = (ev as { conversationId?: string }).conversationId || null;
-          }
-          if (ev.type === 'thinking' && ev.text) {
-            thinking += ev.text;
-            patchLastAssistant({ thinking, streaming: true, thinkingOpen: false });
-          }
-          if (ev.type === 'delta' && ev.text) {
-            answer += ev.text;
-            patchLastAssistant({ text: answer, streaming: true });
-          }
-          if (ev.type === 'final') {
-            if (ev.answer != null) answer = ev.answer;
-            if (ev.thinking != null) thinking = ev.thinking;
-            patchLastAssistant({
-              text: answer,
-              thinking,
-              streaming: false,
-              thinkingOpen: false,
-            });
-          }
-          if (ev.type === 'error') answer = `**错误**\n\n${ev.message}`;
-        },
-        ac.signal,
-      );
-      if (!answer.trim()) {
-        try {
-          const r = await api.agentChat({
-            message: msg,
-            style,
-            mode: 'deep',
-            context: { route: location.pathname },
-          });
-          answer = r.reply || '';
-        } catch {
-          /* keep */
-        }
-      }
-      patchLastAssistant({
-        text: answer.trim() || '**暂无输出**\n\n请检查 BYOK 配置后重试。',
-        thinking,
-        streaming: false,
-        thinkingOpen: false,
-      });
-    } catch (err) {
-      // 主动中断（重发/卸载）不当作错误展示
-      if ((err as Error).name === 'AbortError') return;
-      const message = err instanceof Error ? err.message : '发送失败';
-      patchLastAssistant({ text: `**错误**\n\n${message}`, streaming: false });
-    } finally {
-      setBusy(false);
-    }
+        fallback: () =>
+          api
+            .agentChat({
+              message: msg,
+              style,
+              mode: 'deep',
+              context: { route: location.pathname },
+            })
+            .then((r) => r.reply || ''),
+      },
+    );
   }
 
   return (
@@ -1042,7 +1020,7 @@ export function AgentFloat() {
             >
               <strong style={{ color: 'var(--foreground)' }}>快速 Agent（悬停）</strong>
               <br />
-              悬停即后台思考，满 2 秒显示；离开保留 3 秒。扫射会取消多余请求。
+              悬停即后台思考，满 {(HOVER_REVEAL_MS / 1000).toFixed(1)} 秒显示；离开保留 3 秒。扫射会取消多余请求。
               <br />
               <strong style={{ color: 'var(--foreground)' }}>Agent 助手</strong>
               ：结构化详解 · 思考默认收起

@@ -1,9 +1,10 @@
 import 'dotenv/config';
 import { createApp } from './app.js';
+import { logger } from './lib/logger.js';
 
 const port = Number(process.env.PORT || 3001);
 
 const app = createApp();
 app.listen(port, () => {
-  console.log(`[agentforge-api] http://localhost:${port}`);
+  logger.info({ port }, 'agentforge-api listening');
 });

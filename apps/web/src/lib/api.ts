@@ -24,6 +24,9 @@ export class ApiError extends Error {
   }
 }
 
+/** 普通 API 请求默认超时（SSE 流走 agentStream.ts 的 28s 独立超时） */
+const REQUEST_TIMEOUT_MS = 15_000;
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!headers.has('Content-Type') && init.body) {
@@ -32,16 +35,36 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const res = await fetch(`${BASE}${path}`, { ...init, headers });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new ApiError(
-      res.status,
-      data?.error?.code || 'ERROR',
-      data?.error?.message || res.statusText || '请求失败',
-    );
+  // 超时与调用方 signal 合并：任一触发即中断 fetch
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const onOuterAbort = () => controller.abort();
+  if (init.signal) {
+    if (init.signal.aborted) controller.abort();
+    else init.signal.addEventListener('abort', onOuterAbort, { once: true });
   }
-  return data as T;
+
+  try {
+    const res = await fetch(`${BASE}${path}`, { ...init, headers, signal: controller.signal });
+    const data = res.status === 204 ? {} : await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new ApiError(
+        res.status,
+        data?.error?.code || 'ERROR',
+        data?.error?.message || res.statusText || '请求失败',
+      );
+    }
+    return data as T;
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      if (init.signal?.aborted) throw e;
+      throw new ApiError(408, 'TIMEOUT', '请求超时，请稍后重试');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+    if (init.signal) init.signal.removeEventListener('abort', onOuterAbort);
+  }
 }
 
 export interface PageResult<T> {

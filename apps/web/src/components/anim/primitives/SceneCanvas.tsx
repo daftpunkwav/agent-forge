@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useId } from 'react';
 import type { SceneModel, VizFrame } from '../core/types';
 import { roleColor } from '../core/types';
 import { arcPath, curvePath, pointOnLine, pt, ringPoint } from './layoutMath';
@@ -32,6 +33,9 @@ export function SceneCanvas({
 }
 
 function RingCanvas({ scene, frame }: { scene: SceneModel; frame: VizFrame }) {
+  const uid = useId().replace(/:/g, '');
+  const glowId = `ringGlow-${uid}`;
+  const arrowId = `arrow-${uid}`;
   const cx = W / 2;
   const cy = H / 2 + 8;
   const R = 118;
@@ -54,12 +58,15 @@ function RingCanvas({ scene, frame }: { scene: SceneModel; frame: VizFrame }) {
       data-agent-zone="knowledge"
     >
       <defs>
-        <radialGradient id="ringGlow" cx="50%" cy="50%" r="50%">
+        <radialGradient id={glowId} cx="50%" cy="50%" r="50%">
           <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.12" />
           <stop offset="100%" stopColor="transparent" stopOpacity="0" />
         </radialGradient>
+        <marker id={arrowId} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="var(--primary)" />
+        </marker>
       </defs>
-      <circle cx={cx} cy={cy} r={R + 36} fill="url(#ringGlow)" />
+      <circle cx={cx} cy={cy} r={R + 36} fill={`url(#${glowId})`} />
       <circle
         cx={cx}
         cy={cy}
@@ -85,16 +92,10 @@ function RingCanvas({ scene, frame }: { scene: SceneModel; frame: VizFrame }) {
             d={d}
             className={`viz-edge${active ? ' active viz-edge-flow' : ''}${done ? ' done' : ''}`}
             style={{ ['--edge-color' as string]: roleColor(a.node.role) }}
-            markerEnd={active ? 'url(#arrow)' : undefined}
+            markerEnd={active ? `url(#${arrowId})` : undefined}
           />
         );
       })}
-
-      <defs>
-        <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-          <path d="M0,0 L6,3 L0,6 Z" fill="var(--primary)" />
-        </marker>
-      </defs>
 
       {/* 中心 */}
       <g

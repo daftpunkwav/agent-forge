@@ -17,7 +17,8 @@
     "db:generate": "npm run db:generate --workspace=@agentforge/api",
     "db:migrate": "npm run db:migrate --workspace=@agentforge/api",
     "db:seed": "npm run db:seed --workspace=@agentforge/api",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspace=@agentforge/api"
   },
   "engines": {
     "node": ">=20"

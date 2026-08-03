@@ -10,8 +10,8 @@ export function validate(schema: ZodSchema, target: Target = 'body'): RequestHan
       next(parsed.error);
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (req as any)[target] = parsed.data;
+    // 显式断言到「可索引赋值」的形状，避免 any 丢失类型保护
+    (req as unknown as Record<Target, unknown>)[target] = parsed.data;
     next();
   };
 }

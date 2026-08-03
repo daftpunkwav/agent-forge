@@ -292,7 +292,7 @@ components/
 
 | 旧路径 | 处理 |
 |--------|------|
-| `pages/**`, `scripts/**`, `styles/**` | 迁移源；完成后移入 `_legacy/` 或删除 |
+| `pages/**`, `scripts/**`, `styles/**` | ✅ 2026-08 已移入 `_legacy/`（`git mv` 保留历史；目录已被 `.gitignore` 忽略） |
 | `api/` 空目录 | 由 `apps/api` 替代 |
 | 现有作者 dashboard / apply / home list | 交互与信息架构参考，React 重写 |
 

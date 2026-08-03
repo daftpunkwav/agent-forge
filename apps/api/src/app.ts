@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import { randomUUID } from 'node:crypto';
+import { logger } from './lib/logger.js';
 import { authRouter } from './routes/auth.js';
 import { articlesRouter } from './routes/articles.js';
 import { animationsRouter } from './routes/animations.js';
@@ -15,8 +17,8 @@ import { errorHandler } from './middleware/errorHandler.js';
 export function createApp() {
   const app = express();
 
-  // 部署在反向代理后时，express-rate-limit v7 会因 X-Forwarded-For 校验抛错，需信任第一跳代理
-  app.set('trust proxy', 1);
+  // 仅当显式 TRUST_PROXY=1 时信任反向代理；直连暴露时关闭以防伪造 XFF 绕过限流
+  app.set('trust proxy', process.env.TRUST_PROXY === '1' ? 1 : false);
 
   app.use(helmet());
   app.use(
@@ -26,6 +28,28 @@ export function createApp() {
     }),
   );
   app.use(express.json({ limit: '1mb' }));
+
+  // requestId + 请求日志：贯穿错误处理（errorHandler 引用 res.locals.requestId）
+  app.use((req, res, next) => {
+    res.locals.requestId = randomUUID().slice(0, 8);
+    next();
+  });
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      logger.info(
+        {
+          method: req.method,
+          url: req.originalUrl,
+          status: res.statusCode,
+          ms: Date.now() - start,
+          requestId: res.locals.requestId,
+        },
+        'request',
+      );
+    });
+    next();
+  });
 
   const generalLimiter = rateLimit({
     windowMs: 60_000,

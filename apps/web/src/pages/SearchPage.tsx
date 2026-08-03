@@ -24,6 +24,7 @@ export function SearchPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     setQInput(q);
     api
       .listArticles({
@@ -35,14 +36,19 @@ export function SearchPage() {
         pageSize: 12,
       })
       .then((r) => {
+        if (cancelled) return;
         setItems(r.items);
         setTotal(r.total || r.items.length);
         setTotalPages(r.totalPages || 1);
       })
       .catch(() => {
+        if (cancelled) return;
         setItems([]);
         setTotal(0);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [q, level, domain, page]);
 
   function apply() {

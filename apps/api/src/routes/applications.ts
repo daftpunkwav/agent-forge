@@ -33,20 +33,31 @@ applicationsRouter.post('/', requireAuth, validate(applySchema), async (req, res
       }
     }
 
-    const pending = await prisma.authorApplication.findFirst({
-      where: { userId: req.user!.id, status: 'pending', kind },
-    });
-    if (pending) throw conflict('你已有待审核的同类申请');
-
-    const app = await prisma.authorApplication.create({
-      data: {
-        userId: req.user!.id,
-        field: body.field,
-        bio: body.bio,
-        kind,
-      },
-    });
-    res.status(201).json({ application: app });
+    const pendingGuard = `${req.user!.id}:${kind}`;
+    try {
+      const app = await prisma.$transaction(async (tx) => {
+        const pending = await tx.authorApplication.findFirst({
+          where: { userId: req.user!.id, status: 'pending', kind },
+        });
+        if (pending) throw conflict('你已有待审核的同类申请');
+        return tx.authorApplication.create({
+          data: {
+            userId: req.user!.id,
+            field: body.field,
+            bio: body.bio,
+            kind,
+            pendingGuard,
+          },
+        });
+      });
+      res.status(201).json({ application: app });
+    } catch (e) {
+      // P2002：并发双提交撞 pendingGuard
+      if (e && typeof e === 'object' && 'code' in e && (e as { code: string }).code === 'P2002') {
+        throw conflict('你已有待审核的同类申请');
+      }
+      throw e;
+    }
   } catch (e) {
     next(e);
   }
@@ -91,7 +102,7 @@ applicationsRouter.patch(
       const app = await prisma.$transaction(async (tx) => {
         const updated = await tx.authorApplication.update({
           where: { id: existing.id },
-          data: { status, reviewedAt: new Date() },
+          data: { status, reviewedAt: new Date(), pendingGuard: null },
         });
         if (status === 'approved') {
           if (existing.kind === 'elite') {

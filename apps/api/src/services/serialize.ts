@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { Article, AnimationDef, User, Topic } from '@prisma/client';
 import type {
   PublicUser,
@@ -102,11 +103,14 @@ export function toTopicSummary(
     article?: { id: string; slug: string; title: string } | null;
     _count?: { replies: number };
   },
+  /** 列表场景只回摘要，避免整篇 8000 字正文随列表下发 */
+  opts?: { bodyMax?: number },
 ): TopicSummary {
+  const body = opts?.bodyMax ? t.body.slice(0, opts.bodyMax) : t.body;
   return {
     id: t.id,
     title: t.title,
-    body: t.body,
+    body,
     kind: t.kind as TopicSummary['kind'],
     status: t.status,
     articleId: t.articleId,
@@ -126,5 +130,6 @@ export function slugify(title: string): string {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 80);
-  return base || `article-${Date.now()}`;
+  // 兜底用随机短串而非时间戳：同一毫秒两次保存也会生成不同 slug
+  return base || `article-${Date.now().toString(36)}${randomBytes(3).toString('hex')}`;
 }

@@ -70,11 +70,14 @@ model AuthorApplication {
   field      String
   bio        String
   status     String    @default("pending")
+  /// 仅 pending 时写入 `${userId}:${kind}`，审核后置 null；用于并发唯一约束
+  pendingGuard String?
   reviewedAt DateTime?
   createdAt  DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([pendingGuard])
   @@index([userId])
   @@index([status])
   @@index([kind, status])
@@ -206,20 +209,23 @@ model Annotation {
 
 /// Agent 对话会话（面板长期上下文）
 model AgentConversation {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String?
   /// 匿名会话 cookie / 浏览器指纹 hash（可选）
   guestKey  String?
-  title     String   @default("")
-  summary   String   @default("")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  title     String    @default("")
+  summary   String    @default("")
+  /// 匿名会话过期时间；登录用户会话可为空（长期保留）
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   user     User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages AgentMessage[]
 
   @@index([userId, updatedAt])
   @@index([guestKey])
+  @@index([expiresAt])
 }
 
 model AgentMessage {

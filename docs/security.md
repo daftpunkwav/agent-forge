@@ -10,8 +10,9 @@
 - [x] HTTP — `apps/api/src/app.ts`：
   - `helmet()` 默认中间件
   - CORS 白名单（`CORS_ORIGIN`，默认 `http://localhost:5173`）
-  - `app.set('trust proxy', 1)`（反向代理下 rate-limit 兼容）
+  - `TRUST_PROXY`：仅当 `TRUST_PROXY=1` 时信任第一跳代理（默认关闭，防伪造 XFF 绕过限流）
   - JSON 体积上限 1 MB
+- [x] `/agent/cache/clear` 限管理员（`requireRole('admin')`）
 - [x] rate limit — `express-rate-limit`：
   - 全局 `generalLimiter`：120 req/min
   - 鉴权 `authLimiter`：20 req/min
@@ -26,10 +27,11 @@
 - [x] Agent 路由限流更严（见上 `agentLimiter`）
 - [x] BYOK 仅服务端 — `apps/api/src/lib/llm/providers.ts`：`byokToProvider` 不写日志；前端 `lib/apiToken.ts` 仅在请求头携带；`maskApiKey` 用于脱敏展示
 - [x] MCP 协议入口占位 — `GET /api/v1/mcp/status` 返回 `status: 'reserved'`（**MCP 进程未实现**）
+- [x] `SEED_ADMIN_PASSWORD` 必填（缺失即 seed 退出）；已有用户不自动提权，需 `SEED_FORCE_ADMIN=1`
 
 ## 未实现 / 待办
 
-- [ ] 生产替换 `JWT_SECRET` 与管理员默认密码（`SEED_ADMIN_PASSWORD`）
+- [ ] 生产替换 `JWT_SECRET` 与足够强度的 `SEED_ADMIN_PASSWORD`
 - [ ] 生产使用 PostgreSQL（当前 SQLite 占位；`schema.prisma` 已可切换 `provider`）与 HTTPS 终止
 - [ ] 备份与密钥轮转流程
 - [ ] 批注（`Annotation`）写入/审核 API（模型已有，路由缺失）

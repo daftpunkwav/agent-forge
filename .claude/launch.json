@@ -2,9 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "agentforge-static",
+      "name": "agentforge-static (legacy)",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server"],
+      "cwd": "${workspaceFolder}/_legacy",
       "port": 8080,
       "autoPort": true
     }

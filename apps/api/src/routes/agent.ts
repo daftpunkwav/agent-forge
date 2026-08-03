@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
+import { logger } from '../lib/logger.js';
 import { validate } from '../middleware/validate.js';
-import { optionalAuth, requireAuth } from '../middleware/auth.js';
+import { optionalAuth, requireAuth, requireRole } from '../middleware/auth.js';
 import { AppError, badRequest } from '../lib/errors.js';
 import {
   callLlm,
@@ -20,9 +21,7 @@ import {
   extractHoverAnswer,
   extractVisibleAnswer,
   formatMemoryBlock,
-  isCompleteHoverAnswer,
-  isLikelyHoverTeaching,
-  looksLikeHoverPlanning,
+  isSafeHoverPublicAnswer,
 } from '../lib/llm/agentPrompt.js';
 import type { ByokConfig, ProviderConfig } from '../lib/llm/types.js';
 
@@ -66,22 +65,15 @@ const chatSchema = z.object({
   mode: z.enum(['fast', 'deep']).optional(),
 });
 
+/**
+ * 缓存 key 版本号：语义或样式影响缓存内容时 +1（历史：v1 无样式维度 → v7 堵口令泄漏）。
+ * 升级后旧 key 自然过期，无需手工清库。
+ */
+const HOVER_CACHE_KEY_VERSION = 'v7';
+
 function hoverCacheKey(topic: string, style: string): string {
   const norm = topic.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 400);
-  // v7：堵住「等下要准确/每句结尾句号」口令泄漏与 strip 空回退
-  return createHash('sha256').update(`v7::${style}::${norm}`).digest('hex').slice(0, 48);
-}
-
-/** 悬停缓存/对外答案：2～3 句陈述 + 无旁白（思考/规则/改稿一律拒） */
-function isSafeHoverPublicAnswer(answer: string): boolean {
-  const a = (answer || '').trim();
-  if (!a) return false;
-  if (!isCompleteHoverAnswer(a)) return false;
-  if (looksLikeHoverPlanning(a)) return false;
-  if (/[？?]/.test(a)) return false;
-  if ((a.match(/[。！]/g) || []).length > 3) return false;
-  if (a.length > 260) return false;
-  return isLikelyHoverTeaching(a);
+  return createHash('sha256').update(`${HOVER_CACHE_KEY_VERSION}::${style}::${norm}`).digest('hex').slice(0, 48);
 }
 
 /** 按句 soft-stream；句间短延迟提升可读性 */
@@ -131,7 +123,9 @@ async function getHoverCache(topic: string, style: string): Promise<string | nul
   if (!row) return null;
   // 质检：历史脏数据（含思考过程）直接删掉，避免反复毒害
   if (!isSafeHoverPublicAnswer(row.answer)) {
-    void prisma.hoverExplainCache.delete({ where: { cacheKey: key } }).catch(() => undefined);
+    void prisma.hoverExplainCache
+      .delete({ where: { cacheKey: key } })
+      .catch((e) => logger.warn({ err: String(e), key }, 'hover cache: drop dirty row failed'));
     return null;
   }
   const age = Date.now() - row.updatedAt.getTime();
@@ -139,32 +133,60 @@ async function getHoverCache(topic: string, style: string): Promise<string | nul
   if (age > ttl) return null;
   void prisma.hoverExplainCache
     .update({ where: { cacheKey: key }, data: { hits: { increment: 1 } } })
-    .catch(() => undefined);
+    .catch((e) => logger.warn({ err: String(e), key }, 'hover cache: hits increment failed'));
   return row.answer;
 }
 
 async function setHoverCache(topic: string, style: string, answer: string) {
   if (!isSafeHoverPublicAnswer(answer)) return;
   const key = hoverCacheKey(topic, style);
-  await prisma.hoverExplainCache.upsert({
-    where: { cacheKey: key },
-    create: { cacheKey: key, topic: topic.slice(0, 200), answer: answer.slice(0, 1200) },
-    update: { answer: answer.slice(0, 1200), topic: topic.slice(0, 200) },
+  try {
+    await prisma.hoverExplainCache.upsert({
+      where: { cacheKey: key },
+      create: { cacheKey: key, topic: topic.slice(0, 200), answer: answer.slice(0, 1200) },
+      update: { answer: answer.slice(0, 1200), topic: topic.slice(0, 200) },
+    });
+  } catch (e) {
+    // 缓存写失败不应影响主链路，但要留痕以便发现反复失败
+    logger.warn({ err: String(e), key }, 'hover cache: write failed');
+  }
+}
+
+const GUEST_CONV_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** 清理过期匿名会话（级联删除 messages） */
+async function purgeExpiredGuestConversations() {
+  await prisma.agentConversation.deleteMany({
+    where: {
+      userId: null,
+      expiresAt: { lt: new Date() },
+    },
   });
 }
 
 async function ensureConversation(userId: string | undefined, conversationId?: string) {
+  // 轻量清理：每次建会话路径顺带扫过期匿名会话
+  void purgeExpiredGuestConversations().catch((e) =>
+    logger.warn({ err: String(e) }, 'guest conversation purge failed'),
+  );
+
   if (conversationId) {
     const existing = await prisma.agentConversation.findUnique({ where: { id: conversationId } });
     // 访问控制：已登录仅本人会话；匿名仅允许无主（userId 为空）会话，其余按找不到处理（走下方新建）
     if (existing && (userId ? existing.userId === userId : !existing.userId)) {
-      return existing;
+      // 已过期的匿名会话视为无效，新建
+      if (!userId && existing.expiresAt && existing.expiresAt.getTime() < Date.now()) {
+        // fall through to create
+      } else {
+        return existing;
+      }
     }
   }
   return prisma.agentConversation.create({
     data: {
       userId: userId || null,
       title: '对话',
+      expiresAt: userId ? null : new Date(Date.now() + GUEST_CONV_TTL_MS),
     },
   });
 }
@@ -222,16 +244,20 @@ async function maybeSaveImportantMemory(userId: string | undefined, userMsg: str
   // 用户明确要求记住 / 偏好
   if (/请记住|记住：|我的偏好|以后.*用/.test(userMsg)) {
     const key = `pref:${userMsg.slice(0, 40)}`;
-    await prisma.agentMemory.upsert({
-      where: { userId_key: { userId, key } },
-      create: {
-        userId,
-        key,
-        value: `${userMsg.slice(0, 120)} → ${answer.slice(0, 200)}`,
-        kind: 'preference',
-      },
-      update: { value: `${userMsg.slice(0, 120)} → ${answer.slice(0, 200)}` },
-    });
+    try {
+      await prisma.agentMemory.upsert({
+        where: { userId_key: { userId, key } },
+        create: {
+          userId,
+          key,
+          value: `${userMsg.slice(0, 120)} → ${answer.slice(0, 200)}`,
+          kind: 'preference',
+        },
+        update: { value: `${userMsg.slice(0, 120)} → ${answer.slice(0, 200)}` },
+      });
+    } catch (e) {
+      logger.warn({ err: String(e), userId }, 'save important memory failed');
+    }
   }
 }
 
@@ -301,23 +327,34 @@ async function loadUserContext(userId?: string, route?: string) {
 async function rememberTopic(userId: string | undefined, topic: string, mode: string) {
   if (!userId || !topic.trim()) return;
   const key = `seen:${topic.slice(0, 80)}`;
-  await prisma.agentMemory.upsert({
-    where: { userId_key: { userId, key } },
-    create: {
-      userId,
-      key,
-      value: `用户在 ${mode} 模式询问过：${topic.slice(0, 200)}`,
-      kind: 'fact',
-    },
-    update: {
-      value: `用户再次询问（${mode}）：${topic.slice(0, 200)}`,
-      kind: 'fact',
-    },
-  });
+  try {
+    await prisma.agentMemory.upsert({
+      where: { userId_key: { userId, key } },
+      create: {
+        userId,
+        key,
+        value: `用户在 ${mode} 模式询问过：${topic.slice(0, 200)}`,
+        kind: 'fact',
+      },
+      update: {
+        value: `用户再次询问（${mode}）：${topic.slice(0, 200)}`,
+        kind: 'fact',
+      },
+    });
+  } catch (e) {
+    // fire-and-forget 写入：失败不打断主链路，但留痕
+    logger.warn({ err: String(e), userId }, 'remember topic failed');
+  }
 }
 
 function llmError(err: unknown): AppError {
   const msg = err instanceof Error ? err.message : String(err);
+  logger.error(
+    {
+      err: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : { raw: String(err) },
+    },
+    'LLM call failed',
+  );
   return new AppError(502, 'LLM_ERROR', msg);
 }
 
@@ -352,7 +389,7 @@ agentRouter.get('/meta', (_req, res) => {
  * 清除悬停 Agent 服务端缓存（L2）。
  * 清除后所有卡片/气泡讲解均需重新调用 LLM，不再命中历史脏数据。
  */
-agentRouter.post('/cache/clear', requireAuth, async (_req, res, next) => {
+agentRouter.post('/cache/clear', requireAuth, requireRole('admin'), async (_req, res, next) => {
   try {
     const result = await prisma.hoverExplainCache.deleteMany({});
     res.json({
@@ -800,38 +837,53 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
     try {
       let thinkingAcc = '';
       let textAcc = '';
-      for await (const chunk of streamLlm(
-        {
-          mode,
-          maxTokens: mode === 'fast' ? 500 : 2048,
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: userContent },
-          ],
-        },
-        provider,
-      )) {
-        // 客户端已断开：停止生成，且不入库
-        if (res.writableEnded || res.destroyed) {
-          return;
-        }
-        if (chunk.kind === 'thinking') {
-          thinkingAcc += chunk.text;
-          if (mode === 'fast') {
-            sseWrite(res, { type: 'status', status: 'thinking' });
-          } else {
-            sseWrite(res, { type: 'thinking', text: chunk.text });
+      const llmAbort = new AbortController();
+      // 客户端断开时取消上游 LLM，避免 token 空转
+      req.on('close', () => {
+        if (!res.writableEnded) llmAbort.abort();
+      });
+
+      try {
+        for await (const chunk of streamLlm(
+          {
+            mode,
+            maxTokens: mode === 'fast' ? 500 : 2048,
+            signal: llmAbort.signal,
+            messages: [
+              { role: 'system', content: system },
+              { role: 'user', content: userContent },
+            ],
+          },
+          provider,
+        )) {
+          // 客户端已断开：停止生成，且不入库
+          if (res.writableEnded || res.destroyed || llmAbort.signal.aborted) {
+            llmAbort.abort();
+            return;
           }
-        } else {
-          textAcc += chunk.text;
-          if (mode === 'fast') {
-            sseWrite(res, { type: 'status', status: 'thinking' });
+          if (chunk.kind === 'thinking') {
+            thinkingAcc += chunk.text;
+            if (mode === 'fast') {
+              sseWrite(res, { type: 'status', status: 'thinking' });
+            } else {
+              sseWrite(res, { type: 'thinking', text: chunk.text });
+            }
           } else {
-            sseWrite(res, { type: 'delta', text: chunk.text });
+            textAcc += chunk.text;
+            if (mode === 'fast') {
+              sseWrite(res, { type: 'status', status: 'thinking' });
+            } else {
+              sseWrite(res, { type: 'delta', text: chunk.text });
+            }
           }
         }
+      } catch (e) {
+        if (e instanceof Error && e.name === 'AbortError') return;
+        if (llmAbort.signal.aborted || res.writableEnded || res.destroyed) return;
+        throw e;
       }
-      if (res.writableEnded || res.destroyed) {
+
+      if (res.writableEnded || res.destroyed || llmAbort.signal.aborted) {
         return;
       }
       const visible = extractVisibleAnswer(thinkingAcc, textAcc);
@@ -852,12 +904,14 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
       void rememberTopic(req.user?.id, body.message, 'chat');
       void maybeSaveImportantMemory(req.user?.id, body.message, visible.answer);
     } catch (e) {
-      sseWrite(res, {
-        type: 'error',
-        message: e instanceof Error ? e.message : String(e),
-      });
+      if (!(e instanceof Error && e.name === 'AbortError') && !res.writableEnded && !res.destroyed) {
+        sseWrite(res, {
+          type: 'error',
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
-    res.end();
+    if (!res.writableEnded) res.end();
   } catch (e) {
     next(e);
   }
@@ -920,6 +974,18 @@ agentRouter.post(
       };
       const article = await prisma.article.findUnique({ where: { slug: body.articleSlug } });
       if (!article) throw badRequest('文章不存在');
+      const existing = await prisma.learningProgress.findUnique({
+        where: { userId_articleId: { userId: req.user!.id, articleId: article.id } },
+      });
+      const nextProgress =
+        body.progress == null
+          ? (existing?.progress ?? 0.3)
+          : Math.max(existing?.progress ?? 0, body.progress);
+      // mastered 不可降级；其余以请求为准（缺省保留或 learning）
+      let nextMastery = body.mastery || existing?.mastery || 'learning';
+      if (existing?.mastery === 'mastered' && nextMastery !== 'mastered') {
+        nextMastery = 'mastered';
+      }
       const item = await prisma.learningProgress.upsert({
         where: {
           userId_articleId: { userId: req.user!.id, articleId: article.id },
@@ -931,11 +997,11 @@ agentRouter.post(
           mastery: body.mastery || 'learning',
         },
         update: {
-          progress: body.progress,
-          mastery: body.mastery,
+          progress: nextProgress,
+          mastery: nextMastery,
         },
       });
-      if (body.mastery === 'mastered') {
+      if (nextMastery === 'mastered') {
         await prisma.agentMemory.upsert({
           where: {
             userId_key: { userId: req.user!.id, key: `mastered:${article.slug}` },

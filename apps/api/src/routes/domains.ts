@@ -200,8 +200,10 @@ domainsRouter.delete('/:id', requireAuth, requirePermission('domain.manage'), as
     const id = param(req, 'id');
     const existing = await prisma.domain.findUnique({ where: { id } });
     if (!existing) throw notFound('领域不存在');
-    await prisma.article.updateMany({ where: { domainId: id }, data: { domainId: null } });
-    await prisma.domain.delete({ where: { id } });
+    await prisma.$transaction([
+      prisma.article.updateMany({ where: { domainId: id }, data: { domainId: null } }),
+      prisma.domain.delete({ where: { id } }),
+    ]);
     res.json({ ok: true });
   } catch (e) {
     next(e);

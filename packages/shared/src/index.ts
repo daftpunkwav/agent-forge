@@ -1,5 +1,23 @@
 /** 共享类型与常量 — AgentForge */
 
+export {
+  HOVER_CARD_MAX_SENTENCES,
+  HOVER_CARD_MAX_CHARS,
+  stripSelfRevisionDraft,
+  isLikelyHoverTeaching,
+  finalizeHoverCardText,
+  progressiveHoverAnswer,
+  extractHoverAnswer,
+  isCompleteHoverAnswer,
+  looksLikeHoverPlanning,
+  isSafeHoverPublicAnswer,
+  sanitizeHoverDisplay,
+  // 前端别名
+  stripSelfRevisionClient,
+  isSafeHoverDisplay,
+  isLikelyHoverTeachingClient,
+} from './hoverSanitize.js';
+
 export type { UserRole, AuthorTier, RuntimeIdentity, Permission, Principal } from './permissions.js';
 export {
   can,

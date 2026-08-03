@@ -330,3 +330,46 @@
 | P1 | trust proxy 环境化;cache/clear 加权限;匿名数据 TTL | M-02 / M-03 / M-04 |
 | P2 | 结构化日志;AgentFloat 拆分;页面竞态防护;SVG id 唯一化 | M-05 / M-06 / M-13 / M-12 |
 | P3 | 死代码清理(静态站、buildScene);文档同步;lint 补全 | L-01 / L-02 / M-16 等 |
+
+---
+
+## 7. 修复记录(2026-08-03)
+
+> 本报告发布后按路线图执行的修改。验证:双端 `tsc --noEmit` 零错误、`npm test` 11/11 通过、`npm run lint` 0 错误(9 条 web 既有警告未新增)。
+
+| 条目 | 状态 | 修改摘要 |
+|------|------|----------|
+| C-01 零测试 | ✅ | 接入 Vitest(`apps/api/vitest.config.ts` + `agentPrompt.hover.test.ts` 11 例);根 `npm test`;旧脚本改派发器 |
+| C-02 seed 提权 | ✅ | 密码缺失即退出;已存在用户不自动提权,需 `SEED_FORCE_ADMIN=1` |
+| C-03 chat/stream abort | ✅ | `req.on('close')` + AbortController 联动上游,断线即停 |
+| C-04 端口 | ✅ | vite 代理改 3001 |
+| C-05 进度回退 | ✅ | 移除打开文章即写 0.4;后端 upsert 取 max + mastered 不可降级 |
+| M-01 净化双份 | ✅ | 逻辑下沉 `packages/shared/src/hoverSanitize.ts`(正则并集,只加不减),agentPrompt/hoverExplainCache 改为 re-export |
+| M-02 trust proxy | ✅ | `TRUST_PROXY=1` 才信任 |
+| M-03 cache/clear 权限 | ✅ | `requireRole('admin')` |
+| M-04 匿名会话 TTL | ✅ | `expiresAt` 列(7 天)+ 建会话路径顺带清理 + 索引 |
+| M-05 日志体系 | ✅ | pino + requestId + 请求日志中间件;errorHandler/LLM 失败/缓存写失败/记忆写失败打点;fire-and-forget 全部留痕 |
+| M-06 AgentFloat | ✅ | 抽取 `runPanelStream` 公共流式流程(deepExplain/send 共用,行为等价) |
+| M-07 文案 | ✅ | 显示时长由 `HOVER_REVEAL_MS` 常量生成 |
+| M-08 请求超时 | ✅ | `request()` 15s 超时(与调用方 signal 合并),204 空响应处理 |
+| M-09 viewCount 防刷 | ✅ | 24h 同用户/IP 去重(内存级) |
+| M-10 domains 事务 | ✅ | 解绑+删除包 `$transaction` |
+| M-11 申请唯一约束 | ✅ | `pendingGuard`(userId:kind)唯一索引,审核后置 null;P2002 映射;dev.db 已同步 |
+| M-12 SVG id | ✅ | `useId` 唯一化 ringGlow/arrow |
+| M-13 页面竞态 | ✅ | SearchPage / LlmOverviewPage / KnowledgeOverviewPage 加 cancelled 标志 |
+| M-14 展开锁 | ✅ | 卸载时失效 gen/session,杜绝锁释放后的无效 setState |
+| M-15 tsconfig | ✅ | API 侧补 `noUnusedLocals/noUnusedParameters`(并修出 1 处命名错误) |
+| M-16 lint | ✅ | API 接入 oxlint(0 警告) |
+| L-01 遗留静态站 | ✅ | `git mv` 至 `_legacy/`(保留历史,目录被忽略);截图一并归档;launch.json 指向 `_legacy` |
+| L-02 文档 | ✅ | dev-progress/code-review 的 `tests/` 误述修正;PLAN §9 标记完成;security.md 已同步 |
+| L-03 废弃 stub | ✅ | 删除 `@types/dompurify`、`@types/bcryptjs` |
+| L-04 硬编码默认值 | ✅ | SettingsPage BYOK 默认值提取为 `DEFAULT_BYOK` 常量 |
+| L-05 topics 截断 | ✅ | 列表只回 160 字摘要,详情回全文 |
+| L-06 validate | ✅ | 去 eslint 残留注释,`as any` 改为显式断言 |
+| L-07 slugify | ✅ | 兜底改 `Date.now().toString(36)+randomBytes` |
+| L-08 seed 幂等 | ✅ | 动画关联仅补缺失,不再 deleteMany |
+| L-12 死代码 | ✅ | buildScene 死分支/恒空展开/转发层清理;ArticleLayout 死 props 删除 |
+| L-09/L-10/L-11 | ⏸️ 未做 | 样式类改动,按用户要求不触碰视觉效果 |
+| G-01 缓存版本 | ✅ | `HOVER_CACHE_KEY_VERSION` 常量 + 演进注释 |
+| G-03 204 响应 | ✅ | `request()` 空响应不再 `res.json()` |
+| G-04 截图归档 | ✅ | bug-1~4.png 移入 `_legacy/` |

@@ -46,9 +46,6 @@ export function ArticlePage() {
       .getArticle(slug)
       .then((r) => {
         if (!cancelled) setArticle(r.article);
-        if (user) {
-          void api.agentProgress({ articleSlug: slug, progress: 0.4, mastery: 'learning' });
-        }
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -62,7 +59,7 @@ export function ArticlePage() {
     return () => {
       cancelled = true;
     };
-  }, [slug, user]);
+  }, [slug]);
 
   if (loading) {
     return (

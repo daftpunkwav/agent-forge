@@ -60,7 +60,6 @@ function buildRingScene(steps: AnimationStep[], kindLabel: string): SceneModel {
 
   const frames: VizFrame[] = [];
   let cycle = 0;
-  let lastPhase = '';
 
   steps.forEach((s, i) => {
     const role = stepRole(s);
@@ -90,17 +89,10 @@ function buildRingScene(steps: AnimationStep[], kindLabel: string): SceneModel {
         ? [edges[(phaseIdx + ringOrder.length - 1) % ringOrder.length].id]
         : [];
 
-    const doneNodeIds = frames.flatMap((f) => f.activeNodeIds).filter((id, idx, arr) => arr.indexOf(id) === idx);
-    if (active && active !== lastPhase) {
-      // keep cumulative done
-    }
-
-    const finished = role === 'answer' || role === 'stop' || i === steps.length - 1 && role === 'answer';
-
     frames.push({
       activeNodeIds: active ? [active] : [],
       activeEdgeIds,
-      doneNodeIds: [...new Set([...doneNodeIds, ...(active && role !== 'answer' ? [] : [])])],
+      doneNodeIds: [],
       doneEdgeIds: [],
       centerTitle:
         role === 'input'
@@ -134,9 +126,6 @@ function buildRingScene(steps: AnimationStep[], kindLabel: string): SceneModel {
         ...new Set([...prev.doneEdgeIds, ...prev.activeEdgeIds.filter((id) => !frames[i].activeEdgeIds.includes(id))]),
       ];
     }
-
-    lastPhase = active;
-    void finished;
   });
 
   // 终态：全部 done
@@ -331,7 +320,8 @@ function buildDataflowScene(steps: AnimationStep[]): SceneModel {
   ];
   const frames: VizFrame[] = steps.map((s, i) => {
     const role = stepRole(s);
-    const outbound = !['result', 'resource'].includes(role) || role === 'connect' || role === 'list' || role === 'call';
+    // 除结果/资源类步骤外均为出站请求
+    const outbound = !['result', 'resource'].includes(role);
     // alternate roughly by step
     const toServer = i % 2 === 0 || outbound;
     return {
@@ -382,10 +372,6 @@ function buildLayersScene(steps: AnimationStep[]): SceneModel {
   return { kind: 'layers', nodes, edges, frames, title: 'Memory Layers' };
 }
 
-function buildTimelineScene(steps: AnimationStep[]): SceneModel {
-  return buildChainScene(steps);
-}
-
 export function buildSceneFromSteps(
   steps: AnimationStep[],
   template?: string,
@@ -408,7 +394,7 @@ export function buildSceneFromSteps(
     case 'layers':
       return buildLayersScene(safe);
     default:
-      return buildTimelineScene(safe);
+      return buildChainScene(safe);
   }
 }
 

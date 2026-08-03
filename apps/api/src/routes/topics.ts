@@ -44,7 +44,8 @@ topicsRouter.get('/', optionalAuth, async (req, res, next) => {
       }),
     ]);
     res.json({
-      items: items.map(toTopicSummary),
+      // 列表只回 160 字摘要，详情接口回全文（见 GET /:id）
+      items: items.map((t) => toTopicSummary(t, { bodyMax: 160 })),
       total,
       page,
       pageSize,

@@ -24,13 +24,23 @@ export function KnowledgeOverviewPage() {
   }, [viewMode]);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     const t = track === 'all' ? undefined : track;
     api
       .listDomains(t)
-      .then((r) => setDomains(r.items))
-      .catch(() => setDomains([]))
-      .finally(() => setLoading(false));
+      .then((r) => {
+        if (!cancelled) setDomains(r.items);
+      })
+      .catch(() => {
+        if (!cancelled) setDomains([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [track]);
 
   const chips = useMemo(

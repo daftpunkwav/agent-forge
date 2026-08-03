@@ -26,6 +26,27 @@ const updateSchema = createSchema.partial().extend({
 
 export const articlesRouter = Router();
 
+/**
+ * 阅读量去重（进程内存级）：同一用户/IP 24h 内对同一篇文章只计一次。
+ * 多实例部署下每实例各自计数，仍能显著抑制刷新/爬虫刷量；生产可换 Redis。
+ */
+const VIEW_DEDUP_TTL_MS = 24 * 60 * 60 * 1000;
+const viewedCache = new Map<string, number>();
+
+function shouldCountView(key: string): boolean {
+  const now = Date.now();
+  const last = viewedCache.get(key);
+  if (last && now - last < VIEW_DEDUP_TTL_MS) return false;
+  viewedCache.set(key, now);
+  // 防内存膨胀：量级超过阈值时顺带清理过期键
+  if (viewedCache.size > 10_000) {
+    for (const [k, v] of viewedCache) {
+      if (now - v > VIEW_DEDUP_TTL_MS) viewedCache.delete(k);
+    }
+  }
+  return true;
+}
+
 articlesRouter.get('/', optionalAuth, async (req, res, next) => {
   try {
     const status = (req.query.status as string) || 'published';
@@ -140,13 +161,16 @@ articlesRouter.get('/:slug', optionalAuth, async (req, res, next) => {
         (req.user.id === article.authorId || req.user.role === 'admin');
       if (!can) throw notFound('文章不存在');
     } else {
-      // 异步增加阅读量
-      void prisma.article
-        .update({
-          where: { id: article.id },
-          data: { viewCount: { increment: 1 } },
-        })
-        .catch(() => undefined);
+      // 异步增加阅读量（24h 内同一用户/IP 去重，防刷新刷量）
+      const viewerKey = `${req.user?.id || req.ip || 'anon'}:${article.id}`;
+      if (shouldCountView(viewerKey)) {
+        void prisma.article
+          .update({
+            where: { id: article.id },
+            data: { viewCount: { increment: 1 } },
+          })
+          .catch(() => undefined);
+      }
     }
     res.json({ article: toArticleDetail(article) });
   } catch (e) {

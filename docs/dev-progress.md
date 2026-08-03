@@ -197,7 +197,7 @@ LLM Provider 层（`apps/api/src/lib/llm/`）：
 | 项 | 说明 |
 |----|------|
 | 部署脚本 | 无 Dockerfile / docker-compose（PLAN 中提到的可选 Postgres 容器未落地） |
-| CI / 自动化测试 | `tests/` 目录仅有遗留脚本（`theme-manager.js`、`toc.js`、`debug-white-screen.mjs`），无 Vitest / Playwright 用例 |
+| CI / 自动化测试 | Vitest 已接入 `apps/api`（`agentPrompt.hover.test.ts` 净化回归 11 例，`npm test`）；旧 `scripts/` 遗留脚本已随静态站移入 `_legacy/` |
 | 生产数据库 | 默认 SQLite；PostgreSQL 切换需改 `provider` + 迁移脚本 |
 | 监控 / 指标 | 无 Prometheus / Sentry / 日志聚合 |
 | 国际化 | 全站中文硬编码，无 i18n 框架 |

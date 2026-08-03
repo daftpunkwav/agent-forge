@@ -17,8 +17,6 @@ export function ArticleLayout({
   meta?: ReactNode;
   children: ReactNode;
   articleSlug?: string;
-  articleId?: string;
-  isArticleAuthor?: boolean;
 }) {
   return (
     <div

@@ -2,6 +2,7 @@ import type { ErrorRequestHandler } from 'express';
 import { AppError } from '../lib/errors.js';
 import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
+import { logger } from '../lib/logger.js';
 
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof AppError) {
@@ -43,7 +44,17 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     }
   }
 
-  console.error('[api]', err);
+  logger.error(
+    {
+      err: err instanceof Error
+        ? { name: err.name, message: err.message, stack: err.stack }
+        : { raw: String(err) },
+      method: _req.method,
+      url: _req.originalUrl,
+      requestId: res.locals.requestId,
+    },
+    'unhandled error',
+  );
   const isProd = process.env.NODE_ENV === 'production';
   res.status(500).json({
     error: {

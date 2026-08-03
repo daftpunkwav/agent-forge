@@ -18,10 +18,18 @@ export function LlmOverviewPage() {
   }, [viewMode]);
 
   useEffect(() => {
+    let cancelled = false;
     api
       .listDomains('llm')
-      .then((r) => setDomains(r.items))
-      .catch(() => setDomains([]));
+      .then((r) => {
+        if (!cancelled) setDomains(r.items);
+      })
+      .catch(() => {
+        if (!cancelled) setDomains([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (

@@ -10,6 +10,17 @@ import { Tag } from '@/components/ui/Tag';
 
 type ApiFormat = 'anthropic_messages' | 'openai_chat' | 'openai_responses';
 
+/**
+ * BYOK 表单初始值：仅当用户尚无 BYOK 配置时作为默认占位展示。
+ * 更换服务端默认供应商时同步调整这里（或改为从 /agent/providers 的 defaultId 派生）。
+ */
+const DEFAULT_BYOK = {
+  name: 'StepFun',
+  baseUrl: 'https://api.stepfun.com/step_plan',
+  model: 'step-3.7-flash',
+  format: 'anthropic_messages' as ApiFormat,
+};
+
 export function SettingsPage() {
   const { theme, toggle, setTheme, accent, setAccent } = useTheme();
   const { user } = useAuth();
@@ -26,13 +37,13 @@ export function SettingsPage() {
 
   // BYOK
   const [byokEnabled, setByokEnabled] = useState(false);
-  const [byokName, setByokName] = useState('StepFun');
-  const [byokBaseUrl, setByokBaseUrl] = useState('https://api.stepfun.com/step_plan');
+  const [byokName, setByokName] = useState(DEFAULT_BYOK.name);
+  const [byokBaseUrl, setByokBaseUrl] = useState(DEFAULT_BYOK.baseUrl);
   const [byokApiKey, setByokApiKey] = useState('');
   const [byokKeyMasked, setByokKeyMasked] = useState('');
   const [byokHasKey, setByokHasKey] = useState(false);
-  const [byokModel, setByokModel] = useState('step-3.7-flash');
-  const [byokFormat, setByokFormat] = useState<ApiFormat>('anthropic_messages');
+  const [byokModel, setByokModel] = useState(DEFAULT_BYOK.model);
+  const [byokFormat, setByokFormat] = useState<ApiFormat>(DEFAULT_BYOK.format);
   const [byokVision, setByokVision] = useState(true);
 
   const [saved, setSaved] = useState('');

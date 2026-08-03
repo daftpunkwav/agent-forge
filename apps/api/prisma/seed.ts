@@ -65,31 +65,55 @@ const DOMAIN_DEFS = [
 
 async function main() {
   const email = (process.env.SEED_ADMIN_EMAIL || 'admin@agentforge.local').toLowerCase();
-  const password = process.env.SEED_ADMIN_PASSWORD || 'ChangeMe_Admin_123!';
+  const password = process.env.SEED_ADMIN_PASSWORD;
   const name = process.env.SEED_ADMIN_NAME || 'AgentForge Admin';
+  const forceAdmin = process.env.SEED_FORCE_ADMIN === '1';
+
+  // 禁止硬编码兜底口令：缺失即拒绝，避免公开已知密码创建超管
+  if (!password || password.length < 8) {
+    console.error('[seed] SEED_ADMIN_PASSWORD 必填且至少 8 字符；拒绝使用内置兜底口令');
+    process.exit(1);
+  }
 
   const passwordHash = await bcrypt.hash(password, 12);
+  const existing = await prisma.user.findUnique({ where: { email } });
 
-  const admin = await prisma.user.upsert({
-    where: { email },
-    // update 不写 passwordHash：避免每次 seed 重置管理员密码（仅 create 时设置）
-    update: {
-      role: 'admin',
-      name,
-      adminLevel: 100,
-      authorTier: 'elite',
-    },
-    create: {
-      email,
-      name,
-      passwordHash,
-      role: 'admin',
-      adminLevel: 100,
-      authorTier: 'elite',
-    },
-  });
-
-  console.log(`[seed] super admin (level 100): ${admin.email}`);
+  let admin;
+  if (!existing) {
+    admin = await prisma.user.create({
+      data: {
+        email,
+        name,
+        passwordHash,
+        role: 'admin',
+        adminLevel: 100,
+        authorTier: 'elite',
+      },
+    });
+    console.log(`[seed] created super admin (level 100): ${admin.email}`);
+  } else if (forceAdmin) {
+    // 显式 SEED_FORCE_ADMIN=1 才允许把已有账号提权为超管（不重置密码）
+    admin = await prisma.user.update({
+      where: { email },
+      data: {
+        role: 'admin',
+        name,
+        adminLevel: 100,
+        authorTier: 'elite',
+      },
+    });
+    console.log(`[seed] forced elevation to super admin: ${admin.email}`);
+  } else {
+    // 已存在则不自动提权，防止「先注册同邮箱再跑 seed」接管
+    admin = existing;
+    if (existing.role !== 'admin' || existing.adminLevel < 100) {
+      console.warn(
+        `[seed] user ${email} already exists (role=${existing.role}, level=${existing.adminLevel}); skip admin elevation. Set SEED_FORCE_ADMIN=1 to force.`,
+      );
+    } else {
+      console.log(`[seed] super admin already present: ${admin.email}`);
+    }
+  }
 
   const domainMap = new Map<string, string>();
   for (const d of DOMAIN_DEFS) {
@@ -170,10 +194,15 @@ async function main() {
       },
     });
 
-    await prisma.articleAnimation.deleteMany({ where: { articleId: article.id } });
-    await prisma.articleAnimation.create({
-      data: { articleId: article.id, animationId: anim.id, sortOrder: 0 },
+    // 仅补缺失的动画关联：不 deleteMany 重建，避免抹掉用户手动关联（seed 幂等保留）
+    const existingLink = await prisma.articleAnimation.findUnique({
+      where: { articleId_animationId: { articleId: article.id, animationId: anim.id } },
     });
+    if (!existingLink) {
+      await prisma.articleAnimation.create({
+        data: { articleId: article.id, animationId: anim.id, sortOrder: 0 },
+      });
+    }
 
     console.log(`[seed] article: ${article.slug} → ${domainDef?.slug || 'none'}`);
   }

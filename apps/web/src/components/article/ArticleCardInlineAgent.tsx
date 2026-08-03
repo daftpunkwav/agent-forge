@@ -98,6 +98,10 @@ export function ArticleCardInlineAgent({
 
   useEffect(
     () => () => {
+      // 卸载即失效整个会话：即使 acquireExpand 已 resolve、微任务尚未恢复，
+      // 后续恢复也会因 gen/sessionOn 失效而走释放分支，杜绝卸载后无效 setState
+      sessionOn.current = false;
+      genRef.current += 1;
       clearAllTimers();
       abortRef.current?.abort();
       cancelExpandRequest(lockId);
