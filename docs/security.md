@@ -43,6 +43,7 @@
 
 - 用户 BYOK 仅服务端解析为 Provider；不写日志；前端只展示 host + 脱敏 key
 - apiKey 静态加密（AES-256-GCM，`lib/byokCrypto.ts`）：库中不留明文；`BYOK_ENCRYPTION_KEY` 未配置时回退 `JWT_SECRET` 派生密钥
+  - ⚠️ **密钥轮换警告**：轮换 `BYOK_ENCRYPTION_KEY` 或回退密钥 `JWT_SECRET` 后，历史密文将无法解密（读取返回空、BYOK 静默回退服务端默认，用户无感知错误）。轮换前需让用户重新填写 BYOK key，或先清空 `User.preferences` 中的 `byok`
 - 服务端默认 Provider：StepFun / OpenAI / Generic（`STEPFUN_*` / `OPENAI_*` / `GENERIC_LLM_*`）
 
 ## 路由与限流一览

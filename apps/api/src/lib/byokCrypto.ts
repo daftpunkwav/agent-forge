@@ -55,3 +55,12 @@ export function decryptByokConfig(byok?: ByokConfig | null): ByokConfig | null {
   if (!byok || !byok.apiKey) return byok ?? null;
   return { ...byok, apiKey: decryptByokKey(byok.apiKey) };
 }
+
+/**
+ * 设置保存时取「应入库的明文 key」：旧值可能是密文（A-03 后）也可能是历史明文。
+ * 二次保存（留空不修改）时必须先解密，否则会对密文再加密，导致 BYOK 静默失效。
+ */
+export function resolveByokApiKeyToStore(prevApiKey: string | undefined, submitted: string): string {
+  const prev = decryptByokKey(prevApiKey || '');
+  return submitted && !submitted.includes('••••') ? submitted : prev;
+}

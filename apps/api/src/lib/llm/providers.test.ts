@@ -2,9 +2,10 @@
  * providers.ts 纯函数测试（A-05）：
  * URL 解析边界、Anthropic 响应解析、Provider 加载/选择（无需真实 LLM）。
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   byokToProvider,
+  callLlm,
   extractAnthropicParts,
   loadProviders,
   resolveAnthropicMessagesUrl,
@@ -168,5 +169,135 @@ describe('loadProviders / byokToProvider / resolveProvider', () => {
     process.env.STEPFUN_BASE_URL = 'https://api.stepfun.com/step_plan';
     expect(resolveProvider({ enabled: false } as never)?.id).toBe('stepfun');
     expect(resolveProvider(null)?.id).toBe('stepfun');
+  });
+});
+
+describe('callLlm 同步超时信号（A-02 复核）', () => {
+  it('openai_chat 同步调用：fetch 收到合并后的 signal（超时/取消任一触发即中断）', async () => {
+    process.env.OPENAI_API_KEY = 'sk-openai';
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1';
+    process.env.OPENAI_MODEL = 'gpt-4o-mini';
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ choices: [{ message: { content: 'ok' } }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const result = await callLlm({
+      mode: 'fast',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(result.text).toBe('ok');
+    // 关键断言：withTimeout 的合成 signal 必须透传到 fetch，否则超时形同虚设
+    expect((fetchMock.mock.calls[0][1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
+    fetchMock.mockRestore();
+  });
+
+  it('openai_responses 同步调用：fetch 收到 signal，且 200+非标准响应不回显原始报文（A-01 复核）', async () => {
+    process.env.OPENAI_API_KEY = 'sk-openai';
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1';
+    process.env.OPENAI_API_FORMAT = 'openai_responses';
+    process.env.LLM_PROVIDER_ID = 'openai';
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('not-json-raw-body', {
+        status: 200,
+        headers: { 'content-type': 'text/plain' },
+      }),
+    );
+    const result = await callLlm({
+      mode: 'deep',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect((fetchMock.mock.calls[0][1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
+    // 解析失败时 text 必须为空，绝不含原始报文
+    expect(result.text).toBe('');
+    fetchMock.mockRestore();
+  });
+
+  it('anthropic_messages 同步调用：fetch 收到 signal', async () => {
+    process.env.STEPFUN_API_KEY = 'sk-step';
+    process.env.STEPFUN_BASE_URL = 'https://api.stepfun.com/step_plan';
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ content: [{ type: 'text', text: 'ok' }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const result = await callLlm({
+      mode: 'fast',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(result.text).toBe('ok');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
+    fetchMock.mockRestore();
+  });
+});
+
+describe('callLlm 重试与超时语义（B-05 / A-02 复核）', () => {
+  function setupOpenAi() {
+    process.env.OPENAI_API_KEY = 'sk-openai';
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1';
+    process.env.OPENAI_MODEL = 'gpt-4o-mini';
+  }
+  const okResponse = () =>
+    new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  const errResponse = (status: number) =>
+    new Response(JSON.stringify({ error: `upstream ${status}` }), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  it('5xx 重试一次成功后返回结果（B-05）', async () => {
+    setupOpenAi();
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(errResponse(502))
+      .mockResolvedValueOnce(okResponse());
+    const result = await callLlm({ mode: 'fast', messages: [{ role: 'user', content: 'hi' }] });
+    expect(result.text).toBe('ok');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    fetchMock.mockRestore();
+  });
+
+  it('4xx 不重试，直接抛 LlmCallError（参数/鉴权问题重试无意义）', async () => {
+    setupOpenAi();
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(errResponse(401));
+    await expect(callLlm({ mode: 'fast', messages: [{ role: 'user', content: 'hi' }] })).rejects.toMatchObject(
+      { status: 401 },
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+  });
+
+  it('网络层 TypeError 重试一次（B-05）', async () => {
+    setupOpenAi();
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(okResponse());
+    const result = await callLlm({ mode: 'fast', messages: [{ role: 'user', content: 'hi' }] });
+    expect(result.text).toBe('ok');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    fetchMock.mockRestore();
+  });
+
+  it('超时 → 抛 LlmCallError(408)（TimeoutError 与 AbortError 都映射为中断）', async () => {
+    setupOpenAi();
+    // 模拟 withTimeout 的超时信号已触发：AbortSignal.timeout 返回已 aborted 信号
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(AbortSignal.abort());
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    await expect(callLlm({ mode: 'fast', messages: [{ role: 'user', content: 'hi' }] })).rejects.toMatchObject({
+      status: 408,
+      messageForClient: '模型响应超时，请稍后重试',
+    });
+    // 超时后不重试，且诊断字段不含敏感信息
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+    timeoutSpy.mockRestore();
   });
 });

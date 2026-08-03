@@ -34,7 +34,9 @@ function isRetriable(e: unknown): boolean {
 }
 
 function isAbortError(e: unknown): boolean {
-  return e instanceof Error && e.name === 'AbortError';
+  // AbortSignal.timeout 触发时 Node fetch 拒绝的是 name === 'TimeoutError' 的 DOMException，
+  // 手动 AbortController 取消则是 'AbortError'——两者都按中断处理
+  return e instanceof Error && (e.name === 'AbortError' || e.name === 'TimeoutError');
 }
 
 function sleep(ms: number): Promise<void> {
@@ -749,6 +751,8 @@ async function callOpenAiChat(p: ProviderConfig, req: LlmRequest): Promise<LlmRe
       max_tokens: maxTokens,
       temperature,
     }),
+    // A-02：同步调用统一挂超时（withTimeout 已合成 signal）
+    signal: req.signal,
   });
   const raw = await res.text();
   let data: OpenAiChatResponseBody = {};
@@ -777,8 +781,12 @@ interface OpenAiResponsesBody {
 }
 
 async function callOpenAiResponses(p: ProviderConfig, req: LlmRequest): Promise<LlmResponse> {
-  // C-05：input 用结构化消息数组（与 callOpenAiChat 对齐），不再压成 role: content 纯文本
-  const input = req.messages.map((m) => ({ role: m.role, content: m.content }));
+  // C-05：input 用结构化消息数组（与 callOpenAiChat 对齐），不再压成 role: content 纯文本；
+  // Responses API 的 system 应放顶层 instructions（部分网关不接受 input 内 role: system）
+  const system = req.messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+  const input = req.messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => ({ role: m.role, content: m.content }));
   const url = resolveOpenAiResponsesUrl(p.baseUrl);
   const res = await fetch(url, {
     method: 'POST',
@@ -789,8 +797,11 @@ async function callOpenAiResponses(p: ProviderConfig, req: LlmRequest): Promise<
     body: JSON.stringify({
       model: p.model,
       input,
+      instructions: system || undefined,
       max_output_tokens: tokenDefaults(req).maxTokens,
     }),
+    // A-02：同步调用统一挂超时（withTimeout 已合成 signal）
+    signal: req.signal,
   });
   const raw = await res.text();
   let data: OpenAiResponsesBody = {};
@@ -806,6 +817,8 @@ async function callOpenAiResponses(p: ProviderConfig, req: LlmRequest): Promise<
       raw: raw.slice(0, 500),
     });
   }
-  const outputText = data.output_text || JSON.stringify(data.output || data).slice(0, 2000);
+  // A-01 复核：绝不用整个 data（含 raw/error 原始报文）兜底为回答文本；
+  // 仅信任 output_text，缺失时尝试结构化 output 数组（模型内容，非报文）
+  const outputText = data.output_text || (data.output ? JSON.stringify(data.output).slice(0, 2000) : '');
   return { text: String(outputText), model: p.model, format: 'openai_responses' };
 }

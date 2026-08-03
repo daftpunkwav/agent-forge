@@ -44,7 +44,7 @@ vi.mock('../lib/llm/providers.js', async (importOriginal) => {
 });
 
 import { createApp } from '../app.js';
-import { resetProviderCache } from '../lib/llm/providers.js';
+import { LlmCallError, resetProviderCache } from '../lib/llm/providers.js';
 
 let server: Server;
 let base = '';
@@ -127,5 +127,69 @@ describe('POST /agent/explain/stream（悬停）', () => {
     expect(capturedSignal?.aborted).toBe(true);
     // 完整答案写入 L2 缓存
     expect(h.prismaHoverUpsert).toHaveBeenCalled();
+  });
+
+  it('上游 LlmCallError：客户端只收脱敏 error 文案，绝不含 url/raw（A-01 复核）', async () => {
+    h.streamLlmMock.mockImplementation(
+      async function* (): AsyncGenerator<StreamChunk> {
+        // 占位 yield 满足 generator 形态；随后抛上游错误
+        yield { kind: 'text', text: '' };
+        throw new LlmCallError(502, '模型流式生成失败（HTTP 502）', {
+          url: 'https://private-gw.example.com/v1/messages',
+          raw: '{"error":"secret trace"}',
+        });
+      },
+    );
+    const res = await fetch(`${base}/agent/explain/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'click',
+        style: 'professional',
+        selection: { text: '什么是 RAG', route: '/articles/x' },
+      }),
+    });
+    expect(res.ok).toBe(true);
+    const text = await res.text();
+    const events = text
+      .split('\n')
+      .filter((l) => l.startsWith('data:'))
+      .map((l) => JSON.parse(l.slice(5).trim()) as Record<string, unknown>);
+    const err = events.find((e) => e.type === 'error') as { message?: string } | undefined;
+    expect(err).toBeDefined();
+    // 脱敏断言：安全文案在，私有网关 url / 原始报文不在
+    expect(err?.message).toBe('模型流式生成失败（HTTP 502）');
+    expect(JSON.stringify(events)).not.toContain('private-gw.example.com');
+    expect(JSON.stringify(events)).not.toContain('secret trace');
+  });
+
+  it('deep 模式：思考片段命中 system 规则复述被拦截不下发（A-04 复核）', async () => {
+    h.streamLlmMock.mockImplementation(
+      async function* (): AsyncGenerator<StreamChunk> {
+        yield { kind: 'thinking', text: '禁止输出写作计划、草稿提纲、自我检查列表' };
+        yield { kind: 'thinking', text: '这个知识点可以分成概念与应用两部分来讲。' };
+        yield { kind: 'text', text: 'RAG 通过检索增强生成，先取回相关文档再让模型作答。' };
+      },
+    );
+    const res = await fetch(`${base}/agent/explain/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'click',
+        style: 'professional',
+        selection: { text: '什么是 RAG', route: '/articles/x' },
+      }),
+    });
+    expect(res.ok).toBe(true);
+    const text = await res.text();
+    const events = text
+      .split('\n')
+      .filter((l) => l.startsWith('data:'))
+      .map((l) => JSON.parse(l.slice(5).trim()) as Record<string, unknown>);
+    const thinkingEvents = events.filter((e) => e.type === 'thinking');
+    const all = JSON.stringify(events);
+    // 复述规则的片段被拦截；正常思考仍可下发
+    expect(all).not.toContain('禁止输出写作计划');
+    expect(thinkingEvents.length).toBeGreaterThan(0);
   });
 });

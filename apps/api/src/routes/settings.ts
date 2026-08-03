@@ -3,10 +3,10 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { validate } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
-import { listPublicProviders, maskApiKey } from '../lib/llm/providers.js';
+import { listPublicProviders, maskApiKey, LlmCallError } from '../lib/llm/providers.js';
 import { API_FORMATS, type ByokConfig } from '../lib/llm/types.js';
 import { parsePrefs } from '../lib/prefs.js';
-import { decryptByokConfig, encryptByokKey } from '../lib/byokCrypto.js';
+import { decryptByokConfig, encryptByokKey, resolveByokApiKeyToStore } from '../lib/byokCrypto.js';
 
 export const settingsRouter = Router();
 
@@ -102,12 +102,9 @@ settingsRouter.patch(
 
       if (body.byok) {
         const prev = (preferences.byok || {}) as Partial<ByokConfig>;
-        let apiKey = prev.apiKey || '';
+        // 二次保存（留空不修改）时 prev 已是密文——必须解密后入库，避免对密文再加密
+        let apiKey = resolveByokApiKeyToStore(prev.apiKey, body.byok.apiKey || '');
         if (body.clearByokKey) apiKey = '';
-        // 仅当提交了非空且非掩码占位时更新 key
-        if (body.byok.apiKey && !body.byok.apiKey.includes('••••')) {
-          apiKey = body.byok.apiKey;
-        }
         preferences.byok = {
           enabled: body.byok.enabled,
           baseUrl: body.byok.baseUrl || '',
@@ -173,6 +170,13 @@ settingsRouter.post('/test-llm', requireAuth, async (req, res, next) => {
       sample: result.text.slice(0, 120),
     });
   } catch (e) {
+    // 上游 LLM 失败：给 502 与脱敏文案（A-01），与 agent.ts llmError 语义一致
+    if (e instanceof LlmCallError) {
+      res.status(502).json({
+        error: { code: 'LLM_ERROR', message: e.messageForClient },
+      });
+      return;
+    }
     next(e);
   }
 });

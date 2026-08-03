@@ -22,6 +22,7 @@ import {
   extractVisibleAnswer,
   isSafeHoverPublicAnswer,
   looksLikeHoverPlanning,
+  isSystemEcho,
 } from '../lib/llm/agentPrompt.js';
 import type { ByokConfig, ProviderConfig } from '../lib/llm/types.js';
 import { HOVER_RETRY_TIMEOUT_MS, LLM_TOKEN_LIMITS } from '../lib/llm/config.js';
@@ -489,6 +490,11 @@ agentRouter.post(
                 emitHoverThinkingStatus();
                 probeEarlyAnswer();
               } else {
+                // A-04：思考片段命中 system 规则复述不回传客户端（final 门控是兜底，流式先拦）
+                if (isSystemEcho(chunk.text)) {
+                  logger.warn({ event: 'thinking_echo_blocked' }, 'thinking echo chunk dropped');
+                  continue;
+                }
                 sseWrite(res, { type: 'thinking', text: chunk.text });
               }
             } else {
@@ -598,10 +604,12 @@ agentRouter.post('/chat', optionalAuth, validate(chatSchema), async (req, res, n
     if (visible.answer && looksLikeHoverPlanning(visible.answer)) {
       logger.warn({ event: 'deep_planning_leak', mode }, 'deep answer looks like planning');
     }
-    await finalizeChatTurn(conv.id, req.user?.id, body.message, visible.answer, visible.thinking);
+    // A-04 兜底：answer 被规则复述门控清空时不回传空回复、不持久化空消息
+    const answer = visible.answer || '抱歉，这一轮没有生成有效讲解，换个问法再试一次。';
+    await finalizeChatTurn(conv.id, req.user?.id, body.message, answer, visible.thinking);
 
     res.json({
-      reply: visible.answer,
+      reply: answer,
       thinking: visible.thinking,
       conversationId: conv.id,
       model: result.model,
@@ -669,6 +677,11 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
             if (mode === 'fast') {
               sseWrite(res, { type: 'status', status: 'thinking' });
             } else {
+              // A-04：思考片段命中 system 规则复述不回传客户端（final 门控是兜底，流式先拦）
+              if (isSystemEcho(chunk.text)) {
+                logger.warn({ event: 'thinking_echo_blocked' }, 'thinking echo chunk dropped');
+                continue;
+              }
               sseWrite(res, { type: 'thinking', text: chunk.text });
             }
           } else {
@@ -694,17 +707,19 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
       if (visible.answer && looksLikeHoverPlanning(visible.answer)) {
         logger.warn({ event: 'deep_planning_leak', mode }, 'deep answer looks like planning');
       }
+      // A-04 兜底：answer 被规则复述门控清空时不回传空回复、不持久化空消息
+      const answer = visible.answer || '抱歉，这一轮没有生成有效讲解，换个问法再试一次。';
       if (mode === 'fast') {
-        sseWrite(res, { type: 'final', answer: visible.answer, thinking: '' });
+        sseWrite(res, { type: 'final', answer, thinking: '' });
       } else {
         sseWrite(res, {
           type: 'final',
-          answer: visible.answer,
+          answer,
           thinking: visible.thinking,
         });
       }
       sseWrite(res, { type: 'done' });
-      await finalizeChatTurn(conv.id, req.user?.id, body.message, visible.answer, visible.thinking);
+      await finalizeChatTurn(conv.id, req.user?.id, body.message, answer, visible.thinking);
     } catch (e) {
       if (!(e instanceof Error && e.name === 'AbortError') && !res.writableEnded && !res.destroyed) {
         // A-01：SSE 错误消息只发安全文案，不泄露 url/raw
