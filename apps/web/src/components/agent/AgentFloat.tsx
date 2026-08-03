@@ -8,11 +8,11 @@ import {
   AGENT_CACHE_CLEARED_EVENT,
   hoverCacheKey,
   isSafeHoverDisplay,
-  looksLikeHoverPlanning,
   readHoverCache,
   sanitizeHoverDisplay,
   writeHoverCache,
 } from '@/lib/hoverExplainCache';
+import { createHoverStreamAccumulator } from '@/lib/hoverStreamBuffer';
 import { MarkdownView } from './MarkdownView';
 import { findHoverTarget, highlightTarget, isKnowledgeRoute } from './hoverTarget';
 
@@ -61,8 +61,10 @@ export function AgentFloat() {
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeEl = useRef<HTMLElement | null>(null);
-  /** 未完成请求：禁止把半截当缓存命中（与共享 L1 配合） */
-  const incompleteKeys = useRef<Set<string>>(new Set());
+  /** 未完成请求：禁止把半截当缓存命中（与共享 L1 配合）；B-11：带 TTL，5 分钟后自动允许重试 */
+  const incompleteKeys = useRef<Map<string, number>>(new Map());
+  const INCOMPLETE_KEY_TTL_MS = 5 * 60 * 1000;
+  const INCOMPLETE_KEY_MAX = 200;
   const abortRef = useRef<AbortController | null>(null);
   /** 对话框 deepExplain/send 流的中断控制器（与悬停流分开） */
   const chatAbortRef = useRef<AbortController | null>(null);
@@ -301,8 +303,29 @@ export function AgentFloat() {
     }, HOVER_LEAVE_KEEP_MS);
   }
 
+  /** B-11：incomplete 标记有 TTL/上限，避免长期累积且永不命中缓存 */
+  function markIncomplete(key: string) {
+    const m = incompleteKeys.current;
+    m.set(key, Date.now());
+    if (m.size > INCOMPLETE_KEY_MAX) {
+      let oldestKey = '';
+      let oldestAt = Infinity;
+      for (const [k, t] of m) {
+        if (t < oldestAt) {
+          oldestAt = t;
+          oldestKey = k;
+        }
+      }
+      if (oldestKey) m.delete(oldestKey);
+    }
+  }
+
   function readCache(key: string): string | null {
-    if (incompleteKeys.current.has(key)) return null;
+    if (incompleteKeys.current.has(key)) {
+      // 后端 L2 可能已补全，过期后允许重试
+      if (Date.now() - (incompleteKeys.current.get(key) || 0) < INCOMPLETE_KEY_TTL_MS) return null;
+      incompleteKeys.current.delete(key);
+    }
     return readHoverCache(key);
   }
 
@@ -425,8 +448,8 @@ export function AgentFloat() {
       const topic = info.text.slice(0, 80);
       // 与卡片共用 L1：style::topic
       const key = hoverCacheKey(info.text.slice(0, 400), style);
-      // 未完成的旧请求标记：禁止读半截缓存
-      const cached = incompleteKeys.current.has(key) ? null : readCache(key);
+      // 未完成的旧请求标记：禁止读半截缓存（readCache 内部处理 TTL）
+      const cached = readCache(key);
 
       // 若已有展示中的 tip，切换时先渐出旧的
       if (sessionRef.current?.revealed) {
@@ -496,12 +519,13 @@ export function AgentFloat() {
         }
         requestWindow.current.n += 1;
         inflightKeyRef.current = key;
-        incompleteKeys.current.add(key);
+        markIncomplete(key);
         // 清除可能的半截 L1（共享缓存只存完整安全答案，此处仅标记 incomplete）
         const ac = new AbortController();
         abortRef.current = ac;
         let gotFinal = false;
-        let streamBuf = '';
+        // C-10：共用流式缓冲（旁白检测 + 按句截断展示）
+        const hoverAccum = createHoverStreamAccumulator();
         let streamingShown = false;
 
         streamAgent(
@@ -529,26 +553,9 @@ export function AgentFloat() {
               return;
             }
 
-            // 仅展示后端清洗后的 soft-stream；思考轨迹绝不进 buffer
+            // 仅展示后端清洗后的 soft-stream；思考轨迹绝不进 buffer（C-10 共用缓冲门控）
             if (ev.type === 'delta' && ev.text) {
-              if (ev.replace) streamBuf = ev.text;
-              else streamBuf += ev.text;
-              // 策划检测：不展示即可，禁止清空已累积缓冲（自伤）
-              if (looksLikeHoverPlanning(streamBuf) && !isSafeHoverDisplay(streamBuf)) {
-                if (s.revealed && !streamingShown) showTipForSession(s, true);
-                return;
-              }
-              // 未成句前缀：只展示到最后一个 。！（不用？——改稿自问）
-              let show = '';
-              if (isSafeHoverDisplay(streamBuf) && /[。！]$/.test(streamBuf)) {
-                show = streamBuf;
-              } else {
-                const lastEnd = Math.max(streamBuf.lastIndexOf('。'), streamBuf.lastIndexOf('！'));
-                if (lastEnd >= 8) {
-                  const upto = streamBuf.slice(0, lastEnd + 1);
-                  if (isSafeHoverDisplay(upto)) show = upto;
-                }
-              }
+              const { show } = hoverAccum.onDelta(ev.text, ev.replace);
               if (!show) {
                 if (s.revealed && !streamingShown) showTipForSession(s, true);
                 return;
@@ -569,7 +576,7 @@ export function AgentFloat() {
               s.complete = isSafeHoverDisplay(s.buffer);
               if (s.complete) pushCache(key, s.buffer);
               else {
-                incompleteKeys.current.add(key);
+                markIncomplete(key);
               }
               if (inflightKeyRef.current === key) inflightKeyRef.current = null;
               if (s.revealed) {
@@ -586,14 +593,14 @@ export function AgentFloat() {
 
             if (ev.type === 'done') {
               if (!gotFinal) {
-                // 无 final 时也不用 streamBuf 原文（可能含思考）
-                const fallback = sanitizeHoverAnswer(streamBuf);
+                // 无 final 时也不用缓冲原文（可能含思考）
+                const fallback = sanitizeHoverAnswer(hoverAccum.get());
                 s.buffer = fallback || '讲解生成失败，请再试一次';
                 s.loading = false;
                 s.complete = isSafeHoverDisplay(s.buffer);
                 if (s.complete) pushCache(key, s.buffer);
                 else {
-                  incompleteKeys.current.add(key);
+                  markIncomplete(key);
                 }
                 if (s.revealed) {
                   if (streamingShown && fallback) showTipForSession(s, false);
@@ -611,7 +618,7 @@ export function AgentFloat() {
               s.buffer = `讲解失败：${ev.message}`;
               s.loading = false;
               s.complete = false;
-              incompleteKeys.current.add(key);
+              markIncomplete(key);
               if (inflightKeyRef.current === key) inflightKeyRef.current = null;
               if (s.revealed) showTipForSession(s, false);
             }
@@ -620,7 +627,7 @@ export function AgentFloat() {
           { timeoutMs: 28_000 },
         ).catch((err: Error) => {
           if (err.name === 'AbortError') {
-            incompleteKeys.current.add(key);
+            markIncomplete(key);
             if (inflightKeyRef.current === key) inflightKeyRef.current = null;
             return;
           }
@@ -629,7 +636,7 @@ export function AgentFloat() {
           s.buffer = `讲解失败：${err.message}`;
           s.loading = false;
           s.complete = false;
-          incompleteKeys.current.add(key);
+          markIncomplete(key);
           if (inflightKeyRef.current === key) inflightKeyRef.current = null;
           if (s.revealed) showTipForSession(s, false);
         });
@@ -728,7 +735,7 @@ export function AgentFloat() {
         // 未满揭示时长 / 未完成：中止请求，标记 incomplete，禁止下次复用半截
         const k = sessionRef.current?.key;
         if (k) {
-          incompleteKeys.current.add(k);
+          markIncomplete(k);
         }
         abortRef.current?.abort();
         abortRef.current = null;
@@ -742,7 +749,7 @@ export function AgentFloat() {
 
       // 已展示但仍在生成：允许后台跑完再缓存；离开时不清 buffer
       if (sessionRef.current && !sessionRef.current.complete) {
-        incompleteKeys.current.add(sessionRef.current.key);
+        markIncomplete(sessionRef.current.key);
       }
 
       // 已展示：保留 3s

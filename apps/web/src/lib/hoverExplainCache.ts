@@ -47,6 +47,11 @@ export function clearAllHoverCaches(): number {
   return n;
 }
 
+/**
+ * L1 缓存 key（明文 style::topic，进程内 Map 查找用）。
+ * 与后端 L2 key（sha256 版本化 hash）不同——两端独立查询，无需一致；
+ * L1 不版本化，随 L2 升级自然失效。
+ */
 export function hoverCacheKey(topic: string, style = 'professional'): string {
   return `${style}::${topic.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 400)}`;
 }

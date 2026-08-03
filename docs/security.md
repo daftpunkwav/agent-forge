@@ -22,6 +22,9 @@
 - [x] 统一错误体 — `errorHandler.ts`（`AppError` / Zod / Prisma P2002·P2003·P2025；500 不暴露堆栈）
 - [x] 结构化日志 — Pino（`lib/logger.ts`）；生产 JSON，开发 pretty
 - [x] BYOK 仅服务端 — `providers.ts` 不写密钥日志；前端脱敏展示（`maskApiKey`）
+- [x] BYOK apiKey 静态加密（A-03）— AES-256-GCM 密文入库（`lib/byokCrypto.ts`）；密钥取 `BYOK_ENCRYPTION_KEY`（≥16 字符）或回退 `JWT_SECRET` 派生；历史明文读取兼容，写入时自动升级
+- [x] LLM 错误信息脱敏（A-01）— 上游 `url`/原始报文只进日志（`LlmCallError.diagnostic`），客户端仅见安全文案；SSE 错误事件同样脱敏
+- [x] 同步 LLM 调用超时（A-02）— 默认 30s `AbortSignal.timeout`；hover 兜底重试 12s
 - [x] MCP 探测占位 — `GET /api/v1/mcp/status` → `status: 'reserved'`（进程未实现）
 - [x] `SEED_ADMIN_PASSWORD` 必填（≥8 字符，无内置兜底）；已有用户不自动提权，需 `SEED_FORCE_ADMIN=1`
 
@@ -39,6 +42,7 @@
 ## BYOK
 
 - 用户 BYOK 仅服务端解析为 Provider；不写日志；前端只展示 host + 脱敏 key
+- apiKey 静态加密（AES-256-GCM，`lib/byokCrypto.ts`）：库中不留明文；`BYOK_ENCRYPTION_KEY` 未配置时回退 `JWT_SECRET` 派生密钥
 - 服务端默认 Provider：StepFun / OpenAI / Generic（`STEPFUN_*` / `OPENAI_*` / `GENERIC_LLM_*`）
 
 ## 路由与限流一览

@@ -1,5 +1,4 @@
-import { createHash } from 'node:crypto';
-import { Router, type Response } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../lib/logger.js';
@@ -10,6 +9,7 @@ import {
   callLlm,
   getDefaultProvider,
   listPublicProviders,
+  LlmCallError,
   resolveProvider,
   streamLlm,
 } from '../lib/llm/providers.js';
@@ -20,23 +20,26 @@ import {
   buildHoverSystem,
   extractHoverAnswer,
   extractVisibleAnswer,
-  formatMemoryBlock,
   isSafeHoverPublicAnswer,
+  looksLikeHoverPlanning,
 } from '../lib/llm/agentPrompt.js';
 import type { ByokConfig, ProviderConfig } from '../lib/llm/types.js';
+import { HOVER_RETRY_TIMEOUT_MS, LLM_TOKEN_LIMITS } from '../lib/llm/config.js';
+import { parsePrefs } from '../lib/prefs.js';
+import { getHoverCache, setHoverCache } from '../services/hoverCache.js';
+import {
+  ensureConversation,
+  loadRecentMessages,
+  persistTurn,
+} from '../services/agentConversation.js';
+import {
+  loadUserContext,
+  maybeSaveImportantMemory,
+  rememberTopic,
+} from '../services/agentMemory.js';
+import { initSse, softStreamHoverAnswer, sseWrite } from '../lib/sse.js';
 
 export const agentRouter = Router();
-
-/**
- * 悬停缓存（工业级两层语义，此处为 L2 服务端）
- * - 默认 TTL 2h：热区会话复用、控制成本
- * - 高命中（hits≥8）延长至 24h：热点知识点少打 LLM
- * - 超过 hard cap 一律失效；写库前 isCompleteHoverAnswer 质检
- * - 仅缓存完整 final，中断/半截永不入库
- */
-const HOVER_CACHE_TTL_DEFAULT_MS = 2 * 60 * 60 * 1000;
-const HOVER_CACHE_TTL_HOT_MS = 24 * 60 * 60 * 1000;
-const HOVER_CACHE_HOT_HITS = 8;
 
 const explainSchemaFixed = z.object({
   mode: z.enum(['hover', 'click']),
@@ -65,33 +68,7 @@ const chatSchema = z.object({
   mode: z.enum(['fast', 'deep']).optional(),
 });
 
-/**
- * 缓存 key 版本号：语义或样式影响缓存内容时 +1（历史：v1 无样式维度 → v7 堵口令泄漏）。
- * 升级后旧 key 自然过期，无需手工清库。
- */
-const HOVER_CACHE_KEY_VERSION = 'v7';
-
-function hoverCacheKey(topic: string, style: string): string {
-  const norm = topic.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 400);
-  return createHash('sha256').update(`${HOVER_CACHE_KEY_VERSION}::${style}::${norm}`).digest('hex').slice(0, 48);
-}
-
-/** 按句 soft-stream；句间短延迟提升可读性 */
-async function softStreamHoverAnswer(res: Response, answer: string, gapMs = 36) {
-  const pieces =
-    answer.match(/[^。！]*[。！]/g)?.filter((x) => x.trim()) || (answer ? [answer] : []);
-  for (let i = 0; i < pieces.length; i++) {
-    if (res.writableEnded || res.destroyed) return;
-    const piece = pieces[i];
-    if (!piece) continue;
-    sseWrite(res, { type: 'delta', text: piece });
-    if (i < pieces.length - 1) {
-      await new Promise((r) => setTimeout(r, gapMs));
-    }
-  }
-}
-
-/** 空答案时极简重试一次（无记忆、关 thinking） */
+/** 空答案时极简重试一次（无记忆、关 thinking）；A-02：兜底重试走短超时 */
 async function retryHoverExplain(
   provider: ProviderConfig,
   userMsg: string,
@@ -100,262 +77,135 @@ async function retryHoverExplain(
     const result = await callLlm(
       {
         mode: 'fast',
-        maxTokens: 220,
-        temperature: 0.1,
+        maxTokens: LLM_TOKEN_LIMITS.hoverRetry.maxTokens,
+        temperature: LLM_TOKEN_LIMITS.hoverRetry.temperature,
         messages: [
           { role: 'system', content: buildHoverRetrySystem() },
           { role: 'user', content: userMsg.slice(0, 400) },
         ],
+        signal: AbortSignal.timeout(HOVER_RETRY_TIMEOUT_MS),
       },
       provider,
     );
     const answer = extractHoverAnswer(result.thinking || '', result.text || '');
-    if (answer && isSafeHoverPublicAnswer(answer)) return answer;
+    if (answer && isSafeHoverPublicAnswer(answer)) {
+      logger.info({ event: 'hover_retry_ok' }, 'hover retry ok');
+      return answer;
+    }
+    logger.warn({ event: 'hover_retry_fail' }, 'hover retry fail');
     return '';
   } catch {
+    logger.warn({ event: 'hover_retry_fail' }, 'hover retry fail');
     return '';
   }
 }
 
-async function getHoverCache(topic: string, style: string): Promise<string | null> {
-  const key = hoverCacheKey(topic, style);
-  const row = await prisma.hoverExplainCache.findUnique({ where: { cacheKey: key } });
-  if (!row) return null;
-  // 质检：历史脏数据（含思考过程）直接删掉，避免反复毒害
-  if (!isSafeHoverPublicAnswer(row.answer)) {
-    void prisma.hoverExplainCache
-      .delete({ where: { cacheKey: key } })
-      .catch((e) => logger.warn({ err: String(e), key }, 'hover cache: drop dirty row failed'));
-    return null;
-  }
-  const age = Date.now() - row.updatedAt.getTime();
-  const ttl = row.hits >= HOVER_CACHE_HOT_HITS ? HOVER_CACHE_TTL_HOT_MS : HOVER_CACHE_TTL_DEFAULT_MS;
-  if (age > ttl) return null;
-  void prisma.hoverExplainCache
-    .update({ where: { cacheKey: key }, data: { hits: { increment: 1 } } })
-    .catch((e) => logger.warn({ err: String(e), key }, 'hover cache: hits increment failed'));
-  return row.answer;
-}
-
-async function setHoverCache(topic: string, style: string, answer: string) {
-  if (!isSafeHoverPublicAnswer(answer)) return;
-  const key = hoverCacheKey(topic, style);
-  try {
-    await prisma.hoverExplainCache.upsert({
-      where: { cacheKey: key },
-      create: { cacheKey: key, topic: topic.slice(0, 200), answer: answer.slice(0, 1200) },
-      update: { answer: answer.slice(0, 1200), topic: topic.slice(0, 200) },
-    });
-  } catch (e) {
-    // 缓存写失败不应影响主链路，但要留痕以便发现反复失败
-    logger.warn({ err: String(e), key }, 'hover cache: write failed');
-  }
-}
-
-const GUEST_CONV_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-/** 清理过期匿名会话（级联删除 messages） */
-async function purgeExpiredGuestConversations() {
-  await prisma.agentConversation.deleteMany({
-    where: {
-      userId: null,
-      expiresAt: { lt: new Date() },
-    },
-  });
-}
-
-async function ensureConversation(userId: string | undefined, conversationId?: string) {
-  // 轻量清理：每次建会话路径顺带扫过期匿名会话
-  void purgeExpiredGuestConversations().catch((e) =>
-    logger.warn({ err: String(e) }, 'guest conversation purge failed'),
-  );
-
-  if (conversationId) {
-    const existing = await prisma.agentConversation.findUnique({ where: { id: conversationId } });
-    // 访问控制：已登录仅本人会话；匿名仅允许无主（userId 为空）会话，其余按找不到处理（走下方新建）
-    if (existing && (userId ? existing.userId === userId : !existing.userId)) {
-      // 已过期的匿名会话视为无效，新建
-      if (!userId && existing.expiresAt && existing.expiresAt.getTime() < Date.now()) {
-        // fall through to create
-      } else {
-        return existing;
-      }
-    }
-  }
-  return prisma.agentConversation.create({
-    data: {
-      userId: userId || null,
-      title: '对话',
-      expiresAt: userId ? null : new Date(Date.now() + GUEST_CONV_TTL_MS),
-    },
-  });
-}
-
-async function loadRecentMessages(conversationId: string, take = 12) {
-  return prisma.agentMessage.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: 'desc' },
-    take,
-  });
-}
-
-async function persistTurn(
-  conversationId: string,
+/**
+ * hover 答案门控 + 空时兜底重试（B-02：同步/流式共用同一触发语义）。
+ * candidate 为已 extract 的候选答案；不安全置空，空则重试一次。
+ */
+async function finalizeHoverAnswer(
+  provider: ProviderConfig,
   userMsg: string,
-  assistant: { content: string; thinking?: string },
+  candidate: string,
+  onRetry?: () => void,
+): Promise<string> {
+  let answer = candidate;
+  if (answer && !isSafeHoverPublicAnswer(answer)) answer = '';
+  if (!answer) {
+    onRetry?.();
+    answer = await retryHoverExplain(provider, userMsg);
+  }
+  return answer;
+}
+
+/** B-09：粗略 token 估算（中文 ~1.5 字/token，英文 ~0.25 词/token），用于历史预算 */
+function estimateTokens(s: string): number {
+  const cn = (s.match(/[\u4e00-\u9fff]/g) || []).length;
+  const rest = s.length - cn;
+  return Math.ceil(cn / 1.5 + rest / 4);
+}
+
+/** B-09：历史块 token 预算——fast 600 / deep 2000，从最新向前累加 */
+const HISTORY_TOKEN_BUDGET = { fast: 600, deep: 2000 } as const;
+
+/**
+ * B-02：chat 同步/流式共用上下文组装。
+ * 历史按 mode 预算从最新向前累加（conv.summary 滚动摘要 + 最近消息，而非固定 12 条全文）。
+ */
+async function prepareChat(body: z.infer<typeof chatSchema>, userId: string | undefined) {
+  const ctx = await loadUserContext(userId, body.context?.route);
+  const provider = resolveProvider(ctx.byok);
+  if (!provider) throw noProviderError();
+
+  const style = body.style || ctx.style;
+  const mode = body.mode || 'deep';
+  const conv = await ensureConversation(userId, body.conversationId);
+  const recent = await loadRecentMessages(conv.id);
+  const budget = HISTORY_TOKEN_BUDGET[mode];
+  const rows: string[] = [];
+  let used = 0;
+  for (const m of [...recent].reverse()) {
+    const line = `${m.role}: ${m.content.slice(0, 400)}`;
+    const t = estimateTokens(line);
+    if (rows.length && used + t > budget) break;
+    rows.push(line);
+    used += t;
+  }
+  const historyBlock = rows.join('\n');
+  const systemBase =
+    mode === 'fast'
+      ? buildHoverSystem(style, ctx.memoryBlock)
+      : buildDeepSystem(style, ctx.memoryBlock);
+  const system = [
+    systemBase,
+    conv.summary ? `【会话摘要】\n${conv.summary}` : '',
+    historyBlock ? `【近期对话】\n${historyBlock}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  const userContent = [
+    body.message,
+    body.context?.route ? `（当前路由 ${body.context.route}）` : '',
+    body.context?.articleSlug ? `（文章 ${body.context.articleSlug}）` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return { ctx, provider, style, mode, conv, system, userContent };
+}
+
+/** B-02：chat 同步/流式共用收尾——持久化、话题记忆、重要记忆 */
+async function finalizeChatTurn(
+  convId: string,
+  userId: string | undefined,
+  userMsg: string,
+  answer: string,
+  thinking: string,
 ) {
-  await prisma.agentMessage.createMany({
-    data: [
-      { conversationId, role: 'user', content: userMsg.slice(0, 4000) },
-      {
-        conversationId,
-        role: 'assistant',
-        content: assistant.content.slice(0, 8000),
-        thinking: (assistant.thinking || '').slice(0, 4000),
-      },
-    ],
-  });
-  // 滚动摘要：超过 20 条时压缩最旧事实
-  const count = await prisma.agentMessage.count({ where: { conversationId } });
-  if (count > 24) {
-    const old = await prisma.agentMessage.findMany({
-      where: { conversationId },
-      orderBy: { createdAt: 'asc' },
-      take: 8,
-    });
-    const snippet = old
-      .map((m) => `${m.role}: ${m.content.slice(0, 80)}`)
-      .join(' | ')
-      .slice(0, 500);
-    await prisma.agentConversation.update({
-      where: { id: conversationId },
-      data: { summary: snippet, updatedAt: new Date() },
-    });
-  } else {
-    await prisma.agentConversation.update({
-      where: { id: conversationId },
-      data: { updatedAt: new Date() },
-    });
-  }
-}
-
-async function maybeSaveImportantMemory(userId: string | undefined, userMsg: string, answer: string) {
-  if (!userId) return;
-  // 用户明确要求记住 / 偏好
-  if (/请记住|记住：|我的偏好|以后.*用/.test(userMsg)) {
-    const key = `pref:${userMsg.slice(0, 40)}`;
-    try {
-      await prisma.agentMemory.upsert({
-        where: { userId_key: { userId, key } },
-        create: {
-          userId,
-          key,
-          value: `${userMsg.slice(0, 120)} → ${answer.slice(0, 200)}`,
-          kind: 'preference',
-        },
-        update: { value: `${userMsg.slice(0, 120)} → ${answer.slice(0, 200)}` },
-      });
-    } catch (e) {
-      logger.warn({ err: String(e), userId }, 'save important memory failed');
-    }
-  }
-}
-
-function parsePrefs(raw?: string | null): Record<string, unknown> {
-  try {
-    return JSON.parse(raw || '{}') as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
-
-async function loadUserContext(userId?: string, route?: string) {
-  if (!userId) {
-    return {
-      style: 'professional',
-      memoryBlock: formatMemoryBlock({
-        mastered: [],
-        learning: [],
-        notes: [],
-        route,
-      }),
-      byok: null as ByokConfig | null,
-    };
-  }
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  const pref = parsePrefs(user?.preferences);
-  const style = (typeof pref.agentStyle === 'string' && pref.agentStyle) || 'professional';
-  const byok = (pref.byok as ByokConfig) || null;
-
-  const [memories, progress] = await Promise.all([
-    prisma.agentMemory.findMany({ where: { userId }, take: 40, orderBy: { updatedAt: 'desc' } }),
-    prisma.learningProgress.findMany({
-      where: { userId },
-      include: { article: { select: { title: true, slug: true } } },
-      take: 50,
-    }),
-  ]);
-
-  const mastered = progress
-    .filter((p) => p.mastery === 'mastered' || p.progress >= 0.85)
-    .map((p) => p.article.title);
-  const learning = progress
-    .filter((p) => p.mastery !== 'mastered' && p.progress < 0.85)
-    .map((p) => p.article.title);
-  const notes = memories
-    .filter((m) => m.kind !== 'fact' || !m.key.startsWith('seen:'))
-    .map((m) => `${m.key}: ${m.value.slice(0, 120)}`);
-  const recentTopics = memories
-    .filter((m) => m.key.startsWith('seen:'))
-    .map((m) => m.value.replace(/^用户.*?：/, '').slice(0, 40))
-    .slice(0, 8);
-
-  return {
-    style,
-    byok,
-    memoryBlock: formatMemoryBlock({
-      style,
-      mastered,
-      learning,
-      notes,
-      recentTopics,
-      route,
-    }),
-  };
-}
-
-async function rememberTopic(userId: string | undefined, topic: string, mode: string) {
-  if (!userId || !topic.trim()) return;
-  const key = `seen:${topic.slice(0, 80)}`;
-  try {
-    await prisma.agentMemory.upsert({
-      where: { userId_key: { userId, key } },
-      create: {
-        userId,
-        key,
-        value: `用户在 ${mode} 模式询问过：${topic.slice(0, 200)}`,
-        kind: 'fact',
-      },
-      update: {
-        value: `用户再次询问（${mode}）：${topic.slice(0, 200)}`,
-        kind: 'fact',
-      },
-    });
-  } catch (e) {
-    // fire-and-forget 写入：失败不打断主链路，但留痕
-    logger.warn({ err: String(e), userId }, 'remember topic failed');
-  }
+  await persistTurn(convId, userMsg, { content: answer, thinking });
+  void rememberTopic(userId, userMsg, 'chat');
+  void maybeSaveImportantMemory(userId, userMsg, answer);
 }
 
 function llmError(err: unknown): AppError {
-  const msg = err instanceof Error ? err.message : String(err);
+  // A-01：上游错误带 URL/原文诊断字段——只进日志，客户端只见安全消息
+  if (err instanceof LlmCallError) {
+    logger.error(
+      { err: err.diagnostic, status: err.status },
+      'LLM call failed',
+    );
+    // 5xx 视为上游问题给 502；4xx 中的 400/422 已在 provider 内部处理
+    return new AppError(502, 'LLM_ERROR', err.messageForClient);
+  }
   logger.error(
     {
       err: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : { raw: String(err) },
     },
     'LLM call failed',
   );
-  return new AppError(502, 'LLM_ERROR', msg);
+  return new AppError(502, 'LLM_ERROR', '模型调用失败，请稍后重试');
 }
 
 function noProviderError(): AppError {
@@ -364,18 +214,6 @@ function noProviderError(): AppError {
     'NO_PROVIDER',
     '未配置模型：请登录后在「设置 → BYOK」填写 Base URL、API Key、模型与 API 格式。',
   );
-}
-
-function initSse(res: Response) {
-  res.status(200);
-  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders?.();
-}
-
-function sseWrite(res: Response, obj: unknown) {
-  res.write(`data: ${JSON.stringify(obj)}\n\n`);
 }
 
 agentRouter.get('/meta', (_req, res) => {
@@ -517,11 +355,11 @@ agentRouter.post('/explain', optionalAuth, validate(explainSchemaFixed), async (
       ? extractHoverAnswer(result.thinking || '', result.text || '')
       : extractVisibleAnswer(result.thinking || '', result.text || '').answer;
     if (prep.isHover) {
-      if (explanation && !isSafeHoverPublicAnswer(explanation)) explanation = '';
-      if (!explanation) {
-        explanation = await retryHoverExplain(prep.provider, prep.userMsg);
-      }
+      explanation = await finalizeHoverAnswer(prep.provider, prep.userMsg, explanation);
       if (explanation) void setHoverCache(prep.topic, prep.style, explanation);
+    } else if (explanation && looksLikeHoverPlanning(explanation)) {
+      // A-04：deep 正文命中策划特征时留痕（深度讲解允许较长，不强制清空）
+      logger.warn({ event: 'deep_planning_leak', mode: body.mode }, 'deep answer looks like planning');
     }
     void rememberTopic(req.user?.id, prep.topic, body.mode);
     res.json({
@@ -617,6 +455,11 @@ agentRouter.post(
           const n = (candidate.match(/[。！]/g) || []).length;
           if (candidate && n >= 2 && isSafeHoverPublicAnswer(candidate)) {
             earlyAnswer = candidate;
+            // B-06：早停命中打点（省 token 的可观测性）
+            logger.info(
+              { event: 'hover_early_stop', topic: prep.topic.slice(0, 60), chars: total },
+              'hover early stop',
+            );
             llmAbort.abort();
           }
         };
@@ -668,15 +511,12 @@ agentRouter.post(
           return;
         }
         if (prep.isHover) {
-          let answer = earlyAnswer || extractHoverAnswer(thinkingAcc, textAcc);
-          if (answer && !isSafeHoverPublicAnswer(answer)) {
-            answer = '';
-          }
-          // 空答案：极简重试一次，显著降低「讲解生成失败」率
-          if (!answer) {
-            sseWrite(res, { type: 'status', status: 'thinking' });
-            answer = await retryHoverExplain(prep.provider, prep.userMsg);
-          }
+          const answer = await finalizeHoverAnswer(
+            prep.provider,
+            prep.userMsg,
+            earlyAnswer || extractHoverAnswer(thinkingAcc, textAcc),
+            () => sseWrite(res, { type: 'status', status: 'thinking' }),
+          );
           if (answer) {
             void setHoverCache(prep.topic, prep.style, answer);
             await softStreamHoverAnswer(res, answer, 36);
@@ -689,6 +529,13 @@ agentRouter.post(
           });
         } else {
           const visible = extractVisibleAnswer(thinkingAcc, textAcc);
+          // A-04：deep 正文命中策划特征时留痕（不强制清空）
+          if (visible.answer && looksLikeHoverPlanning(visible.answer)) {
+            logger.warn(
+              { event: 'deep_planning_leak', mode: body.mode },
+              'deep answer looks like planning',
+            );
+          }
           sseWrite(res, {
             type: 'final',
             answer: visible.answer,
@@ -698,14 +545,21 @@ agentRouter.post(
         sseWrite(res, { type: 'done' });
         void rememberTopic(req.user?.id, prep.topic, body.mode);
       } catch (e) {
-        if (!(e instanceof Error && e.name === 'AbortError')) {
-          sseWrite(res, {
-            type: 'error',
-            message: e instanceof Error ? e.message : String(e),
-          });
+        if (!(e instanceof Error && e.name === 'AbortError') && !res.writableEnded && !res.destroyed) {
+          // A-01：SSE 错误消息只发安全文案，不泄露 url/raw
+          const message = e instanceof LlmCallError ? e.messageForClient : '讲解生成失败，请稍后重试';
+          sseWrite(res, { type: 'error', message });
+        }
+      } finally {
+        // B-10：统一收尾，避免 res.end() 重复调用
+        if (!res.writableEnded) {
+          try {
+            res.end();
+          } catch {
+            /* 已关闭 */
+          }
         }
       }
-      res.end();
     } catch (e) {
       next(e);
     }
@@ -715,44 +569,19 @@ agentRouter.post(
 agentRouter.post('/chat', optionalAuth, validate(chatSchema), async (req, res, next) => {
   try {
     const body = req.body as z.infer<typeof chatSchema>;
-    const ctx = await loadUserContext(req.user?.id, body.context?.route);
-    const provider = resolveProvider(ctx.byok);
-    if (!provider) throw noProviderError();
-
-    const style = body.style || ctx.style;
-    const mode = body.mode || 'deep';
-    const conv = await ensureConversation(req.user?.id, body.conversationId);
-    const recent = await loadRecentMessages(conv.id);
-    const historyBlock = recent
-      .reverse()
-      .map((m) => `${m.role}: ${m.content.slice(0, 400)}`)
-      .join('\n');
-    const systemBase =
-      mode === 'fast'
-        ? buildHoverSystem(style, ctx.memoryBlock)
-        : buildDeepSystem(style, ctx.memoryBlock);
-    const system = [
-      systemBase,
-      conv.summary ? `【会话摘要】\n${conv.summary}` : '',
-      historyBlock ? `【近期对话】\n${historyBlock}` : '',
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-
-    const userContent = [
-      body.message,
-      body.context?.route ? `（当前路由 ${body.context.route}）` : '',
-      body.context?.articleSlug ? `（文章 ${body.context.articleSlug}）` : '',
-    ]
-      .filter(Boolean)
-      .join('\n');
+    const { provider, style, mode, conv, system, userContent } = await prepareChat(
+      body,
+      req.user?.id,
+    );
+    const limits = LLM_TOKEN_LIMITS[mode === 'fast' ? 'chatFast' : 'chatDeep'];
 
     let result;
     try {
       result = await callLlm(
         {
           mode,
-          maxTokens: mode === 'fast' ? 700 : 2048,
+          maxTokens: limits.maxTokens,
+          temperature: limits.temperature,
           messages: [
             { role: 'system', content: system },
             { role: 'user', content: userContent },
@@ -765,12 +594,11 @@ agentRouter.post('/chat', optionalAuth, validate(chatSchema), async (req, res, n
     }
 
     const visible = extractVisibleAnswer(result.thinking || '', result.text || '');
-    await persistTurn(conv.id, body.message, {
-      content: visible.answer,
-      thinking: visible.thinking,
-    });
-    void rememberTopic(req.user?.id, body.message, 'chat');
-    void maybeSaveImportantMemory(req.user?.id, body.message, visible.answer);
+    // A-04：deep 正文命中策划特征时留痕（不强制清空）
+    if (visible.answer && looksLikeHoverPlanning(visible.answer)) {
+      logger.warn({ event: 'deep_planning_leak', mode }, 'deep answer looks like planning');
+    }
+    await finalizeChatTurn(conv.id, req.user?.id, body.message, visible.answer, visible.thinking);
 
     res.json({
       reply: visible.answer,
@@ -790,37 +618,11 @@ agentRouter.post('/chat', optionalAuth, validate(chatSchema), async (req, res, n
 agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req, res, next) => {
   try {
     const body = req.body as z.infer<typeof chatSchema>;
-    const ctx = await loadUserContext(req.user?.id, body.context?.route);
-    const provider = resolveProvider(ctx.byok);
-    if (!provider) throw noProviderError();
-
-    const style = body.style || ctx.style;
-    const mode = body.mode || 'deep';
-    const conv = await ensureConversation(req.user?.id, body.conversationId);
-    const recent = await loadRecentMessages(conv.id);
-    const historyBlock = recent
-      .reverse()
-      .map((m) => `${m.role}: ${m.content.slice(0, 400)}`)
-      .join('\n');
-    const systemBase =
-      mode === 'fast'
-        ? buildHoverSystem(style, ctx.memoryBlock)
-        : buildDeepSystem(style, ctx.memoryBlock);
-    const system = [
-      systemBase,
-      conv.summary ? `【会话摘要】\n${conv.summary}` : '',
-      historyBlock ? `【近期对话】\n${historyBlock}` : '',
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-
-    const userContent = [
-      body.message,
-      body.context?.route ? `（当前路由 ${body.context.route}）` : '',
-      body.context?.articleSlug ? `（文章 ${body.context.articleSlug}）` : '',
-    ]
-      .filter(Boolean)
-      .join('\n');
+    const { provider, style, mode, conv, system, userContent } = await prepareChat(
+      body,
+      req.user?.id,
+    );
+    const limits = LLM_TOKEN_LIMITS[mode === 'fast' ? 'chatFast' : 'chatDeep'];
 
     initSse(res);
     sseWrite(res, {
@@ -847,7 +649,8 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
         for await (const chunk of streamLlm(
           {
             mode,
-            maxTokens: mode === 'fast' ? 500 : 2048,
+            maxTokens: limits.maxTokens,
+            temperature: limits.temperature,
             signal: llmAbort.signal,
             messages: [
               { role: 'system', content: system },
@@ -887,6 +690,10 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
         return;
       }
       const visible = extractVisibleAnswer(thinkingAcc, textAcc);
+      // A-04：deep 正文命中策划特征时留痕（不强制清空）
+      if (visible.answer && looksLikeHoverPlanning(visible.answer)) {
+        logger.warn({ event: 'deep_planning_leak', mode }, 'deep answer looks like planning');
+      }
       if (mode === 'fast') {
         sseWrite(res, { type: 'final', answer: visible.answer, thinking: '' });
       } else {
@@ -897,21 +704,23 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
         });
       }
       sseWrite(res, { type: 'done' });
-      await persistTurn(conv.id, body.message, {
-        content: visible.answer,
-        thinking: visible.thinking,
-      });
-      void rememberTopic(req.user?.id, body.message, 'chat');
-      void maybeSaveImportantMemory(req.user?.id, body.message, visible.answer);
+      await finalizeChatTurn(conv.id, req.user?.id, body.message, visible.answer, visible.thinking);
     } catch (e) {
       if (!(e instanceof Error && e.name === 'AbortError') && !res.writableEnded && !res.destroyed) {
-        sseWrite(res, {
-          type: 'error',
-          message: e instanceof Error ? e.message : String(e),
-        });
+        // A-01：SSE 错误消息只发安全文案，不泄露 url/raw
+        const message = e instanceof LlmCallError ? e.messageForClient : '生成失败，请稍后重试';
+        sseWrite(res, { type: 'error', message });
+      }
+    } finally {
+      // B-10：统一收尾，避免 res.end() 重复调用
+      if (!res.writableEnded) {
+        try {
+          res.end();
+        } catch {
+          /* 已关闭 */
+        }
       }
     }
-    if (!res.writableEnded) res.end();
   } catch (e) {
     next(e);
   }

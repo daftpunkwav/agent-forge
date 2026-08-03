@@ -39,7 +39,12 @@ export async function streamAgent(
 
   const timeoutMs = opts?.timeoutMs ?? 28_000;
   const timeoutAc = new AbortController();
-  const timer = setTimeout(() => timeoutAc.abort(), timeoutMs);
+  // C-09：独立超时标志，避免与「主动取消」共用 AbortError 判断导致歧义
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    timeoutAc.abort();
+  }, timeoutMs);
   const onOuterAbort = () => timeoutAc.abort();
   if (signal) {
     if (signal.aborted) timeoutAc.abort();
@@ -93,9 +98,10 @@ export async function streamAgent(
       }
     }
   } catch (e) {
+    if (timedOut) throw new Error('讲解超时，请再悬停试一次');
     if (e instanceof Error && e.name === 'AbortError') {
-      if (signal?.aborted) throw e;
-      throw new Error('讲解超时，请再悬停试一次');
+      if (signal?.aborted) throw e; // 主动取消
+      throw new Error('讲解超时，请再悬停试一次'); // 超时
     }
     throw e;
   } finally {

@@ -539,6 +539,16 @@ export function isCompleteHoverAnswer(s: string): boolean {
   return true;
 }
 
+/**
+ * 是否复述了 system prompt 的硬性规则 / 任务格式口令。
+ * 悬停卡片与 deep/chat 的「思考过程」展示共用此门控；命中即视为内部措辞泄漏。
+ */
+export function isSystemEcho(s: string): boolean {
+  const t = (s || '').trim();
+  if (!t) return false;
+  return SYSTEM_ECHO.test(t) || TASK_ECHO.test(t);
+}
+
 export function looksLikeHoverPlanning(s: string): boolean {
   const t = (s || '').trim();
   if (!t) return false;

@@ -85,11 +85,12 @@ User Message
 | API | `POST /agent/chat`、`/chat/stream`；`mode: fast \| deep`（内部区分，无产品化模式选择器） |
 | Prompt | `buildDeepSystem`：`Thought / Explain / Practice / Next`（prompted 骨架，**非真 tool-loop**） |
 | 工具循环 | **未实现** |
-| 会话 | `AgentConversation` + `AgentMessage`；注入最近 12 条；匿名会话 TTL 7 天 |
+| 会话 | `AgentConversation` + `AgentMessage`；注入最近消息（按 mode 的 token 预算从最新向前累加：fast 600 / deep 2000，替代固定 12 条）；匿名会话 TTL 7 天 |
 | 摘要 | 消息 > 24 条时压缩最旧 8 条到 `summary` |
-| 记忆 | 读 `AgentMemory` + `LearningProgress`；启发式「请记住…」写入 preference；`POST /progress` 在 mastered 时追加记忆 |
+| 记忆 | 读 `AgentMemory` + `LearningProgress`；启发式「请记住…」写入 preference（稳定哈希 key + 每用户 ≤20 条，超出淘汰最旧）；`POST /progress` 在 mastered 时追加记忆 |
 | 流式 | deep：thinking / delta / final；fast：status + final |
-| maxTokens | fast：同步约 700 / 流式约 500；deep：约 2048 |
+| 参数 | 统一 `lib/llm/config.ts`（`LLM_TOKEN_LIMITS`）：hover 220 / chatFast 600 / chatDeep·clickDeep 2048 |
+| 流式支持 | `anthropic_messages` / `openai_chat` 真流式；**`openai_responses` 退化为整段输出（无逐字流、早停无效）**，选该格式的用户会等完整响应才出全文 |
 | 推理模式 UI | **未实现** |
 | MCP | 仅状态探测；进程未实现 |
 | 独立 Runtime | `services/agent` 仅 README；逻辑仍在 `apps/api` |

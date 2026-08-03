@@ -5,6 +5,8 @@ import { validate } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
 import { listPublicProviders, maskApiKey } from '../lib/llm/providers.js';
 import { API_FORMATS, type ByokConfig } from '../lib/llm/types.js';
+import { parsePrefs } from '../lib/prefs.js';
+import { decryptByokConfig, encryptByokKey } from '../lib/byokCrypto.js';
 
 export const settingsRouter = Router();
 
@@ -20,17 +22,10 @@ const byokSchema = z.object({
   vision: z.boolean().optional(),
 });
 
-function parsePrefs(raw?: string | null): Record<string, unknown> {
-  try {
-    return JSON.parse(raw || '{}') as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
-
 function publicByok(byok: unknown) {
   const b = (byok || {}) as Partial<ByokConfig>;
-  const key = typeof b.apiKey === 'string' ? b.apiKey : '';
+  // A-03：库中为密文，脱敏展示前先解密
+  const key = decryptByokConfig(b as ByokConfig)?.apiKey || '';
   return {
     enabled: Boolean(b.enabled),
     baseUrl: b.baseUrl || '',
@@ -120,7 +115,8 @@ settingsRouter.patch(
           format: body.byok.format || 'anthropic_messages',
           name: body.byok.name || 'BYOK',
           vision: body.byok.vision !== false,
-          apiKey,
+          // A-03：写入前静态加密，数据库不留明文 key
+          apiKey: apiKey ? encryptByokKey(apiKey) : '',
         } satisfies ByokConfig;
       }
 
@@ -149,7 +145,8 @@ settingsRouter.post('/test-llm', requireAuth, async (req, res, next) => {
     const { callLlm, resolveProvider } = await import('../lib/llm/providers.js');
     const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
     const preferences = parsePrefs(user?.preferences);
-    const byok = preferences.byok as ByokConfig | undefined;
+    // A-03：库中为密文，测试前先解密
+    const byok = decryptByokConfig((preferences.byok as ByokConfig) || null) || undefined;
     const provider = resolveProvider(byok);
     if (!provider) {
       res.status(400).json({

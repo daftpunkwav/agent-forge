@@ -6,6 +6,15 @@ marked.setOptions({
   breaks: true,
 });
 
+// C-11：链接 target/rel 白名单收紧（模块加载时注册一次，所有 sanitize 生效）
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'A') {
+    const target = node.getAttribute('target');
+    if (target && target !== '_blank') node.removeAttribute('target');
+    if (node.hasAttribute('target')) node.setAttribute('rel', 'noopener noreferrer');
+  }
+});
+
 /**
  * 作者标注语法预处理：
  * - [[术语]] → 可悬停讲解
@@ -59,7 +68,12 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-/** 将 Markdown 转为消毒后的 HTML */
+/**
+ * 将 Markdown 转为消毒后的 HTML
+ * 注（C-11）：当前 markdown 来源为 LLM 输出（经服务端净化）与作者文章（可信内容）。
+ * 未来若开放批注/评论渲染 LLM 输出，应收紧为更严配置（FORBID_ATTR: ['id','class']，
+ * 仅保留 data-agent-*）；target/rel 已由上方 addHook 限制为白名单固定值。
+ */
 export function renderMarkdown(md: string): string {
   const pre = preprocessAgentMarkup(md);
   const raw = marked.parse(pre, { async: false }) as string;

@@ -7,6 +7,55 @@ import type {
   StreamChunk,
 } from './types.js';
 import { extractVisibleAnswer } from './agentPrompt.js';
+import {
+  LLM_CALL_TIMEOUT_MS,
+  LLM_RETRY_BACKOFF_MS,
+  LLM_TOKEN_LIMITS,
+} from './config.js';
+import { logger } from '../logger.js';
+
+/** 上游 LLM 调用错误（A-01）：messageForClient 面向客户端，诊断字段只进日志 */
+export class LlmCallError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly messageForClient: string,
+    public readonly diagnostic: { url: string; raw: string },
+  ) {
+    super(messageForClient);
+    this.name = 'LlmCallError';
+  }
+}
+
+/** 仅 5xx / 网络层失败可重试；4xx（参数/鉴权）与超时、客户端取消不重试（B-05） */
+function isRetriable(e: unknown): boolean {
+  if (e instanceof LlmCallError) return e.status === 502 || e.status === 503 || e.status === 504;
+  // fetch 网络层失败（非 HTTP 状态）表现为 TypeError
+  return e instanceof TypeError;
+}
+
+function isAbortError(e: unknown): boolean {
+  return e instanceof Error && e.name === 'AbortError';
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * 同步调用统一加超时（A-02）：调用方 signal 与超时信号任一触发即中断。
+ * 返回 timedOut() 用于区分「超时」与「主动取消」。
+ */
+function withTimeout(req: LlmRequest): { req: LlmRequest; timedOut: () => boolean } {
+  const timeoutSignal = AbortSignal.timeout(LLM_CALL_TIMEOUT_MS);
+  const signal = req.signal ? AbortSignal.any([req.signal, timeoutSignal]) : timeoutSignal;
+  return { req: { ...req, signal }, timedOut: () => timeoutSignal.aborted };
+}
+
+/** 防御性兜底：调用方未传参时取单一来源默认（C-03） */
+function tokenDefaults(req: LlmRequest): { maxTokens: number; temperature: number } {
+  const d = LLM_TOKEN_LIMITS[req.mode === 'fast' ? 'hover' : 'clickDeep'];
+  return { maxTokens: req.maxTokens ?? d.maxTokens, temperature: req.temperature ?? d.temperature };
+}
 
 function env(name: string, fallback = ''): string {
   return process.env[name] || fallback;
@@ -46,8 +95,11 @@ export function resolveOpenAiResponsesUrl(baseUrl: string): string {
   return `${b}/v1/responses`;
 }
 
-/** 从环境变量加载服务端默认 Provider */
+let _providers: ProviderConfig[] | null = null;
+
+/** 从环境变量加载服务端默认 Provider（B-03：进程启动后缓存一次，生产环境变量不热更） */
 export function loadProviders(): ProviderConfig[] {
+  if (_providers) return _providers;
   const list: ProviderConfig[] = [];
 
   const stepKey = env('STEPFUN_API_KEY') || env('LLM_API_KEY');
@@ -89,7 +141,13 @@ export function loadProviders(): ProviderConfig[] {
     });
   }
 
-  return list.filter((p) => p.baseUrl && p.apiKey);
+  _providers = list.filter((p) => p.baseUrl && p.apiKey);
+  return _providers;
+}
+
+/** 仅测试用：重置 Provider 缓存，便于按用例切换环境变量 */
+export function resetProviderCache(): void {
+  _providers = null;
 }
 
 export function getDefaultProvider(): ProviderConfig | null {
@@ -98,7 +156,7 @@ export function getDefaultProvider(): ProviderConfig | null {
   return all.find((p) => p.id === preferred) || all[0] || null;
 }
 
-export function byokToProvider(byok: ByokConfig): ProviderConfig | null {
+export function byokToProvider(byok?: ByokConfig | null): ProviderConfig | null {
   if (!byok?.enabled) return null;
   if (!byok.baseUrl?.trim() || !byok.apiKey?.trim() || !byok.model?.trim()) return null;
   return {
@@ -114,7 +172,7 @@ export function byokToProvider(byok: ByokConfig): ProviderConfig | null {
 
 /** 优先用户 BYOK，其次服务端默认 */
 export function resolveProvider(byok?: ByokConfig | null): ProviderConfig | null {
-  return byokToProvider(byok || ({ enabled: false } as ByokConfig)) || getDefaultProvider();
+  return byokToProvider(byok) || getDefaultProvider();
 }
 
 export function listPublicProviders() {
@@ -148,15 +206,87 @@ export async function callLlm(req: LlmRequest, provider?: ProviderConfig | null)
     throw new Error('未配置 LLM：请在设置中填写 BYOK（Base URL / API Key / 模型 / 格式）');
   }
 
-  switch (p.format) {
-    case 'anthropic_messages':
-      return callAnthropicMessages(p, req);
-    case 'openai_responses':
-      return callOpenAiResponses(p, req);
-    case 'openai_chat':
-    default:
-      return callOpenAiChat(p, req);
+  // A-02：同步调用统一挂超时，上游挂起 30s 即中断
+  const { req: timedReq, timedOut } = withTimeout(req);
+  // B-05：5xx/网络抖动重试一次；4xx、超时、客户端取消不重试（避免放大挂起）
+  const startedAt = Date.now();
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      let result: LlmResponse;
+      switch (p.format) {
+        case 'anthropic_messages':
+          result = await callAnthropicMessages(p, timedReq);
+          break;
+        case 'openai_responses':
+          result = await callOpenAiResponses(p, timedReq);
+          break;
+        case 'openai_chat':
+        default:
+          result = await callOpenAiChat(p, timedReq);
+          break;
+      }
+      // B-06：成功打点
+      logger.info(
+        {
+          event: 'llm_call',
+          providerId: p.id,
+          format: p.format,
+          mode: req.mode,
+          ms: Date.now() - startedAt,
+          ok: true,
+        },
+        'llm call ok',
+      );
+      return result;
+    } catch (e) {
+      if (attempt === 1 && !timedOut() && isRetriable(e)) {
+        // B-06：重试打点
+        logger.warn(
+          {
+            event: 'llm_call_retry',
+            providerId: p.id,
+            format: p.format,
+            mode: req.mode,
+            status: e instanceof LlmCallError ? e.status : undefined,
+          },
+          'llm call retry',
+        );
+        await sleep(LLM_RETRY_BACKOFF_MS);
+        continue;
+      }
+      if (isAbortError(e) && timedOut()) {
+        logger.error(
+          {
+            event: 'llm_call',
+            providerId: p.id,
+            format: p.format,
+            mode: req.mode,
+            ms: Date.now() - startedAt,
+            ok: false,
+            status: 408,
+          },
+          'llm call timeout',
+        );
+        throw new LlmCallError(408, '模型响应超时，请稍后重试', { url: '', raw: '' });
+      }
+      // B-06：失败打点
+      logger.error(
+        {
+          event: 'llm_call',
+          providerId: p.id,
+          format: p.format,
+          mode: req.mode,
+          ms: Date.now() - startedAt,
+          ok: false,
+          status: e instanceof LlmCallError ? e.status : undefined,
+        },
+        'llm call failed',
+      );
+      throw e;
+    }
   }
+  /* istanbul ignore next -- 循环上限内必返回或抛错 */
+  throw new Error('unreachable');
 }
 
 /** 流式输出：thinking / text 分片。openai_responses 退化为整段 text。 */
@@ -177,19 +307,47 @@ export async function* streamLlm(
     yield* streamOpenAiChat(p, req);
     return;
   }
+  // B-04：Responses 格式尚未实现真流式，退化为整段调用后一次性 yield；
+  // 首 chunk 延迟 = 整个生成时长，早停对其无效。排障时靠此日志定位。
+  logger.warn(
+    { providerId: p.id, format: p.format },
+    'openai_responses: 未实现真流式，退化为整段输出（早停无效）',
+  );
   const full = await callOpenAiResponses(p, req);
   if (full.text) yield { kind: 'text' as const, text: full.text };
 }
 
-function buildAnthropicBody(p: ProviderConfig, req: LlmRequest, stream: boolean) {
+/** Anthropic Messages 请求体（C-01：覆盖实际用到的字段，替代 Record<string, unknown> + as 断言） */
+interface AnthropicRequestBody {
+  model: string;
+  max_tokens: number;
+  temperature: number;
+  system?: string;
+  messages: Array<{ role: string; content: string | unknown[] }>;
+  stream?: boolean;
+  thinking?: { type: 'disabled' };
+}
+
+/** Anthropic Messages 响应体（仅用到字段） */
+interface AnthropicResponseBody {
+  content?: Array<{ type?: string; text?: string; thinking?: string }>;
+  completion?: string;
+  output_text?: string;
+  usage?: { input_tokens?: number; output_tokens?: number };
+  error?: { message?: string };
+  message?: string;
+  /** JSON 解析失败时的原始文本兜底（错误日志用，不面向客户端） */
+  raw?: string;
+}
+
+function buildAnthropicBody(p: ProviderConfig, req: LlmRequest, stream: boolean): AnthropicRequestBody {
   const system = req.messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
   const messages = req.messages
     .filter((m) => m.role !== 'system')
     .map((m) => ({ role: m.role, content: m.content }));
 
-  const maxTokens = req.maxTokens ?? (req.mode === 'fast' ? 900 : 2048);
-  const temperature = req.temperature ?? (req.mode === 'fast' ? 0.25 : 0.55);
-  const body: Record<string, unknown> = {
+  const { maxTokens, temperature } = tokenDefaults(req);
+  const body: AnthropicRequestBody = {
     model: p.model,
     max_tokens: maxTokens,
     temperature,
@@ -232,8 +390,8 @@ async function* streamAnthropicMessages(
         // 用 deep 只是为了不带 thinking.disabled；仍用原 maxTokens
         const body = buildAnthropicBody(p, fallbackReq, true);
         delete body.thinking;
-        body.max_tokens = req.maxTokens ?? 220;
-        body.temperature = req.temperature ?? 0.15;
+        body.max_tokens = req.maxTokens ?? LLM_TOKEN_LIMITS.hover.maxTokens;
+        body.temperature = req.temperature ?? LLM_TOKEN_LIMITS.hover.temperature;
         const retry = await fetch(url, {
           method: 'POST',
           headers: {
@@ -262,7 +420,11 @@ async function* streamAnthropicMessages(
     } catch {
       /* fallthrough */
     }
-    throw new Error(`LLM 流式失败 (${res.status}) @ ${url}: ${raw.slice(0, 240)}`);
+    // A-01：错误信息脱敏——url/raw 只进日志，客户端只见安全消息
+    throw new LlmCallError(res.status, `模型流式生成失败（HTTP ${res.status}）`, {
+      url,
+      raw: raw.slice(0, 500),
+    });
   }
   if (!res.body) {
     const full = await callAnthropicMessages(p, req);
@@ -365,12 +527,13 @@ async function* streamOpenAiChat(
 ): AsyncGenerator<StreamChunk, void, unknown> {
   const url = resolveOpenAiChatUrl(p.baseUrl);
   const messages = req.messages.map((m) => ({ role: m.role, content: m.content }));
+  const { maxTokens, temperature } = tokenDefaults(req);
   const body: Record<string, unknown> = {
     model: p.model,
     messages,
     stream: true,
-    max_tokens: req.maxTokens ?? (req.mode === 'fast' ? 512 : 1600),
-    temperature: req.temperature ?? (req.mode === 'fast' ? 0.25 : 0.55),
+    max_tokens: maxTokens,
+    temperature,
   };
   // 部分 OpenAI 兼容网关用这些字段关 reasoning
   if (req.mode === 'fast') {
@@ -389,7 +552,10 @@ async function* streamOpenAiChat(
   });
   if (!res.ok) {
     const raw = await res.text();
-    throw new Error(`LLM 流式失败 (${res.status}) @ ${url}: ${raw.slice(0, 240)}`);
+    throw new LlmCallError(res.status, `模型流式生成失败（HTTP ${res.status}）`, {
+      url,
+      raw: raw.slice(0, 500),
+    });
   }
   if (!res.body) {
     const full = await callOpenAiChat(p, req);
@@ -465,11 +631,10 @@ async function callAnthropicMessages(p: ProviderConfig, req: LlmRequest): Promis
     });
 
   // StepFun 等模型可能主要产出 thinking 块，预算过小易截断
-  const maxTokens = req.maxTokens ?? (req.mode === 'fast' ? 900 : 2048);
-  const temperature = req.temperature ?? (req.mode === 'fast' ? 0.3 : 0.6);
+  const { maxTokens, temperature } = tokenDefaults(req);
   const url = resolveAnthropicMessagesUrl(p.baseUrl);
 
-  const body: Record<string, unknown> = {
+  const body: AnthropicRequestBody = {
     model: p.model,
     max_tokens: maxTokens,
     temperature,
@@ -481,7 +646,7 @@ async function callAnthropicMessages(p: ProviderConfig, req: LlmRequest): Promis
     body.thinking = { type: 'disabled' };
   }
 
-  const doFetch = async (payload: Record<string, unknown>) => {
+  const doFetch = async (payload: AnthropicRequestBody) => {
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -494,9 +659,9 @@ async function callAnthropicMessages(p: ProviderConfig, req: LlmRequest): Promis
       signal: req.signal,
     });
     const raw = await res.text();
-    let data: Record<string, unknown> = {};
+    let data: AnthropicResponseBody = {};
     try {
-      data = JSON.parse(raw) as Record<string, unknown>;
+      data = JSON.parse(raw) as AnthropicResponseBody;
     } catch {
       data = { raw: raw.slice(0, 300) };
     }
@@ -511,12 +676,11 @@ async function callAnthropicMessages(p: ProviderConfig, req: LlmRequest): Promis
   }
 
   if (!res.ok) {
-    const msg =
-      (data as { error?: { message?: string } })?.error?.message ||
-      (data as { message?: string })?.message ||
-      raw.slice(0, 200) ||
-      res.statusText;
-    throw new Error(`LLM 调用失败 (${res.status}) @ ${url}: ${msg}`);
+    // A-01：url/raw 只进日志，客户端只见安全消息
+    throw new LlmCallError(res.status, `模型调用失败（HTTP ${res.status}）`, {
+      url,
+      raw: raw.slice(0, 500),
+    });
   }
 
   const { text, thinking } = extractAnthropicParts(data);
@@ -527,13 +691,13 @@ async function callAnthropicMessages(p: ProviderConfig, req: LlmRequest): Promis
     model: p.model,
     format: 'anthropic_messages',
     usage: {
-      inputTokens: (data.usage as { input_tokens?: number } | undefined)?.input_tokens,
-      outputTokens: (data.usage as { output_tokens?: number } | undefined)?.output_tokens,
+      inputTokens: data.usage?.input_tokens,
+      outputTokens: data.usage?.output_tokens,
     },
   };
 }
 
-function extractAnthropicParts(data: Record<string, unknown>): { text: string; thinking: string } {
+export function extractAnthropicParts(data: AnthropicResponseBody): { text: string; thinking: string } {
   const content = data.content;
   if (Array.isArray(content)) {
     const texts: string[] = [];
@@ -541,8 +705,8 @@ function extractAnthropicParts(data: Record<string, unknown>): { text: string; t
     for (const block of content) {
       if (!block || typeof block !== 'object') continue;
       const b = block as { type?: string; text?: string; thinking?: string };
+      // D-02：无 type 的块不再当正文兜底（避免把 thinking 块误收为正文）
       if (b.type === 'text' && b.text) texts.push(String(b.text));
-      else if (b.text && !b.type) texts.push(String(b.text));
       if (b.type === 'thinking' && b.thinking) thoughts.push(String(b.thinking));
     }
     return { text: texts.join(''), thinking: thoughts.join('') };
@@ -550,6 +714,13 @@ function extractAnthropicParts(data: Record<string, unknown>): { text: string; t
   if (typeof data.completion === 'string') return { text: data.completion, thinking: '' };
   if (typeof data.output_text === 'string') return { text: data.output_text, thinking: '' };
   return { text: '', thinking: '' };
+}
+
+/** OpenAI Chat Completions 响应体（仅用到字段） */
+interface OpenAiChatResponseBody {
+  choices?: Array<{ message?: { content?: string } }>;
+  error?: { message?: string };
+  raw?: string;
 }
 
 async function callOpenAiChat(p: ProviderConfig, req: LlmRequest): Promise<LlmResponse> {
@@ -564,6 +735,7 @@ async function callOpenAiChat(p: ProviderConfig, req: LlmRequest): Promise<LlmRe
     return m;
   });
 
+  const { maxTokens, temperature } = tokenDefaults(req);
   const url = resolveOpenAiChatUrl(p.baseUrl);
   const res = await fetch(url, {
     method: 'POST',
@@ -574,29 +746,39 @@ async function callOpenAiChat(p: ProviderConfig, req: LlmRequest): Promise<LlmRe
     body: JSON.stringify({
       model: p.model,
       messages,
-      max_tokens: req.maxTokens ?? (req.mode === 'fast' ? 256 : 1024),
-      temperature: req.temperature ?? (req.mode === 'fast' ? 0.3 : 0.6),
+      max_tokens: maxTokens,
+      temperature,
     }),
   });
   const raw = await res.text();
-  let data: Record<string, unknown> = {};
+  let data: OpenAiChatResponseBody = {};
   try {
-    data = JSON.parse(raw) as Record<string, unknown>;
+    data = JSON.parse(raw) as OpenAiChatResponseBody;
   } catch {
     data = { raw: raw.slice(0, 300) };
   }
   if (!res.ok) {
-    const msg =
-      (data as { error?: { message?: string } })?.error?.message || raw.slice(0, 200) || res.statusText;
-    throw new Error(`LLM 调用失败 (${res.status}) @ ${url}: ${msg}`);
+    // A-01：url/raw 只进日志，客户端只见安全消息
+    throw new LlmCallError(res.status, `模型调用失败（HTTP ${res.status}）`, {
+      url,
+      raw: raw.slice(0, 500),
+    });
   }
-  const choices = data.choices as Array<{ message?: { content?: string } }> | undefined;
-  const text = choices?.[0]?.message?.content || '';
+  const text = data.choices?.[0]?.message?.content || '';
   return { text, model: p.model, format: 'openai_chat' };
 }
 
+/** OpenAI Responses 响应体（仅用到字段） */
+interface OpenAiResponsesBody {
+  output_text?: string;
+  output?: unknown;
+  error?: { message?: string };
+  raw?: string;
+}
+
 async function callOpenAiResponses(p: ProviderConfig, req: LlmRequest): Promise<LlmResponse> {
-  const input = req.messages.map((m) => `${m.role}: ${m.content}`).join('\n');
+  // C-05：input 用结构化消息数组（与 callOpenAiChat 对齐），不再压成 role: content 纯文本
+  const input = req.messages.map((m) => ({ role: m.role, content: m.content }));
   const url = resolveOpenAiResponsesUrl(p.baseUrl);
   const res = await fetch(url, {
     method: 'POST',
@@ -607,22 +789,23 @@ async function callOpenAiResponses(p: ProviderConfig, req: LlmRequest): Promise<
     body: JSON.stringify({
       model: p.model,
       input,
-      max_output_tokens: req.maxTokens ?? (req.mode === 'fast' ? 256 : 1024),
+      max_output_tokens: tokenDefaults(req).maxTokens,
     }),
   });
   const raw = await res.text();
-  let data: Record<string, unknown> = {};
+  let data: OpenAiResponsesBody = {};
   try {
-    data = JSON.parse(raw) as Record<string, unknown>;
+    data = JSON.parse(raw) as OpenAiResponsesBody;
   } catch {
     data = { raw: raw.slice(0, 300) };
   }
   if (!res.ok) {
-    const msg =
-      (data as { error?: { message?: string } })?.error?.message || raw.slice(0, 200) || res.statusText;
-    throw new Error(`LLM 调用失败 (${res.status}) @ ${url}: ${msg}`);
+    // A-01：url/raw 只进日志，客户端只见安全消息
+    throw new LlmCallError(res.status, `模型调用失败（HTTP ${res.status}）`, {
+      url,
+      raw: raw.slice(0, 500),
+    });
   }
-  const outputText =
-    (data.output_text as string) || JSON.stringify(data.output || data).slice(0, 2000);
+  const outputText = data.output_text || JSON.stringify(data.output || data).slice(0, 2000);
   return { text: String(outputText), model: p.model, format: 'openai_responses' };
 }

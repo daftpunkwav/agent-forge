@@ -8,11 +8,11 @@ import {
   hoverCacheKey,
   isCompleteHoverText,
   isSafeHoverDisplay,
-  looksLikeHoverPlanning,
   readHoverCache,
   sanitizeHoverDisplay,
   writeHoverCache,
 } from '@/lib/hoverExplainCache';
+import { createHoverStreamAccumulator } from '@/lib/hoverStreamBuffer';
 import {
   acquireExpand,
   beginCollapse,
@@ -245,7 +245,8 @@ export function ArticleCardInlineAgent({
       abortRef.current = ac;
       try {
         let finalText = '';
-        let streamBuf = '';
+        // C-10：共用流式缓冲（旁白检测 + 按句截断展示）
+        const hoverAccum = createHoverStreamAccumulator();
         let didStream = false;
         await streamAgent(
           '/agent/explain/stream',
@@ -265,26 +266,9 @@ export function ArticleCardInlineAgent({
             if (ev.type === 'status' || ev.type === 'thinking') {
               return;
             }
-            // 后端仅在清洗后 soft-stream 洁净答案；仍做前端门控
+            // 后端仅在清洗后 soft-stream 洁净答案；仍做前端门控（C-10 共用缓冲）
             if (ev.type === 'delta' && ev.text) {
-              if (ev.replace) streamBuf = ev.text;
-              else streamBuf += ev.text;
-              const partial = streamBuf.trim();
-              // 旁白/规则：不展示（不清空缓冲，等后续洁净句）
-              if (looksLikeHoverPlanning(partial) && !isSafeHoverDisplay(partial)) {
-                return;
-              }
-              // 只展示到最后一个 。！
-              let show = '';
-              if (isSafeHoverDisplay(partial) && /[。！]$/.test(partial)) {
-                show = partial;
-              } else {
-                const lastEnd = Math.max(partial.lastIndexOf('。'), partial.lastIndexOf('！'));
-                if (lastEnd >= 8) {
-                  const upto = partial.slice(0, lastEnd + 1);
-                  if (isSafeHoverDisplay(upto)) show = upto;
-                }
-              }
+              const { show } = hoverAccum.onDelta(ev.text, ev.replace);
               if (!show) return;
               didStream = true;
               applySafePartial(gen, show);
@@ -301,7 +285,7 @@ export function ArticleCardInlineAgent({
         if (gen !== genRef.current || !sessionOn.current) return;
         const cleaned =
           sanitizeHoverDisplay(finalText) ||
-          (didStream ? sanitizeHoverDisplay(streamBuf) : '') ||
+          (didStream ? sanitizeHoverDisplay(hoverAccum.get()) : '') ||
           '';
         const text = cleaned || '讲解生成失败，请再悬停试一次';
         if (isCompleteHoverText(text)) writeHoverCache(key, text);

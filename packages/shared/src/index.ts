@@ -10,6 +10,7 @@ export {
   extractHoverAnswer,
   isCompleteHoverAnswer,
   looksLikeHoverPlanning,
+  isSystemEcho,
   isSafeHoverPublicAnswer,
   sanitizeHoverDisplay,
   // 前端别名

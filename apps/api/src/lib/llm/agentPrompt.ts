@@ -1,4 +1,6 @@
 import type { AgentStyle } from './types.js';
+// C-04：本地正则副本已删除，函数体内直接使用 shared 实现
+import { isSystemEcho, looksLikeHoverPlanning } from '@agentforge/shared';
 
 // 悬停清洗逻辑已迁移至 @agentforge/shared，此处 re-export 保持现有 API 兼容
 export {
@@ -11,6 +13,7 @@ export {
   extractHoverAnswer,
   isCompleteHoverAnswer,
   looksLikeHoverPlanning,
+  isSystemEcho,
   isSafeHoverPublicAnswer,
 } from '@agentforge/shared';
 
@@ -93,14 +96,30 @@ export function buildDeepSystem(style?: string, memoryBlock?: string): string {
 /**
  * 从「思考草稿 + 正文」中拆出用户可见答案。
  * StepFun 常把策划/内心独白/反复改稿放在 thinking；悬停绝不可展示。
+ * A-04：统一出口处做 system 规则复述质检——正文复述规则视为无效（触发上层兜底），
+ * 思考过程复述规则则打码不回传，避免把 prompt 内部措辞展示给用户。
  */
 export function extractVisibleAnswer(thinking: string, text: string): { answer: string; thinking: string } {
+  const r = extractVisibleAnswerInner(thinking, text);
+  if (r.answer && isSystemEcho(r.answer)) {
+    return { answer: '', thinking: r.thinking };
+  }
+  if (r.thinking && isSystemEcho(r.thinking)) {
+    return { answer: r.answer, thinking: '' };
+  }
+  return r;
+}
+
+function extractVisibleAnswerInner(
+  thinking: string,
+  text: string,
+): { answer: string; thinking: string } {
   const t = (text || '').trim();
   const th = (thinking || '').trim();
 
   // 正文已有结构标题：优先正文
   if (t && (/^#{1,3}\s*Thought/im.test(t) || t.length > 40)) {
-    if (PLANNING_HINT_LOCAL.test(t.slice(0, 100)) && th) {
+    if (looksLikeHoverPlanning(t) && th) {
       const cleaned = stripPlanningPreamble(t);
       if (cleaned.thinking) return cleaned;
     }
@@ -130,14 +149,12 @@ export function extractVisibleAnswer(thinking: string, text: string): { answer: 
   if (cleaned.answer) return cleaned;
 
   if (t) return { answer: t, thinking: th };
-  if (th && !PLANNING_HINT_LOCAL.test(th.slice(0, 40))) return { answer: th, thinking: '' };
+  if (th && !looksLikeHoverPlanning(th)) return { answer: th, thinking: '' };
   if (th) return { answer: '', thinking: th };
   return { answer: '', thinking: '' };
 }
 
-// extractVisibleAnswer 内部专用，避免从 shared 重新 import 产生循环依赖风险
-const PLANNING_HINT_LOCAL =
-  /(?:^|[。！？\n])我需要[:：]|结构如下|写作计划|检查清单|首先得|语气：|当前学习|内部思考|推理过程|Thought\s*[:：]|###\s*Thought|自我提醒|用户想|用户问|用户需要|让我先|我应该|首先分析|判断用户/;
+// C-04：本地 PLANNING_HINT_LOCAL 已删除，统一使用 shared 的 looksLikeHoverPlanning（消除双份漂移）
 
 function stripPlanningPreamble(raw: string): { answer: string; thinking: string } {
   const s = raw.trim();
@@ -159,14 +176,17 @@ function stripPlanningPreamble(raw: string): { answer: string; thinking: string 
   return { answer: s, thinking: '' };
 }
 
-export function formatMemoryBlock(parts: {
-  style?: string;
-  mastered: string[];
-  learning: string[];
-  notes: string[];
-  recentTopics?: string[];
-  route?: string;
-}): string {
+export function formatMemoryBlock(
+  parts: {
+    style?: string;
+    mastered: string[];
+    learning: string[];
+    notes: string[];
+    recentTopics?: string[];
+    route?: string;
+  },
+  opts?: { maxChars?: number },
+): string {
   const lines: string[] = [];
   if (parts.route) lines.push(`当前页面：${parts.route}`);
   if (parts.mastered.length) lines.push(`已掌握：${parts.mastered.slice(0, 12).join('、')}`);
@@ -174,7 +194,10 @@ export function formatMemoryBlock(parts: {
   if (parts.recentTopics?.length) lines.push(`最近问过：${parts.recentTopics.slice(0, 8).join('、')}`);
   if (parts.notes.length) lines.push(`备注：${parts.notes.slice(0, 8).join('；')}`);
   if (!lines.length) lines.push('暂无历史学习记录，按入门水平讲解。');
-  return lines.join('\n');
+  // D-03：统一总长上限（deep 无截断的旧行为收敛为 800 字；hover 调用方仍自行 slice(0,120)）
+  const out = lines.join('\n');
+  const max = opts?.maxChars ?? 800;
+  return out.length > max ? out.slice(0, max) : out;
 }
 
 /** 导出模式说明（API / 前端展示） */
@@ -190,7 +213,8 @@ export const AGENT_MODE_META = {
     id: 'deep',
     label: 'Agent 助手（面板/详解）',
     architecture: 'single-shot structured (prompted ReAct stages)',
-    reasoning: 'Deep ReAct-Style（Thought→Explain→Practice→Next）',
+    // D-05：非真 tool-loop，避免「ReAct-Style」误导
+    reasoning: 'Deep Structured（Thought→Explain→Practice→Next）',
     latency: 'medium',
   },
 } as const;
