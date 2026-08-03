@@ -3,16 +3,12 @@ import { Link } from 'react-router-dom';
 import type { ArticleSummary } from '@agentforge/shared';
 import { Tag } from '@/components/ui/Tag';
 import { MarkdownView } from '@/components/agent/MarkdownView';
-import { streamAgent } from '@/lib/agentStream';
+import { useAgentStyle } from '@/hooks/useAgentStyle';
+import { isSafeHoverDisplay, sanitizeHoverDisplay } from '@/lib/hoverExplainCache';
 import {
-  hoverCacheKey,
-  isCompleteHoverText,
-  isSafeHoverDisplay,
-  readHoverCache,
-  sanitizeHoverDisplay,
-  writeHoverCache,
-} from '@/lib/hoverExplainCache';
-import { createHoverStreamAccumulator } from '@/lib/hoverStreamBuffer';
+  IncompleteHoverKeys,
+  runHoverExplainStream,
+} from '@/lib/hoverExplainSession';
 import {
   acquireExpand,
   beginCollapse,
@@ -39,13 +35,17 @@ export function ArticleCardInlineAgent({
   article,
   layout = 'feed',
   to,
+  /** 覆盖 agentStyle；未传则登录用户读 settings，否则 concise */
+  agentStyle,
 }: {
   article: ArticleSummary;
   layout?: ArticleCardLayout;
   to?: string;
+  agentStyle?: string;
 }) {
   const reactId = useId();
   const lockId = `${article.id}:${reactId}`;
+  const style = useAgentStyle('concise', agentStyle);
 
   const href = to || `/knowledge/${article.slug}`;
   const summary = (article.summary || '').trim();
@@ -64,6 +64,7 @@ export function ArticleCardInlineAgent({
   const [expanded, setExpanded] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
+  const incompleteRef = useRef(new IncompleteHoverKeys());
   const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const thinkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -211,10 +212,6 @@ export function ArticleCardInlineAgent({
 
   async function runExplain() {
     const gen = ++genRef.current;
-    // 与实际请求的 style: 'concise' 保持一致，否则缓存永远 miss
-    const key = hoverCacheKey(topic, 'concise');
-    const cached = readHoverCache(key);
-
     thinkStartedAt.current = Date.now();
     pendingAnswer.current = null;
 
@@ -236,60 +233,36 @@ export function ArticleCardInlineAgent({
 
     // 并行拉答案（等锁时也在生成/读缓存）
     const fetchAnswer = async () => {
-      if (cached && isSafeHoverDisplay(cached)) {
-        storeAnswer(cached);
-        return;
-      }
       abortRef.current?.abort();
       const ac = new AbortController();
       abortRef.current = ac;
       try {
-        let finalText = '';
-        // C-10：共用流式缓冲（旁白检测 + 按句截断展示）
-        const hoverAccum = createHoverStreamAccumulator();
-        let didStream = false;
-        await streamAgent(
-          '/agent/explain/stream',
-          {
-            mode: 'hover',
-            style: 'concise',
-            selection: {
-              text: topic,
-              title: article.title,
-              articleSlug: article.slug,
-              route: typeof window !== 'undefined' ? window.location.pathname : '',
-            },
+        const result = await runHoverExplainStream({
+          style,
+          cacheTopic: topic,
+          selection: {
+            text: topic,
+            title: article.title,
+            articleSlug: article.slug,
+            route: typeof window !== 'undefined' ? window.location.pathname : '',
           },
-          (ev) => {
-            if (gen !== genRef.current) return;
-            // status/thinking：保持思考中，绝不写正文
-            if (ev.type === 'status' || ev.type === 'thinking') {
-              return;
-            }
-            // 后端仅在清洗后 soft-stream 洁净答案；仍做前端门控（C-10 共用缓冲）
-            if (ev.type === 'delta' && ev.text) {
-              const { show } = hoverAccum.onDelta(ev.text, ev.replace);
-              if (!show) return;
-              didStream = true;
-              applySafePartial(gen, show);
-              return;
-            }
-            if (ev.type === 'final') {
-              // 只信 final.answer；禁止用 streamBuf 回退成思考原文
-              finalText = (ev.answer || '').trim();
-            }
-          },
-          ac.signal,
-          { timeoutMs: 28_000 },
-        );
-        if (gen !== genRef.current || !sessionOn.current) return;
-        const cleaned =
-          sanitizeHoverDisplay(finalText) ||
-          (didStream ? sanitizeHoverDisplay(hoverAccum.get()) : '') ||
-          '';
-        const text = cleaned || '讲解生成失败，请再悬停试一次';
-        if (isCompleteHoverText(text)) writeHoverCache(key, text);
-        if (didStream && isSafeHoverDisplay(text)) {
+          signal: ac.signal,
+          incomplete: incompleteRef.current,
+          // 卡片沿用 sanitizeHoverDisplay，不做 smartTruncate（与原先一致）
+          finalTruncateMax: false,
+          failMessage: '讲解生成失败，请再悬停试一次',
+          isStale: () => gen !== genRef.current || !sessionOn.current,
+          onPartial: (show) => applySafePartial(gen, show),
+        });
+
+        if (result.aborted || gen !== genRef.current || !sessionOn.current) return;
+        if (result.transportFailed) {
+          storeAnswer('讲解暂时不可用，请稍后再试。');
+          return;
+        }
+
+        const text = result.text || '讲解生成失败，请再悬停试一次';
+        if (result.didStream && isSafeHoverDisplay(text)) {
           pendingAnswer.current = text;
           if (hasLock.current && Date.now() - thinkStartedAt.current >= MIN_THINK_MS) {
             setExpanded(true);

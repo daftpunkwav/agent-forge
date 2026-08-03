@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, TextArea } from '@/components/ui/Input';
-import { api, setToken } from '@/lib/api';
+import { api, setTokens } from '@/lib/api';
 
 export function ProfilePage() {
   const { user, loading, isAuthor, isAdmin, isEliteAuthor, roleLabel, logout, refresh, can } =
@@ -50,7 +50,7 @@ export function ProfilePage() {
         bio,
         website,
       });
-      if (r.accessToken) setToken(r.accessToken);
+      if (r.accessToken && r.refreshToken) setTokens(r.accessToken, r.refreshToken);
       await refresh();
       setMsg('资料已保存');
     } catch (e) {

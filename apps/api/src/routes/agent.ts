@@ -4,218 +4,42 @@ import { prisma } from '../lib/prisma.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../middleware/validate.js';
 import { optionalAuth, requireAuth, requireRole } from '../middleware/auth.js';
-import { AppError, badRequest } from '../lib/errors.js';
+import { badRequest } from '../lib/errors.js';
 import {
   callLlm,
   getDefaultProvider,
   listPublicProviders,
   LlmCallError,
-  resolveProvider,
   streamLlm,
 } from '../lib/llm/providers.js';
 import {
   AGENT_MODE_META,
-  buildDeepSystem,
-  buildHoverRetrySystem,
-  buildHoverSystem,
   extractHoverAnswer,
   extractVisibleAnswer,
   isSafeHoverPublicAnswer,
   looksLikeHoverPlanning,
   isSystemEcho,
 } from '../lib/llm/agentPrompt.js';
-import type { ByokConfig, ProviderConfig } from '../lib/llm/types.js';
-import { HOVER_RETRY_TIMEOUT_MS, LLM_TOKEN_LIMITS } from '../lib/llm/config.js';
+import type { ByokConfig } from '../lib/llm/types.js';
+import { LLM_TOKEN_LIMITS } from '../lib/llm/config.js';
+import { runToolLoop } from '../lib/llm/tools/index.js';
 import { parsePrefs } from '../lib/prefs.js';
 import { getHoverCache, setHoverCache } from '../services/hoverCache.js';
+import { rememberTopic } from '../services/agentMemory.js';
 import {
-  ensureConversation,
-  loadRecentMessages,
-  persistTurn,
-} from '../services/agentConversation.js';
-import {
-  loadUserContext,
-  maybeSaveImportantMemory,
-  rememberTopic,
-} from '../services/agentMemory.js';
+  chatSchema,
+  explainSchemaFixed,
+  finalizeChatTurn,
+  finalizeHoverAnswer,
+  llmError,
+  prepareChat,
+  runExplain,
+  type ChatBody,
+  type ExplainBody,
+} from '../services/agentOrchestrator.js';
 import { initSse, softStreamHoverAnswer, sseWrite } from '../lib/sse.js';
 
 export const agentRouter = Router();
-
-const explainSchemaFixed = z.object({
-  mode: z.enum(['hover', 'click']),
-  selection: z.object({
-    text: z.string().min(1).max(4000),
-    context: z.string().max(2000).optional(),
-    sectionId: z.string().max(120).optional(),
-    route: z.string().max(300).optional(),
-    articleSlug: z.string().max(120).optional(),
-    title: z.string().max(200).optional(),
-  }),
-  style: z.string().max(40).optional(),
-});
-
-const chatSchema = z.object({
-  message: z.string().min(1).max(4000),
-  conversationId: z.string().max(64).optional(),
-  context: z
-    .object({
-      route: z.string().max(300).optional(),
-      articleSlug: z.string().max(120).optional(),
-      sectionId: z.string().max(120).optional(),
-    })
-    .optional(),
-  style: z.string().max(40).optional(),
-  mode: z.enum(['fast', 'deep']).optional(),
-});
-
-/** 空答案时极简重试一次（无记忆、关 thinking）；A-02：兜底重试走短超时 */
-async function retryHoverExplain(
-  provider: ProviderConfig,
-  userMsg: string,
-): Promise<string> {
-  try {
-    const result = await callLlm(
-      {
-        mode: 'fast',
-        maxTokens: LLM_TOKEN_LIMITS.hoverRetry.maxTokens,
-        temperature: LLM_TOKEN_LIMITS.hoverRetry.temperature,
-        messages: [
-          { role: 'system', content: buildHoverRetrySystem() },
-          { role: 'user', content: userMsg.slice(0, 400) },
-        ],
-        signal: AbortSignal.timeout(HOVER_RETRY_TIMEOUT_MS),
-      },
-      provider,
-    );
-    const answer = extractHoverAnswer(result.thinking || '', result.text || '');
-    if (answer && isSafeHoverPublicAnswer(answer)) {
-      logger.info({ event: 'hover_retry_ok' }, 'hover retry ok');
-      return answer;
-    }
-    logger.warn({ event: 'hover_retry_fail' }, 'hover retry fail');
-    return '';
-  } catch {
-    logger.warn({ event: 'hover_retry_fail' }, 'hover retry fail');
-    return '';
-  }
-}
-
-/**
- * hover 答案门控 + 空时兜底重试（B-02：同步/流式共用同一触发语义）。
- * candidate 为已 extract 的候选答案；不安全置空，空则重试一次。
- */
-async function finalizeHoverAnswer(
-  provider: ProviderConfig,
-  userMsg: string,
-  candidate: string,
-  onRetry?: () => void,
-): Promise<string> {
-  let answer = candidate;
-  if (answer && !isSafeHoverPublicAnswer(answer)) answer = '';
-  if (!answer) {
-    onRetry?.();
-    answer = await retryHoverExplain(provider, userMsg);
-  }
-  return answer;
-}
-
-/** B-09：粗略 token 估算（中文 ~1.5 字/token，英文 ~0.25 词/token），用于历史预算 */
-function estimateTokens(s: string): number {
-  const cn = (s.match(/[\u4e00-\u9fff]/g) || []).length;
-  const rest = s.length - cn;
-  return Math.ceil(cn / 1.5 + rest / 4);
-}
-
-/** B-09：历史块 token 预算——fast 600 / deep 2000，从最新向前累加 */
-const HISTORY_TOKEN_BUDGET = { fast: 600, deep: 2000 } as const;
-
-/**
- * B-02：chat 同步/流式共用上下文组装。
- * 历史按 mode 预算从最新向前累加（conv.summary 滚动摘要 + 最近消息，而非固定 12 条全文）。
- */
-async function prepareChat(body: z.infer<typeof chatSchema>, userId: string | undefined) {
-  const ctx = await loadUserContext(userId, body.context?.route);
-  const provider = resolveProvider(ctx.byok);
-  if (!provider) throw noProviderError();
-
-  const style = body.style || ctx.style;
-  const mode = body.mode || 'deep';
-  const conv = await ensureConversation(userId, body.conversationId);
-  const recent = await loadRecentMessages(conv.id);
-  const budget = HISTORY_TOKEN_BUDGET[mode];
-  const rows: string[] = [];
-  let used = 0;
-  for (const m of [...recent].reverse()) {
-    const line = `${m.role}: ${m.content.slice(0, 400)}`;
-    const t = estimateTokens(line);
-    if (rows.length && used + t > budget) break;
-    rows.push(line);
-    used += t;
-  }
-  const historyBlock = rows.join('\n');
-  const systemBase =
-    mode === 'fast'
-      ? buildHoverSystem(style, ctx.memoryBlock)
-      : buildDeepSystem(style, ctx.memoryBlock);
-  const system = [
-    systemBase,
-    conv.summary ? `【会话摘要】\n${conv.summary}` : '',
-    historyBlock ? `【近期对话】\n${historyBlock}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n\n');
-
-  const userContent = [
-    body.message,
-    body.context?.route ? `（当前路由 ${body.context.route}）` : '',
-    body.context?.articleSlug ? `（文章 ${body.context.articleSlug}）` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
-
-  return { ctx, provider, style, mode, conv, system, userContent };
-}
-
-/** B-02：chat 同步/流式共用收尾——持久化、话题记忆、重要记忆 */
-async function finalizeChatTurn(
-  convId: string,
-  userId: string | undefined,
-  userMsg: string,
-  answer: string,
-  thinking: string,
-) {
-  await persistTurn(convId, userMsg, { content: answer, thinking });
-  void rememberTopic(userId, userMsg, 'chat');
-  void maybeSaveImportantMemory(userId, userMsg, answer);
-}
-
-function llmError(err: unknown): AppError {
-  // A-01：上游错误带 URL/原文诊断字段——只进日志，客户端只见安全消息
-  if (err instanceof LlmCallError) {
-    logger.error(
-      { err: err.diagnostic, status: err.status },
-      'LLM call failed',
-    );
-    // 5xx 视为上游问题给 502；4xx 中的 400/422 已在 provider 内部处理
-    return new AppError(502, 'LLM_ERROR', err.messageForClient);
-  }
-  logger.error(
-    {
-      err: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : { raw: String(err) },
-    },
-    'LLM call failed',
-  );
-  return new AppError(502, 'LLM_ERROR', '模型调用失败，请稍后重试');
-}
-
-function noProviderError(): AppError {
-  return new AppError(
-    400,
-    'NO_PROVIDER',
-    '未配置模型：请登录后在「设置 → BYOK」填写 Base URL、API Key、模型与 API 格式。',
-  );
-}
 
 agentRouter.get('/meta', (_req, res) => {
   res.json({
@@ -262,60 +86,9 @@ agentRouter.get('/providers', optionalAuth, async (req, res, next) => {
   }
 });
 
-async function runExplain(
-  body: z.infer<typeof explainSchemaFixed>,
-  userId: string | undefined,
-) {
-  const ctx = await loadUserContext(userId, body.selection.route);
-  const provider = resolveProvider(ctx.byok);
-  if (!provider) throw noProviderError();
-
-  const style = body.style || ctx.style;
-  const isHover = body.mode === 'hover';
-  const system = isHover
-    ? buildHoverSystem(style, ctx.memoryBlock)
-    : buildDeepSystem(style, ctx.memoryBlock);
-
-  const topic = body.selection.title
-    ? `${body.selection.title}\n${body.selection.text}`
-    : body.selection.text;
-
-  // 悬停 user 只给知识点，约束放在 system，避免模型复述「要2-3句…」（bug-4）
-  const userMsg = isHover
-    ? [
-        (body.selection.title || '').trim() || topic.slice(0, 200),
-        body.selection.text &&
-        body.selection.text.trim() &&
-        body.selection.text.trim() !== (body.selection.title || '').trim()
-          ? body.selection.text.trim().slice(0, 280)
-          : '',
-      ]
-        .filter(Boolean)
-        .join('\n')
-    : [
-        `【待讲解片段】\n${topic}`,
-        body.selection.context ? `【所在段落/上下文】\n${body.selection.context}` : '',
-        body.selection.route ? `页面：${body.selection.route}` : '',
-        body.selection.articleSlug ? `文章：${body.selection.articleSlug}` : '',
-        '请针对该知识点详细讲解，按 ReAct 风格结构输出。',
-      ]
-        .filter(Boolean)
-        .join('\n\n');
-
-  return {
-    provider,
-    style,
-    isHover,
-    system,
-    userMsg,
-    topic: body.selection.text,
-    mode: body.mode,
-  };
-}
-
 agentRouter.post('/explain', optionalAuth, validate(explainSchemaFixed), async (req, res, next) => {
   try {
-    const body = req.body as z.infer<typeof explainSchemaFixed>;
+    const body = req.body as ExplainBody;
     const prep = await runExplain(body, req.user?.id);
 
     if (prep.isHover) {
@@ -384,7 +157,7 @@ agentRouter.post(
   validate(explainSchemaFixed),
   async (req, res, next) => {
     try {
-      const body = req.body as z.infer<typeof explainSchemaFixed>;
+      const body = req.body as ExplainBody;
       const prep = await runExplain(body, req.user?.id);
       initSse(res);
 
@@ -582,12 +355,43 @@ agentRouter.post(
 
 agentRouter.post('/chat', optionalAuth, validate(chatSchema), async (req, res, next) => {
   try {
-    const body = req.body as z.infer<typeof chatSchema>;
-    const { provider, style, mode, conv, system, userContent } = await prepareChat(
+    const body = req.body as ChatBody;
+    const { provider, style, mode, reactEnabled, conv, system, userContent } = await prepareChat(
       body,
       req.user?.id,
     );
     const limits = LLM_TOKEN_LIMITS[mode === 'fast' ? 'chatFast' : 'chatDeep'];
+
+    if (reactEnabled) {
+      let loopResult;
+      try {
+        loopResult = await runToolLoop({
+          provider,
+          system,
+          userContent,
+          maxTokens: limits.maxTokens,
+          temperature: limits.temperature,
+        });
+      } catch (e) {
+        throw llmError(e);
+      }
+      const answer = loopResult.answer || '抱歉，这一轮没有生成有效讲解，换个问法再试一次。';
+      await finalizeChatTurn(conv.id, req.user?.id, body.message, answer, loopResult.thinking);
+      res.json({
+        reply: answer,
+        thinking: loopResult.thinking,
+        conversationId: conv.id,
+        guestKey: conv.guestKey || undefined,
+        model: loopResult.model,
+        format: loopResult.format,
+        style,
+        providerId: provider.id,
+        reasoningMode: 'react',
+        toolIterations: loopResult.iterations,
+        meta: AGENT_MODE_META.react,
+      });
+      return;
+    }
 
     let result;
     try {
@@ -620,10 +424,12 @@ agentRouter.post('/chat', optionalAuth, validate(chatSchema), async (req, res, n
       reply: answer,
       thinking: visible.thinking,
       conversationId: conv.id,
+      guestKey: conv.guestKey || undefined,
       model: result.model,
       format: result.format,
       style,
       providerId: provider.id,
+      reasoningMode: 'deep_teach',
       meta: mode === 'fast' ? AGENT_MODE_META.fast : AGENT_MODE_META.deep,
     });
   } catch (e) {
@@ -633,8 +439,8 @@ agentRouter.post('/chat', optionalAuth, validate(chatSchema), async (req, res, n
 
 agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req, res, next) => {
   try {
-    const body = req.body as z.infer<typeof chatSchema>;
-    const { provider, style, mode, conv, system, userContent } = await prepareChat(
+    const body = req.body as ChatBody;
+    const { provider, style, mode, reactEnabled, conv, system, userContent } = await prepareChat(
       body,
       req.user?.id,
     );
@@ -649,19 +455,73 @@ agentRouter.post('/chat/stream', optionalAuth, validate(chatSchema), async (req,
       mode,
       style,
       conversationId: conv.id,
-      meta: mode === 'fast' ? AGENT_MODE_META.fast : AGENT_MODE_META.deep,
+      guestKey: conv.guestKey || undefined,
+      reasoningMode: reactEnabled ? 'react' : 'deep_teach',
+      meta: reactEnabled
+        ? AGENT_MODE_META.react
+        : mode === 'fast'
+          ? AGENT_MODE_META.fast
+          : AGENT_MODE_META.deep,
     });
 
     try {
+      const llmAbort = new AbortController();
+      req.on('close', () => {
+        if (!res.writableEnded) llmAbort.abort();
+      });
+
+      if (reactEnabled) {
+        try {
+          const loopResult = await runToolLoop({
+            provider,
+            system,
+            userContent,
+            maxTokens: limits.maxTokens,
+            temperature: limits.temperature,
+            signal: llmAbort.signal,
+            onEvent: (ev) => {
+              if (res.writableEnded || res.destroyed || llmAbort.signal.aborted) return;
+              if (ev.type === 'tool_call') {
+                sseWrite(res, { type: 'tool_call', name: ev.name, args: ev.args });
+              } else if (ev.type === 'tool_result') {
+                sseWrite(res, {
+                  type: 'tool_result',
+                  name: ev.name,
+                  ok: ev.ok,
+                  preview: ev.preview,
+                });
+              } else if (ev.type === 'thinking') {
+                sseWrite(res, { type: 'thinking', text: ev.text });
+              } else if (ev.type === 'delta') {
+                sseWrite(res, { type: 'delta', text: ev.text });
+              }
+            },
+          });
+          if (res.writableEnded || res.destroyed || llmAbort.signal.aborted) return;
+          const answer = loopResult.answer || '抱歉，这一轮没有生成有效讲解，换个问法再试一次。';
+          await finalizeChatTurn(conv.id, req.user?.id, body.message, answer, loopResult.thinking);
+          sseWrite(res, { type: 'final', answer, thinking: loopResult.thinking });
+          sseWrite(res, { type: 'done' });
+        } catch (e) {
+          if (e instanceof Error && e.name === 'AbortError') return;
+          if (llmAbort.signal.aborted || res.writableEnded || res.destroyed) return;
+          throw e;
+        } finally {
+          if (!res.writableEnded) {
+            try {
+              res.end();
+            } catch {
+              /* 已关闭 */
+            }
+          }
+        }
+        return;
+      }
+
       let thinkingAcc = '';
       let textAcc = '';
       // I3：仅累积通过 per-delta 门控的安全思考片段，final 用它保持流式/最终一致
       let safeThinking = '';
-      const llmAbort = new AbortController();
-      // 客户端断开时取消上游 LLM，避免 token 空转
-      req.on('close', () => {
-        if (!res.writableEnded) llmAbort.abort();
-      });
 
       try {
         for await (const chunk of streamLlm(

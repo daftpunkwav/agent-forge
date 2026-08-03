@@ -52,6 +52,10 @@ animationsRouter.get('/:id', optionalAuth, async (req, res, next) => {
   try {
     const item = await prisma.animationDef.findUnique({ where: { id: param(req, 'id') } });
     if (!item) throw notFound('动画不存在');
+    // 仅作者本人或管理员可读单条（列表接口已按所有权过滤）
+    const uid = req.user?.id;
+    const isAdmin = req.user?.role === 'admin';
+    if (!isAdmin && item.authorId !== uid) throw forbidden('无权查看此动画');
     res.json({ animation: toAnimationDef(item) });
   } catch (e) {
     next(e);

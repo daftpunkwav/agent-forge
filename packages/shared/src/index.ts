@@ -130,6 +130,7 @@ export interface ApiErrorBody {
 
 export interface AuthTokens {
   accessToken: string;
+  refreshToken: string;
   user: PublicUser;
 }
 
@@ -159,9 +160,12 @@ export interface AnnotationItem {
   userId: string;
   user?: { id: string; name: string };
   anchorText: string;
+  sectionId?: string;
   body: string;
   status: 'pending' | 'approved' | 'rejected';
   reviewBy: 'author' | 'agent' | 'admin' | null;
+  reviewedAt?: string | null;
+  agentNote?: string;
   createdAt: string;
 }
 

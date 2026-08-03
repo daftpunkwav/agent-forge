@@ -18,7 +18,7 @@
 | **优先级** | 延迟、稳定性、缓存命中 | 能力完整度、可扩展工具 |
 | **触发** | 文章内术语/段落/图表；列表卡片行内替换简介 | 右下角面板对话；「详细讲解」等入口 |
 | **目标架构** | 单轮/短上下文 completion；**无工具循环**；读记忆 | **真 tool-loop**；多轮会话；读写记忆；可选推理模式 |
-| **当前实现** | 单轮 + 流式 + 双层缓存 + 记忆注入 | 单轮结构化提示词 + 会话消息表 + 记忆注入（**尚未真工具循环**） |
+| **当前实现** | 单轮 + 流式 + 双层缓存 + 记忆注入 | 单轮结构化提示词 + 会话消息表 + 记忆注入；**P0 真 tool-loop 已落地**（`reasoningMode: react` / 面板「允许工具」） |
 
 二者共享：BYOK / 服务端 Provider、用户风格、学习进度与 `AgentMemory` 基础设施。
 
@@ -82,16 +82,16 @@ User Message
 
 | 项 | 状态 |
 |----|------|
-| API | `POST /agent/chat`、`/chat/stream`；`mode: fast \| deep`（内部区分，无产品化模式选择器） |
-| Prompt | `buildDeepSystem`：`Thought / Explain / Practice / Next`（prompted 骨架，**非真 tool-loop**） |
-| 工具循环 | **未实现** |
+| API | `POST /agent/chat`、`/chat/stream`；`mode: fast \| deep`；可选 `reasoningMode: deep_teach \| react`（或 `toolsEnabled: true`） |
+| Prompt | `buildDeepSystem`：`Thought / Explain / Practice / Next`；`buildReactSystem`：prompt-based `TOOL_CALL` |
+| 工具循环 | **P0 已实现**：`search_articles`、`get_article`；白名单 + Zod + 每工具 8s 超时 + 默认最多 5 轮（`TOOL_LOOP_MAX_ITERS`）；SSE `tool_call` / `tool_result`；pino 审计（name/ok/ms） |
 | 会话 | `AgentConversation` + `AgentMessage`；注入最近消息（按 mode 的 token 预算从最新向前累加：fast 600 / deep 2000，替代固定 12 条）；匿名会话 TTL 7 天 |
 | 摘要 | 消息 > 24 条时压缩最旧 8 条到 `summary` |
 | 记忆 | 读 `AgentMemory` + `LearningProgress`；启发式「请记住…」写入 preference（稳定哈希 key + 每用户 ≤20 条，超出淘汰最旧）；`POST /progress` 在 mastered 时追加记忆 |
-| 流式 | deep：thinking / delta / final；fast：status + final |
+| 流式 | deep：thinking / delta / final；fast：status + final；react：tool_call / tool_result + delta / final |
 | 参数 | 统一 `lib/llm/config.ts`（`LLM_TOKEN_LIMITS`）：hover 220 / chatFast 600 / chatDeep·clickDeep 2048 |
 | 流式支持 | `anthropic_messages` / `openai_chat` 真流式；**`openai_responses` 退化为整段输出（无逐字流、早停无效）**，选该格式的用户会等完整响应才出全文 |
-| 推理模式 UI | **未实现** |
+| 推理模式 UI | 面板 footer「允许工具」勾选 → `reasoningMode: 'react'`（非完整模式选择器） |
 | MCP | 仅状态探测；进程未实现 |
 | 独立 Runtime | `services/agent` 仅 README；逻辑仍在 `apps/api` |
 
@@ -99,9 +99,11 @@ User Message
 
 | 阶段 | 内容 |
 |------|------|
-| **P0** | 真 tool-loop 最小集：`search_articles`、`get_article` + ReAct；工具状态 SSE |
-| **P1** | 会话列表 UI、记忆写入确认、模式切换 |
+| **P0** | ✅ 真 tool-loop 最小集：`search_articles`、`get_article` + ReAct；工具状态 SSE |
+| **P1** | 会话列表 UI、记忆写入确认、模式切换；更多只读工具与 observation 注入防御 |
 | **P2** | MCP 对接、更多工具、评测与限流 |
+
+未完成项的详细说明与 DoD：**`docs/tool-loop-roadmap.md`**。
 
 ---
 
@@ -116,6 +118,7 @@ User Message
 | 会话/消息 | `AgentConversation` / `AgentMessage` |
 | 悬停缓存 | `HoverExplainCache` + `apps/web/.../hoverExplainCache.ts` |
 | 面板 UI | `apps/web/src/components/agent/AgentFloat.tsx` |
+| 工具循环 | `apps/api/src/lib/llm/tools/`（registry / parseToolCall / toolLoop） |
 | 卡片 UI | `apps/web/src/components/article/ArticleCardInlineAgent.tsx` |
 
 ---
@@ -142,6 +145,7 @@ User Message
 
 | 日期 | 说明 |
 |------|------|
+| 2026-08-03 | **P0 tool-loop**：`search_articles` / `get_article` + prompt-based ReAct；SSE tool_call/tool_result；面板「允许工具」 |
 | 2026-08-03 | 缓存键 `v7`；净化迁入 `@agentforge/shared`；明确 Agent 已在 apps/api 实装、非 501；admin 才能清缓存 |
 | 2026-07-23 | 对照代码纠正 TTL、mode=fast\|deep、三种 Provider 格式、MCP/Runtime 未实现 |
 | 2026-07-12 | 明确双 Agent 目标：面板 = 完整可工具智能体；悬停 = 速度优先 + 记忆 |

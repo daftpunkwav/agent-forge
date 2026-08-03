@@ -1,29 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
-import { api } from '@/lib/api';
-import { useAuth } from '@/hooks/useAuth';
-import { streamAgent, type StreamEvent } from '@/lib/agentStream';
+import { useAgentStyle } from '@/hooks/useAgentStyle';
+import { useAgentPanel } from '@/hooks/useAgentPanel';
+import { AGENT_CACHE_CLEARED_EVENT } from '@/lib/hoverExplainCache';
 import {
-  AGENT_CACHE_CLEARED_EVENT,
-  hoverCacheKey,
-  isSafeHoverDisplay,
-  readHoverCache,
-  sanitizeHoverDisplay,
-  writeHoverCache,
-} from '@/lib/hoverExplainCache';
-import { createHoverStreamAccumulator } from '@/lib/hoverStreamBuffer';
+  IncompleteHoverKeys,
+  peekHoverSessionCache,
+  runHoverExplainStream,
+} from '@/lib/hoverExplainSession';
 import { MarkdownView } from './MarkdownView';
 import { findHoverTarget, highlightTarget, isKnowledgeRoute } from './hoverTarget';
-
-type ChatMsg = {
-  role: 'user' | 'assistant';
-  text: string;
-  thinking?: string;
-  streaming?: boolean;
-  /** 是否展开思考区（默认收起） */
-  thinkingOpen?: boolean;
-};
 
 type HoverTipState = {
   x: number;
@@ -38,18 +25,27 @@ type HoverTipState = {
 /**
  * 快速 Agent（悬停）vs Agent 助手（面板）
  * - 快速：悬停即后台预取，约 0.7s 揭示；不展示思考过程；按句流式
- * - 助手：Deep 结构化详解，思考默认收起
+ * - 助手：Deep 结构化详解，思考默认收起（逻辑在 useAgentPanel）
  */
 export function AgentFloat() {
   const [open, setOpen] = useState(false);
   const [hoverTip, setHoverTip] = useState<HoverTipState | null>(null);
   /** 双 rAF 触发 CSS 渐入，避免 mount 时已带 visible 无动画 */
   const [tipEntered, setTipEntered] = useState(false);
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const [input, setInput] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [style, setStyle] = useState('professional');
   const [showHelp, setShowHelp] = useState(false);
+  const style = useAgentStyle('professional');
+  const location = useLocation();
+  const {
+    messages,
+    input,
+    setInput,
+    busy,
+    deepExplain,
+    send,
+    toggleThinking,
+    toolsEnabled,
+    setToolsEnabled,
+  } = useAgentPanel({ style, route: location.pathname });
 
   const ref = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
@@ -61,15 +57,10 @@ export function AgentFloat() {
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeEl = useRef<HTMLElement | null>(null);
-  /** 未完成请求：禁止把半截当缓存命中（与共享 L1 配合）；B-11：带 TTL，5 分钟后自动允许重试 */
-  const incompleteKeys = useRef<Map<string, number>>(new Map());
-  const INCOMPLETE_KEY_TTL_MS = 5 * 60 * 1000;
-  const INCOMPLETE_KEY_MAX = 200;
+  /** 未完成请求：禁止把半截当缓存命中（与共享 L1 配合）；B-11：带 TTL */
+  const incompleteKeys = useRef(new IncompleteHoverKeys());
   const abortRef = useRef<AbortController | null>(null);
-  /** 对话框 deepExplain/send 流的中断控制器（与悬停流分开） */
-  const chatAbortRef = useRef<AbortController | null>(null);
   const tipPinned = useRef(false);
-  const conversationIdRef = useRef<string | null>(null);
   /** 当前会话：后台已预取，是否已过揭示延迟可展示 */
   const sessionRef = useRef<{
     gen: number;
@@ -114,29 +105,6 @@ export function AgentFloat() {
   /** 10s 内最多 N 次新请求 */
   const MAX_REQUESTS_PER_WINDOW = 8;
   const REQUEST_WINDOW_MS = 10_000;
-
-  const location = useLocation();
-  const { user } = useAuth();
-
-  useEffect(() => {
-    if (!user) return;
-    api
-      .getSettings()
-      .then((r) => {
-        const s = r.preferences.agentStyle;
-        if (typeof s === 'string') setStyle(s);
-      })
-      .catch(() => undefined);
-  }, [user]);
-
-  // 卸载时中断进行中的对话 / 深度讲解流
-  useEffect(
-    () => () => {
-      chatAbortRef.current?.abort();
-      chatAbortRef.current = null;
-    },
-    [],
-  );
 
   /** 设置页「清除 Agent 缓存」：清空半截标记 / 中断悬停流（L1 由 clearAllHoverCaches 清） */
   useEffect(() => {
@@ -303,52 +271,6 @@ export function AgentFloat() {
     }, HOVER_LEAVE_KEEP_MS);
   }
 
-  /** B-11：incomplete 标记有 TTL/上限，避免长期累积且永不命中缓存 */
-  function markIncomplete(key: string) {
-    const m = incompleteKeys.current;
-    m.set(key, Date.now());
-    if (m.size > INCOMPLETE_KEY_MAX) {
-      let oldestKey = '';
-      let oldestAt = Infinity;
-      for (const [k, t] of m) {
-        if (t < oldestAt) {
-          oldestAt = t;
-          oldestKey = k;
-        }
-      }
-      if (oldestKey) m.delete(oldestKey);
-    }
-  }
-
-  function readCache(key: string): string | null {
-    if (incompleteKeys.current.has(key)) {
-      // 后端 L2 可能已补全，过期后允许重试
-      if (Date.now() - (incompleteKeys.current.get(key) || 0) < INCOMPLETE_KEY_TTL_MS) return null;
-      incompleteKeys.current.delete(key);
-    }
-    return readHoverCache(key);
-  }
-
-  function pushCache(key: string, text: string) {
-    if (!isSafeHoverDisplay(text)) return;
-    incompleteKeys.current.delete(key);
-    writeHoverCache(key, text);
-  }
-
-  function sanitizeHoverAnswer(raw: string): string {
-    const cleaned = sanitizeHoverDisplay(raw);
-    return cleaned ? smartTruncateClient(cleaned) : '';
-  }
-
-  function smartTruncateClient(s: string, max = 560): string {
-    if (s.length <= max) return s.trim();
-    const cut = s.slice(0, max);
-    // 悬停答案不以？为合法句末（改稿自问）
-    const end = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('！'));
-    if (end >= Math.floor(max * 0.45)) return cut.slice(0, end + 1).trim();
-    return cut.replace(/[A-Za-z]{1,12}$/, '').trim();
-  }
-
   function canFireRequest(): { ok: boolean; wait: number } {
     const now = Date.now();
     const since = now - lastRequestAt.current;
@@ -447,9 +369,11 @@ export function AgentFloat() {
       const gen = ++genRef.current;
       const topic = info.text.slice(0, 80);
       // 与卡片共用 L1：style::topic
-      const key = hoverCacheKey(info.text.slice(0, 400), style);
-      // 未完成的旧请求标记：禁止读半截缓存（readCache 内部处理 TTL）
-      const cached = readCache(key);
+      const { key, cached } = peekHoverSessionCache(
+        incompleteKeys.current,
+        info.text.slice(0, 400),
+        style,
+      );
 
       // 若已有展示中的 tip，切换时先渐出旧的
       if (sessionRef.current?.revealed) {
@@ -519,126 +443,72 @@ export function AgentFloat() {
         }
         requestWindow.current.n += 1;
         inflightKeyRef.current = key;
-        markIncomplete(key);
         // 清除可能的半截 L1（共享缓存只存完整安全答案，此处仅标记 incomplete）
         const ac = new AbortController();
         abortRef.current = ac;
-        let gotFinal = false;
-        // C-10：共用流式缓冲（旁白检测 + 按句截断展示）
-        const hoverAccum = createHoverStreamAccumulator();
         let streamingShown = false;
 
-        streamAgent(
-          '/agent/explain/stream',
-          {
-            mode: 'hover',
-            style,
-            selection: {
-              text: info.text.slice(0, 1200),
-              context: info.context || undefined,
-              sectionId: info.sectionId,
-              route: location.pathname,
-            },
+        void runHoverExplainStream({
+          style,
+          cacheTopic: info.text.slice(0, 400),
+          selection: {
+            text: info.text.slice(0, 1200),
+            context: info.context || undefined,
+            sectionId: info.sectionId,
+            route: location.pathname,
           },
-          (ev) => {
+          signal: ac.signal,
+          incomplete: incompleteKeys.current,
+          skipCacheRead: true,
+          partialTruncateMax: 600,
+          isStale: () => sessionRef.current?.gen !== gen,
+          onThinking: () => {
             const s = sessionRef.current;
             if (!s || s.gen !== gen) return;
-
-            if (ev.type === 'status' || ev.type === 'thinking') {
-              // 思考通道：只维持 loading，绝不写入 buffer / 绝不展示思考正文
-              if (!streamingShown) {
-                s.loading = true;
-                if (s.revealed && !s.complete) showTipForSession(s, true);
-              }
-              return;
-            }
-
-            // 仅展示后端清洗后的 soft-stream；思考轨迹绝不进 buffer（C-10 共用缓冲门控）
-            if (ev.type === 'delta' && ev.text) {
-              const { show } = hoverAccum.onDelta(ev.text, ev.replace);
-              if (!show) {
-                if (s.revealed && !streamingShown) showTipForSession(s, true);
-                return;
-              }
-              s.buffer = smartTruncateClient(show, 600);
-              s.loading = false;
-              streamingShown = true;
-              if (s.revealed) showTipForSession(s, false);
-              return;
-            }
-
-            if (ev.type === 'final' && ev.answer != null) {
-              gotFinal = true;
-              // 只信 final.answer；禁止 streamBuf/原文回退成思考
-              const cleaned = sanitizeHoverAnswer(ev.answer);
-              s.buffer = cleaned || '讲解生成失败，请再试一次';
-              s.loading = false;
-              s.complete = isSafeHoverDisplay(s.buffer);
-              if (s.complete) pushCache(key, s.buffer);
-              else {
-                markIncomplete(key);
-              }
-              if (inflightKeyRef.current === key) inflightKeyRef.current = null;
-              if (s.revealed) {
-                if (streamingShown && cleaned) showTipForSession(s, false);
-                else if (cleaned) {
-                  showTipForSession(s, true);
-                  scheduleAnswerReveal(s, gen);
-                } else {
-                  showTipForSession(s, false);
-                }
-              }
-              return;
-            }
-
-            if (ev.type === 'done') {
-              if (!gotFinal) {
-                // 无 final 时也不用缓冲原文（可能含思考）
-                const fallback = sanitizeHoverAnswer(hoverAccum.get());
-                s.buffer = fallback || '讲解生成失败，请再试一次';
-                s.loading = false;
-                s.complete = isSafeHoverDisplay(s.buffer);
-                if (s.complete) pushCache(key, s.buffer);
-                else {
-                  markIncomplete(key);
-                }
-                if (s.revealed) {
-                  if (streamingShown && fallback) showTipForSession(s, false);
-                  else if (fallback) {
-                    showTipForSession(s, true);
-                    scheduleAnswerReveal(s, gen);
-                  } else {
-                    showTipForSession(s, false);
-                  }
-                }
-              }
-              if (inflightKeyRef.current === key) inflightKeyRef.current = null;
-            }
-            if (ev.type === 'error') {
-              s.buffer = `讲解失败：${ev.message}`;
-              s.loading = false;
-              s.complete = false;
-              markIncomplete(key);
-              if (inflightKeyRef.current === key) inflightKeyRef.current = null;
-              if (s.revealed) showTipForSession(s, false);
+            if (!streamingShown) {
+              s.loading = true;
+              if (s.revealed && !s.complete) showTipForSession(s, true);
             }
           },
-          ac.signal,
-          { timeoutMs: 28_000 },
-        ).catch((err: Error) => {
-          if (err.name === 'AbortError') {
-            markIncomplete(key);
+          onPartial: (show) => {
+            const s = sessionRef.current;
+            if (!s || s.gen !== gen) return;
+            s.buffer = show;
+            s.loading = false;
+            streamingShown = true;
+            if (s.revealed) showTipForSession(s, false);
+          },
+          onFinal: (result) => {
+            const s = sessionRef.current;
+            if (!s || s.gen !== gen) return;
+            s.buffer = result.text;
+            s.loading = false;
+            s.complete = result.complete;
+            if (inflightKeyRef.current === key) inflightKeyRef.current = null;
+            if (!s.revealed) return;
+            if (streamingShown && result.hasAnswer) showTipForSession(s, false);
+            else if (result.hasAnswer) {
+              showTipForSession(s, true);
+              scheduleAnswerReveal(s, gen);
+            } else {
+              showTipForSession(s, false);
+            }
+          },
+          onStreamError: (message) => {
+            const s = sessionRef.current;
+            if (!s || s.gen !== gen) return;
+            s.buffer = `讲解失败：${message}`;
+            s.loading = false;
+            s.complete = false;
+            if (inflightKeyRef.current === key) inflightKeyRef.current = null;
+            if (s.revealed) showTipForSession(s, false);
+          },
+        }).then((result) => {
+          if (result.aborted) {
             if (inflightKeyRef.current === key) inflightKeyRef.current = null;
             return;
           }
-          const s = sessionRef.current;
-          if (!s || s.gen !== gen) return;
-          s.buffer = `讲解失败：${err.message}`;
-          s.loading = false;
-          s.complete = false;
-          markIncomplete(key);
           if (inflightKeyRef.current === key) inflightKeyRef.current = null;
-          if (s.revealed) showTipForSession(s, false);
         });
       };
 
@@ -735,7 +605,7 @@ export function AgentFloat() {
         // 未满揭示时长 / 未完成：中止请求，标记 incomplete，禁止下次复用半截
         const k = sessionRef.current?.key;
         if (k) {
-          markIncomplete(k);
+          incompleteKeys.current.mark(k);
         }
         abortRef.current?.abort();
         abortRef.current = null;
@@ -749,7 +619,7 @@ export function AgentFloat() {
 
       // 已展示但仍在生成：允许后台跑完再缓存；离开时不清 buffer
       if (sessionRef.current && !sessionRef.current.complete) {
-        markIncomplete(sessionRef.current.key);
+        incompleteKeys.current.mark(sessionRef.current.key);
       }
 
       // 已展示：保留 3s
@@ -782,162 +652,7 @@ export function AgentFloat() {
     }
     window.addEventListener('agentforge:explain', onExplain);
     return () => window.removeEventListener('agentforge:explain', onExplain);
-  }, [style, location.pathname]);
-
-  function patchLastAssistant(patch: Partial<ChatMsg>) {
-    setMessages((m) => {
-      const copy = [...m];
-      const last = copy[copy.length - 1];
-      if (last?.role === 'assistant') {
-        copy[copy.length - 1] = { ...last, ...patch };
-      }
-      return copy;
-    });
-  }
-
-  /**
-   * 面板流式请求公共流程：中断上一路 → 流式累加 → 空答兜底非流式 → 统一收尾。
-   * deepExplain / send 共用，保证两路行为一致（busy、abort、错误文案、结尾兜底）。
-   */
-  async function runPanelStream(
-    path: '/agent/explain/stream' | '/agent/chat/stream',
-    body: unknown,
-    opts: {
-      onMeta?: (ev: StreamEvent & { type: 'meta' }) => void;
-      onPatch: (patch: Partial<ChatMsg>) => void;
-      fallback?: () => Promise<string>;
-      errorLabel: string;
-    },
-  ) {
-    let answer = '';
-    let thinking = '';
-    // 发起前中断上一路对话流，避免卸载/重发后旧流继续运行
-    chatAbortRef.current?.abort();
-    const ac = new AbortController();
-    chatAbortRef.current = ac;
-    try {
-      await streamAgent(path, body, (ev) => {
-        if (ev.type === 'meta') {
-          opts.onMeta?.(ev as StreamEvent & { type: 'meta' });
-          return;
-        }
-        if (ev.type === 'thinking' && ev.text) {
-          thinking += ev.text;
-          opts.onPatch({ thinking, streaming: true, thinkingOpen: false });
-        }
-        if (ev.type === 'delta' && ev.text) {
-          answer += ev.text;
-          opts.onPatch({ text: answer, streaming: true });
-        }
-        if (ev.type === 'final') {
-          if (ev.answer != null) answer = ev.answer;
-          if (ev.thinking != null) thinking = ev.thinking;
-          opts.onPatch({ text: answer, thinking, streaming: false, thinkingOpen: false });
-        }
-        if (ev.type === 'error') {
-          answer = `**错误**\n\n${ev.message}`;
-        }
-      }, ac.signal);
-      if (!answer.trim() && opts.fallback) {
-        try {
-          answer = (await opts.fallback()) || '';
-        } catch {
-          /* keep */
-        }
-      }
-      opts.onPatch({
-        text: answer.trim() || '**暂无输出**\n\n请检查 BYOK 配置后重试。',
-        thinking,
-        streaming: false,
-        thinkingOpen: false,
-      });
-    } catch (err) {
-      // 主动中断（重发/卸载）不当作错误展示
-      if ((err as Error).name === 'AbortError') return;
-      const msg = err instanceof Error ? err.message : opts.errorLabel;
-      opts.onPatch({ text: `**错误**\n\n${msg}`, streaming: false });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deepExplain(text: string, title?: string, articleSlug?: string) {
-    setBusy(true);
-    const userLine = `请详细讲解：${title || text.slice(0, 80)}`;
-    setMessages((m) => [
-      ...m,
-      { role: 'user', text: userLine },
-      { role: 'assistant', text: '', thinking: '', streaming: true, thinkingOpen: false },
-    ]);
-    await runPanelStream(
-      '/agent/explain/stream',
-      {
-        mode: 'click',
-        style,
-        selection: {
-          text: text.slice(0, 3500),
-          title,
-          articleSlug,
-          route: location.pathname,
-        },
-      },
-      {
-        onPatch: patchLastAssistant,
-        errorLabel: '讲解失败',
-        fallback: () =>
-          api
-            .agentExplain({
-              mode: 'click',
-              style,
-              selection: {
-                text: text.slice(0, 3500),
-                title,
-                articleSlug,
-                route: location.pathname,
-              },
-            })
-            .then((r) => r.explanation || ''),
-      },
-    );
-  }
-
-  async function send() {
-    if (!input.trim() || busy) return;
-    const msg = input.trim();
-    setInput('');
-    setBusy(true);
-    setMessages((m) => [
-      ...m,
-      { role: 'user', text: msg },
-      { role: 'assistant', text: '', thinking: '', streaming: true, thinkingOpen: false },
-    ]);
-    await runPanelStream(
-      '/agent/chat/stream',
-      {
-        message: msg,
-        style,
-        mode: 'deep',
-        conversationId: conversationIdRef.current || undefined,
-        context: { route: location.pathname },
-      },
-      {
-        onPatch: patchLastAssistant,
-        errorLabel: '发送失败',
-        onMeta: (ev) => {
-          if (ev.conversationId) conversationIdRef.current = ev.conversationId;
-        },
-        fallback: () =>
-          api
-            .agentChat({
-              message: msg,
-              style,
-              mode: 'deep',
-              context: { route: location.pathname },
-            })
-            .then((r) => r.reply || ''),
-      },
-    );
-  }
+  }, [deepExplain]);
 
   return (
     <>
@@ -1030,7 +745,7 @@ export function AgentFloat() {
               悬停即后台思考，满 {(HOVER_REVEAL_MS / 1000).toFixed(1)} 秒显示；离开保留 3 秒。扫射会取消多余请求。
               <br />
               <strong style={{ color: 'var(--foreground)' }}>Agent 助手</strong>
-              ：结构化详解 · 思考默认收起
+              ：结构化详解 · 思考默认收起；勾选「允许工具」可检索站内文章（ReAct tool-loop）
             </div>
           ) : null}
 
@@ -1082,12 +797,8 @@ export function AgentFloat() {
                         open={Boolean(m.thinkingOpen)}
                         style={{ marginBottom: 8 }}
                         onToggle={(e) => {
-                          const open = (e.target as HTMLDetailsElement).open;
-                          setMessages((list) =>
-                            list.map((msg, idx) =>
-                              idx === i ? { ...msg, thinkingOpen: open } : msg,
-                            ),
-                          );
+                          const openNow = (e.target as HTMLDetailsElement).open;
+                          if (openNow !== Boolean(m.thinkingOpen)) toggleThinking(i);
                         }}
                       >
                         <summary
@@ -1148,7 +859,27 @@ export function AgentFloat() {
               ))
             )}
           </div>
-          <div className="agent-panel-input">
+          <div className="agent-panel-input" style={{ flexWrap: 'wrap', gap: 8 }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 12,
+                color: 'var(--muted-foreground)',
+                width: '100%',
+                cursor: busy ? 'default' : 'pointer',
+                userSelect: 'none',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={toolsEnabled}
+                disabled={busy}
+                onChange={(e) => setToolsEnabled(e.target.checked)}
+              />
+              允许工具（检索站内文章）
+            </label>
             <input
               className="input"
               placeholder={busy ? '生成中…' : '问 Agent 助手…'}

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import type { AnimationDef } from '@agentforge/shared';
 import { useAnimationPlayer } from '@/hooks/useAnimationPlayer';
 import { AnimationControls } from './AnimationControls';
-import { DEFAULT_STEPS } from './templates/defaultSteps';
+import { resolveDefaultSteps } from './registry';
 import { buildSceneFromSteps, visualKindForTemplate } from './core/buildScene';
 import { SceneStage } from './primitives/SceneCanvas';
 import './anim-engine.css';
@@ -18,7 +18,7 @@ export function AnimationViewer({
   const steps =
     animation?.steps?.length
       ? animation.steps
-      : DEFAULT_STEPS[template as keyof typeof DEFAULT_STEPS] || DEFAULT_STEPS.react;
+      : resolveDefaultSteps(template);
 
   const scene = useMemo(() => buildSceneFromSteps(steps, template), [steps, template]);
   const player = useAnimationPlayer({ totalSteps: scene.frames.length || steps.length });
@@ -95,7 +95,7 @@ export function TemplateAnimation({
   template: string;
   name?: string;
 }) {
-  const steps = DEFAULT_STEPS[template as keyof typeof DEFAULT_STEPS] || DEFAULT_STEPS.react;
+  const steps = resolveDefaultSteps(template);
   return (
     <AnimationViewer
       animation={{ id: template, name: name || template, template, steps }}

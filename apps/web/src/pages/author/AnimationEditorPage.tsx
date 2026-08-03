@@ -3,7 +3,8 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ANIMATION_TEMPLATES, type AnimationStep } from '@agentforge/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
-import { DEFAULT_STEPS, VISUAL_KIND_DOCS } from '@/components/anim/templates/defaultSteps';
+import { resolveDefaultSteps } from '@/components/anim/registry';
+import { VISUAL_KIND_DOCS } from '@/components/anim/templates/defaultSteps';
 import { AnimationViewer } from '@/components/anim/AnimationViewer';
 import { visualKindForTemplate } from '@/components/anim/core/buildScene';
 import { Field, Input, Select, TextArea } from '@/components/ui/Input';
@@ -20,7 +21,7 @@ export function AnimationEditorPage() {
   const [name, setName] = useState('未命名动画');
   const [template, setTemplate] = useState(initialTemplate);
   const [steps, setSteps] = useState<AnimationStep[]>(
-    () => DEFAULT_STEPS[initialTemplate as keyof typeof DEFAULT_STEPS] || DEFAULT_STEPS.react,
+    () => resolveDefaultSteps(initialTemplate),
   );
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -51,7 +52,7 @@ export function AnimationEditorPage() {
 
   function onTemplateChange(t: string) {
     setTemplate(t);
-    setSteps(DEFAULT_STEPS[t as keyof typeof DEFAULT_STEPS] || DEFAULT_STEPS.react);
+    setSteps(resolveDefaultSteps(t));
   }
 
   function updateStep(i: number, patch: Partial<AnimationStep>) {

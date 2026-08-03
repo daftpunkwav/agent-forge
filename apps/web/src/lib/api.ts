@@ -7,11 +7,18 @@ import type {
   PublicUser,
 } from '@agentforge/shared';
 
-import { getToken, setToken } from './apiToken';
+import {
+  clearTokens,
+  getRefreshToken,
+  getToken,
+  setRefreshToken,
+  setToken,
+  setTokens,
+} from './apiToken';
 
 const BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
-export { setToken, getToken };
+export { setToken, getToken, getRefreshToken, setRefreshToken, setTokens, clearTokens };
 
 export class ApiError extends Error {
   constructor(
@@ -27,7 +34,40 @@ export class ApiError extends Error {
 /** 普通 API 请求默认超时（SSE 流走 agentStream.ts 的 28s 独立超时） */
 const REQUEST_TIMEOUT_MS = 15_000;
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+/** 单飞：并发 401 只触发一次 refresh */
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function tryRefreshAccessToken(): Promise<boolean> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const res = await fetch(`${BASE}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        const data = (await res.json().catch(() => ({}))) as Partial<AuthTokens>;
+        if (!res.ok || !data.accessToken || !data.refreshToken) {
+          clearTokens();
+          return false;
+        }
+        setTokens(data.accessToken, data.refreshToken);
+        return true;
+      } catch {
+        clearTokens();
+        return false;
+      } finally {
+        refreshInFlight = null;
+      }
+    })();
+  }
+  return refreshInFlight;
+}
+
+async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   const headers = new Headers(init.headers);
   if (!headers.has('Content-Type') && init.body) {
     headers.set('Content-Type', 'application/json');
@@ -47,6 +87,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
     const res = await fetch(`${BASE}${path}`, { ...init, headers, signal: controller.signal });
     const data = res.status === 204 ? {} : await res.json().catch(() => ({}));
+
+    // access 过期：尝试 refresh 一次后重试（跳过 refresh/logout 自身）
+    if (
+      res.status === 401 &&
+      !retried &&
+      !path.startsWith('/auth/refresh') &&
+      !path.startsWith('/auth/logout') &&
+      !path.startsWith('/auth/login') &&
+      !path.startsWith('/auth/register')
+    ) {
+      const ok = await tryRefreshAccessToken();
+      if (ok) {
+        return request<T>(path, init, true);
+      }
+    }
+
     if (!res.ok) {
       throw new ApiError(
         res.status,
@@ -84,9 +140,19 @@ export const api = {
   login: (body: { email: string; password: string }) =>
     request<AuthTokens>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
 
+  refresh: (refreshToken: string) =>
+    request<AuthTokens>('/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    }),
+
   me: () => request<{ user: PublicUser }>('/auth/me'),
 
-  logout: () => request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
+  logout: (body?: { refreshToken?: string | null }) =>
+    request<{ ok: boolean }>('/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken: body?.refreshToken || undefined }),
+    }),
 
   listArticles: (params?: {
     status?: string;
@@ -163,7 +229,7 @@ export const api = {
     }),
 
   updateProfile: (body: Record<string, unknown>) =>
-    request<{ user: PublicUser; accessToken?: string }>('/auth/me', {
+    request<AuthTokens>('/auth/me', {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
@@ -318,17 +384,22 @@ export const api = {
   agentChat: (body: {
     message: string;
     conversationId?: string;
+    guestKey?: string;
     context?: { route?: string; articleSlug?: string; sectionId?: string };
     style?: string;
     mode?: 'fast' | 'deep';
+    reasoningMode?: 'deep_teach' | 'react';
+    toolsEnabled?: boolean;
   }) =>
     request<{
       reply: string;
       thinking?: string;
       conversationId?: string;
+      guestKey?: string;
       model: string;
       format: string;
       style: string;
+      reasoningMode?: string;
     }>('/agent/chat', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -339,4 +410,33 @@ export const api = {
     progress?: number;
     mastery?: 'not_started' | 'learning' | 'mastered';
   }) => request<{ item: unknown }>('/agent/progress', { method: 'POST', body: JSON.stringify(body) }),
+
+  // Annotations（与并发前端批注 UI 对齐）
+  listAnnotations: (params: { articleId?: string; articleSlug?: string }) => {
+    const q = new URLSearchParams();
+    if (params.articleId) q.set('articleId', params.articleId);
+    if (params.articleSlug) q.set('articleSlug', params.articleSlug);
+    const qs = q.toString();
+    return request<{ items: import('@agentforge/shared').AnnotationItem[] }>(
+      `/annotations${qs ? `?${qs}` : ''}`,
+    );
+  },
+
+  createAnnotation: (body: {
+    articleId?: string;
+    articleSlug?: string;
+    anchorText: string;
+    sectionId?: string;
+    body: string;
+  }) =>
+    request<{ annotation: import('@agentforge/shared').AnnotationItem }>('/annotations', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  reviewAnnotation: (id: string, body: { status: 'approved' | 'rejected'; agentNote?: string }) =>
+    request<{ annotation: import('@agentforge/shared').AnnotationItem }>(`/annotations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 };

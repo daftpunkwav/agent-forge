@@ -1,27 +1,6 @@
 import type { AnimationStep, AnimationTemplate } from '@agentforge/shared';
 import type { SceneModel, VisualKind, VizEdge, VizFrame, VizNode } from './types';
-
-const TEMPLATE_KIND: Record<string, VisualKind> = {
-  react: 'ring',
-  loop: 'ring',
-  cot: 'chain',
-  prompting: 'chain',
-  'llm-basics': 'chain',
-  transformers: 'chain',
-  tokenization: 'chain',
-  'fine-tuning': 'chain',
-  'prompt-eng': 'chain',
-  tot: 'tree',
-  got: 'graph',
-  mcp: 'dataflow',
-  tool: 'flow',
-  harness: 'flow',
-  evaluation: 'flow',
-  memory: 'layers',
-  'frameworks-langchain': 'flow',
-  'frameworks-autogen': 'flow',
-  'frameworks-crewai': 'flow',
-};
+import { resolveVisualKind } from '../registry';
 
 function stepRole(s: AnimationStep): string {
   return (s.type || s.label || 'step').toLowerCase().split(/[\s:_-]/)[0];
@@ -377,7 +356,7 @@ export function buildSceneFromSteps(
   template?: string,
 ): SceneModel {
   const safe = steps.length ? steps : [{ label: 'Start', type: 'step', desc: '开始' }];
-  const kind = TEMPLATE_KIND[template || ''] || 'timeline';
+  const kind = resolveVisualKind(template);
   switch (kind) {
     case 'ring':
       return buildRingScene(safe, template === 'loop' ? 'loop' : 'react');
@@ -399,7 +378,7 @@ export function buildSceneFromSteps(
 }
 
 export function visualKindForTemplate(template?: string): VisualKind {
-  return TEMPLATE_KIND[template || ''] || 'timeline';
+  return resolveVisualKind(template);
 }
 
 export type { AnimationTemplate };

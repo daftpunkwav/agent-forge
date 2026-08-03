@@ -9,7 +9,7 @@ import {
 } from 'react';
 import type { PublicUser } from '@agentforge/shared';
 import { can, isAdminLike, isAuthorLike, roleLabel } from '@agentforge/shared';
-import { api, ApiError, setToken } from '@/lib/api';
+import { api, ApiError, clearTokens, getRefreshToken, getToken, setTokens } from '@/lib/api';
 
 interface AuthCtx {
   user: PublicUser | null;
@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const token = localStorage.getItem('agentforge-token');
+      const token = getToken();
       if (!token) {
         setUser(null);
         return;
@@ -45,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       // 仅凭证失效（401/403）才清 token 强制登出；网络/5xx 等错误保留登录态
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
-        setToken(null);
+        clearTokens();
         setUser(null);
       }
     }
@@ -57,23 +57,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.login({ email, password });
-    setToken(res.accessToken);
+    setTokens(res.accessToken, res.refreshToken);
     setUser(res.user);
   }, []);
 
   const register = useCallback(async (email: string, password: string, name: string) => {
     const res = await api.register({ email, password, name });
-    setToken(res.accessToken);
+    setTokens(res.accessToken, res.refreshToken);
     setUser(res.user);
   }, []);
 
   const logout = useCallback(async () => {
     try {
-      await api.logout();
+      await api.logout({ refreshToken: getRefreshToken() });
     } catch {
       /* ignore */
     }
-    setToken(null);
+    clearTokens();
     setUser(null);
   }, []);
 

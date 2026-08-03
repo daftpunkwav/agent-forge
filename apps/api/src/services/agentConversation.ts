@@ -1,7 +1,9 @@
 /**
  * Agent 会话管理（C-02：自 routes/agent.ts 拆分）
  * 会话生命周期、过期匿名会话清理、消息持久化与滚动摘要。
+ * 匿名会话须绑定 guestKey，防止仅凭 conversationId 续写（IDOR）。
  */
+import { randomBytes } from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../lib/logger.js';
 
@@ -32,29 +34,65 @@ async function maybePurgeGuestConversations() {
   }
 }
 
-export async function ensureConversation(userId: string | undefined, conversationId?: string) {
-  // 轻量清理：节流扫过期匿名会话
+/** 生成匿名会话 guestKey（客户端应持久化并随请求回传） */
+export function createGuestKey(): string {
+  return randomBytes(24).toString('base64url');
+}
+
+export type EnsureConversationOpts = {
+  conversationId?: string;
+  /** 匿名必填（新建或续写）；登录用户忽略 */
+  guestKey?: string;
+};
+
+/**
+ * 确保会话存在并校验 ACL。
+ * - 登录：仅本人会话
+ * - 匿名：须 guestKey 匹配；无 guestKey 的历史会话不可续写（防 IDOR）
+ */
+export async function ensureConversation(userId: string | undefined, opts?: EnsureConversationOpts | string) {
+  // 兼容旧签名 ensureConversation(userId, conversationId?)
+  const options: EnsureConversationOpts =
+    typeof opts === 'string' ? { conversationId: opts } : opts || {};
+  const { conversationId, guestKey } = options;
+
   void maybePurgeGuestConversations();
 
   if (conversationId) {
     const existing = await prisma.agentConversation.findUnique({ where: { id: conversationId } });
-    // 访问控制：已登录仅本人会话；匿名仅允许无主（userId 为空）会话，其余按找不到处理（走下方新建）
-    if (existing && (userId ? existing.userId === userId : !existing.userId)) {
-      // 已过期的匿名会话视为无效，新建
-      if (!userId && existing.expiresAt && existing.expiresAt.getTime() < Date.now()) {
-        // fall through to create
-      } else {
-        return existing;
+    if (existing) {
+      if (userId) {
+        if (existing.userId === userId) return existing;
+        // 他人会话 → 新建
+      } else if (!existing.userId) {
+        // 匿名：过期 → 新建
+        if (existing.expiresAt && existing.expiresAt.getTime() < Date.now()) {
+          // fall through
+        } else if (existing.guestKey && guestKey && existing.guestKey === guestKey) {
+          return existing;
+        } else if (!existing.guestKey) {
+          // 历史无 guestKey 的匿名会话：不可续写（关闭 IDOR 面）
+          // fall through to create
+        }
+        // guestKey 不匹配 → 新建
       }
     }
   }
-  return prisma.agentConversation.create({
-    data: {
-      userId: userId || null,
-      title: '对话',
-      expiresAt: userId ? null : new Date(Date.now() + GUEST_CONV_TTL_MS),
-    },
-  });
+
+  const data: {
+    userId: string | null;
+    title: string;
+    expiresAt: Date | null;
+    guestKey?: string | null;
+  } = {
+    userId: userId || null,
+    title: '对话',
+    expiresAt: userId ? null : new Date(Date.now() + GUEST_CONV_TTL_MS),
+  };
+  if (!userId) {
+    data.guestKey = guestKey?.trim() || createGuestKey();
+  }
+  return prisma.agentConversation.create({ data });
 }
 
 export async function loadRecentMessages(conversationId: string, take = 12) {

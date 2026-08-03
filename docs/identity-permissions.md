@@ -13,7 +13,7 @@
 
 > 枚举见 `packages/shared/src/permissions.ts`：`UserRole = 'reader' \| 'author' \| 'admin'`；`authorTier = 'none' \| 'standard' \| 'elite'`；`adminLevel` 默认 0。权限覆盖 `content.* / annotation.* / topic.* / author.* / domain.manage / user.manage / moderation.review / admin.full`。
 
-认证：`Authorization: Bearer <accessToken>`（无 refresh）。
+认证：`Authorization: Bearer <accessToken>`；登录/注册/`PATCH /me` 另下发 `refreshToken`（SPA localStorage）。`POST /auth/refresh` 旋转；`POST /auth/logout` 吊销。
 
 ## 作者层级
 
@@ -33,11 +33,11 @@
 
 ## 批注流
 
-> **模型 `Annotation` 已建立，尚无 annotations 路由与前端 UI。** 下文为产品设计。
+> API：`/api/v1/annotations`（`routes/annotations.ts`）。游客仅见 `approved`；登录用户见 approved + 自己的；文章作者或 admin 见该文全部。
 
-1. 读者提交 → `pending`  
-2. 若作者开启 Agent 审核 → Agent 通过/拒绝  
-3. 否则作者或管理员人工审核 → `approved` / `rejected`  
+1. 读者提交 → `pending`（需 `annotation.write`）  
+2. 若作者开启 Agent 审核 → Agent 通过/拒绝（`allowAgentAnnotationReview` 尚未接线）  
+3. 否则文章作者或管理员人工审核 → `approved` / `rejected`（`PATCH /annotations/:id`）  
 4. 游客仅可见 `approved`
 
 ## 话题

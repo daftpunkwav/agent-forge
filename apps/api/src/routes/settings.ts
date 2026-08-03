@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
 import { prisma } from '../lib/prisma.js';
 import { validate } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -18,10 +19,19 @@ import {
   isEncryptedByokKey,
   resolveByokApiKeyToStore,
 } from '../lib/byokCrypto.js';
+import { assertSafeByokBaseUrl } from '../lib/byokUrlPolicy.js';
+import { AppError } from '../lib/errors.js';
 
 export const settingsRouter = Router();
 
 const AGENT_STYLES = ['professional', 'friendly', 'sassy', 'concise', 'socratic'] as const;
+
+/** test-llm 打上游：与 Agent 同级限流，避免绕过 agentLimiter */
+const testLlmLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 40,
+  message: { error: { code: 'RATE_LIMIT', message: '模型探测过于频繁' } },
+});
 
 const byokSchema = z.object({
   enabled: z.boolean(),
@@ -117,9 +127,11 @@ settingsRouter.patch(
         // 解密失败（密钥轮换）时保留原密文，绝不落空销毁
         let apiKey = resolveByokApiKeyToStore(prev.apiKey, body.byok.apiKey || '');
         if (body.clearByokKey) apiKey = '';
+        // SSRF：写入前校验 baseUrl（空串表示未配置，允许）
+        const safeBaseUrl = assertSafeByokBaseUrl(body.byok.baseUrl || '');
         preferences.byok = {
           enabled: body.byok.enabled,
-          baseUrl: body.byok.baseUrl || '',
+          baseUrl: safeBaseUrl,
           model: body.byok.model || '',
           format: body.byok.format || 'anthropic_messages',
           name: body.byok.name || 'BYOK',
@@ -150,7 +162,7 @@ settingsRouter.patch(
 );
 
 /** 测试当前 BYOK / 服务端配置是否可用 */
-settingsRouter.post('/test-llm', requireAuth, async (req, res, next) => {
+settingsRouter.post('/test-llm', requireAuth, testLlmLimiter, async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
     const preferences = parsePrefs(user?.preferences);
@@ -182,6 +194,11 @@ settingsRouter.post('/test-llm', requireAuth, async (req, res, next) => {
       sample: result.text.slice(0, 120),
     });
   } catch (e) {
+    // BYOK URL 策略拒绝：400（非上游故障）
+    if (e instanceof AppError && e.code === 'BYOK_URL_REJECTED') {
+      next(e);
+      return;
+    }
     // 上游 LLM 失败：给 502 与脱敏文案（A-01），与 agent.ts llmError 语义一致
     // TypeError = 网络层失败（fetch 连不上/中断），同样视为上游问题而非服务器 bug
     if (e instanceof LlmCallError || e instanceof TypeError) {

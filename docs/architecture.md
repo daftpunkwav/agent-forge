@@ -22,18 +22,19 @@ Monorepo（npm workspaces：`apps/*`、`packages/*`）：
 
 运行时身份：游客 / 读者 / 作者（含 `authorTier=elite`）/ 管理员（`adminLevel` 1–100）。
 
-认证：Bearer JWT（**仅 access token**，无 refresh）；payload 含 `sub / email / role / authorTier / adminLevel`。
+认证：Bearer JWT **access**（默认 15m）+ **refresh**（默认 7d，DB 存 hash，旋转吊销）；payload 含 `sub / email / role / authorTier / adminLevel`。  
+Refresh/access 目前仍存前端 localStorage；HttpOnly Cookie 迁移见 **`docs/httponly-cookie-migration.md`**。
 
-详见 `docs/identity-permissions.md`。
+详见 `docs/identity-permissions.md`、`docs/security.md`。
 
 ## 双 Agent 体系（摘要）
 
 | | 悬停 Agent | Agent 面板 |
 |--|------------|------------|
 | **定位** | 速度优先的即时讲解 | 可对话的助手（**目标为完整智能体**） |
-| **当前架构** | 单轮 Fast Direct；流式正文；L2 `HoverExplainCache`（键前缀 `v7`）+ 前端 L1；记忆只读注入；净化在 `@agentforge/shared` | 单轮结构化提示词（Thought → Explain → Practice → Next）；会话/消息持久化；滚动摘要；记忆注入；流式 thinking + 正文 |
-| **目标架构** | 保持轻量；扩缓存键、跨设备同步 | **真 tool-loop**；多轮工具调用；读写记忆；可切换推理模式 |
-| **未实现** | 独立悬停会话表、跨设备同步 | 真工具循环；推理模式 UI；面板模式选择 |
+| **当前架构** | 单轮 Fast Direct；流式正文；L2 `HoverExplainCache`（键前缀 `v7`）+ 前端 L1；记忆只读注入；净化在 `@agentforge/shared` | 会话/消息持久化；滚动摘要；记忆注入；流式 thinking + 正文；**P0 tool-loop**（`search_articles` / `get_article`，勾选「允许工具」） |
+| **目标架构** | 保持轻量；扩缓存键、跨设备同步 | 更多工具 / MCP；完整模式 UI；读写记忆确认 |
+| **未实现** | 独立悬停会话表、跨设备同步 | P1/P2 见 **`docs/tool-loop-roadmap.md`** |
 
 完整说明：**`docs/agent-modes.md`**。
 

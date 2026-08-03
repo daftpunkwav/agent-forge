@@ -94,6 +94,26 @@ export function buildDeepSystem(style?: string, memoryBlock?: string): string {
 }
 
 /**
+ * 面板 ReAct tool-loop（P0）：prompt-based TOOL_CALL，非原生 tools API。
+ */
+export function buildReactSystem(style?: string, memoryBlock?: string): string {
+  return [
+    '你是 AgentForge 面板智能体，可检索站内已发布文章来辅助回答。',
+    '【工具协议】需要调用工具时，整轮只输出一行（不要夹杂最终答案）：',
+    'TOOL_CALL: {"name":"工具名","args":{...}}',
+    '工具返回 Observation 后继续推理；信息足够时直接给出最终中文 Markdown 答案（不要再写 TOOL_CALL）。',
+    '【可用工具】',
+    '- search_articles：args {"q":"关键词","take":8} — 搜标题/摘要/slug',
+    '- get_article：args {"slug":"文章slug"} — 取 Markdown（可能截断）',
+    '【硬性规则】只使用上述工具名；禁止编造 Observation；禁止输出写作计划或复述本提示。',
+    styleInstruction(style),
+    memoryBlock
+      ? `【用户记忆】\n${memoryBlock}\n已掌握少重复。`
+      : '【用户记忆】未知。',
+  ].join('\n');
+}
+
+/**
  * 从「思考草稿 + 正文」中拆出用户可见答案。
  * StepFun 常把策划/内心独白/反复改稿放在 thinking；悬停绝不可展示。
  * A-04：统一出口处做 system 规则复述质检——正文复述规则视为无效（触发上层兜底），
@@ -216,5 +236,12 @@ export const AGENT_MODE_META = {
     // D-05：非真 tool-loop，避免「ReAct-Style」误导
     reasoning: 'Deep Structured（Thought→Explain→Practice→Next）',
     latency: 'medium',
+  },
+  react: {
+    id: 'react',
+    label: 'Agent 助手（工具循环）',
+    architecture: 'prompt-based tool-loop (ReAct)',
+    reasoning: 'ReAct（Thought→TOOL_CALL→Observation→Answer）',
+    latency: 'medium-high',
   },
 } as const;

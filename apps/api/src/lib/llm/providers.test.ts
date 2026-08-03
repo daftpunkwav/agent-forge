@@ -162,6 +162,16 @@ describe('loadProviders / byokToProvider / resolveProvider', () => {
       byokToProvider({ enabled: true, baseUrl: 'https://x.com', apiKey: 'k', model: 'm' } as never),
     ).toMatchObject({ id: 'byok', format: 'anthropic_messages', vision: true });
   });
+  it('byokToProvider：拒绝内网 baseUrl（SSRF）', () => {
+    expect(() =>
+      byokToProvider({
+        enabled: true,
+        baseUrl: 'http://127.0.0.1:8080',
+        apiKey: 'k',
+        model: 'm',
+      } as never),
+    ).toThrow(/本机|内网|元数据/);
+  });
   it('resolveProvider：BYOK 优先，无效 BYOK 回退服务端默认', () => {
     const byok = { enabled: true, baseUrl: 'https://byok.example.com', apiKey: 'k', model: 'm' };
     expect(resolveProvider(byok as never)?.id).toBe('byok');

@@ -6,6 +6,8 @@
  * - reader 读者（默认注册）
  * - author 作者（含 authorTier: standard | elite）
  * - admin  管理员（adminLevel: 1–100，100 为最高）
+ *
+ * annotation.read：游客可读已通过批注；annotation.write：登录读者可提交待审批注。
  */
 
 export type UserRole = 'reader' | 'author' | 'admin';

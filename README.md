@@ -80,6 +80,9 @@ services/agent          独立 Agent Runtime 预留（仅 README；业务在 app
 services/mcp            MCP 预留（仅 README + 状态探测）
 _legacy/                旧版静态站归档（已被 .gitignore 忽略）
 docs/                   architecture / agent-modes / animation-system /
+                        identity-permissions / security / postgres /
+                        httponly-cookie-migration / tool-loop-roadmap /
+                        dev-progress
                         identity-permissions / security / dev-progress
 ```
 
@@ -93,4 +96,5 @@ docs/                   architecture / agent-modes / animation-system /
 | `npm test` | API Vitest（悬停净化等） |
 | `npm run lint` | 各 workspace oxlint |
 
-详见 `docs/architecture.md`、`docs/agent-modes.md`、`docs/dev-progress.md`、`PLAN.md`。
+详见 `docs/architecture.md`、`docs/agent-modes.md`、`docs/security.md`、`docs/postgres.md`、`docs/dev-progress.md`、`PLAN.md`。
+待办深化：`docs/httponly-cookie-migration.md`、`docs/tool-loop-roadmap.md`。

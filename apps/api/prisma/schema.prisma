@@ -23,6 +23,7 @@ model User {
   headline     String   @default("")
   website      String   @default("")
   /// 是否允许 Agent 审核批注（作者设置，默认 false 需作者本人审）
+  /// Agent 自动审核尚未接线；人工审核见 /api/v1/annotations
   allowAgentAnnotationReview Boolean @default(false)
   /// JSON: { agentStyle, byok, ... }
   preferences  String   @default("{}")
@@ -40,6 +41,21 @@ model User {
   annotations    Annotation[]
   conversations  AgentConversation[]
   annotationReviews Annotation[]     @relation("AnnotationReviewer")
+  refreshTokens  RefreshToken[]
+}
+
+/// 刷新令牌（仅存 sha256 hash；明文只下发给客户端一次）
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Domain {
@@ -179,7 +195,7 @@ model TopicReply {
   @@index([topicId])
 }
 
-/// 文章批注（游客只读已通过；读者可写待审）
+/// 文章批注（游客只读已通过；读者可写待审；作者/管理员审核）
 model Annotation {
   id          String   @id @default(cuid())
   articleId   String

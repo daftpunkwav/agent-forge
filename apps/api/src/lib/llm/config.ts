@@ -24,3 +24,15 @@ export const HOVER_RETRY_TIMEOUT_MS = 12_000;
 
 /** 同步调用对 5xx/网络错误的单次重试退避（B-05） */
 export const LLM_RETRY_BACKOFF_MS = 500;
+
+/** ReAct tool-loop 最大迭代次数（可用 TOOL_LOOP_MAX_ITERS 覆盖） */
+export const TOOL_LOOP_MAX_ITERS = Math.max(
+  1,
+  Math.min(20, parseInt(process.env.TOOL_LOOP_MAX_ITERS || '5', 10) || 5),
+);
+
+/** 单次工具执行超时（毫秒） */
+export const TOOL_TIMEOUT_MS = Math.max(
+  1000,
+  parseInt(process.env.TOOL_TIMEOUT_MS || '8000', 10) || 8000,
+);

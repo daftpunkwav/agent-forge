@@ -11,13 +11,17 @@ export type StreamEvent =
       mode?: string;
       style?: string;
       conversationId?: string;
+      guestKey?: string;
       cached?: boolean;
+      reasoningMode?: string;
       meta?: unknown;
     }
   | { type: 'status'; status: 'thinking' | 'answering' }
   | { type: 'thinking'; text: string }
   /** replace=true：用 text 覆盖已累计正文（策划切到讲解时的重同步） */
   | { type: 'delta'; text: string; replace?: boolean }
+  | { type: 'tool_call'; name: string; args?: unknown }
+  | { type: 'tool_result'; name: string; ok: boolean; preview?: string }
   | { type: 'final'; answer?: string; thinking?: string }
   | { type: 'done' }
   | { type: 'error'; message: string };

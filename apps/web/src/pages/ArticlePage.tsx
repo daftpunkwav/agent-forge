@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
-import type { ArticleDetail } from '@agentforge/shared';
+import type { AnnotationItem, ArticleDetail } from '@agentforge/shared';
 import { ArticleBody } from '@/components/article/ArticleBody';
 import { ArticleLayout, ArticleTags } from '@/components/article/ArticleLayout';
 import { Button } from '@/components/ui/Button';
@@ -141,6 +141,84 @@ export function ArticlePage() {
         animations={article.animations}
         fallbackTemplate={SLUG_TEMPLATE[article.slug]}
       />
+      <ArticleAnnotations slug={article.slug} canWrite={Boolean(user)} />
     </ArticleLayout>
+  );
+}
+
+/** 最小批注列表 + 提交表单（无审核 UI） */
+function ArticleAnnotations({ slug, canWrite }: { slug: string; canWrite: boolean }) {
+  const [items, setItems] = useState<AnnotationItem[]>([]);
+  const [anchorText, setAnchorText] = useState('');
+  const [body, setBody] = useState('');
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listAnnotations({ articleSlug: slug })
+      .then((r) => {
+        if (!cancelled) setItems(r.items);
+      })
+      .catch(() => {
+        if (!cancelled) setItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  return (
+    <section style={{ marginTop: 48, paddingTop: 24, borderTop: '1px solid var(--border)' }}>
+      <h3 style={{ fontFamily: 'var(--font-serif)', marginBottom: 12 }}>批注</h3>
+      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 16px', color: 'var(--muted-foreground)' }}>
+        {items.length === 0 ? <li>暂无可见批注</li> : null}
+        {items.map((a) => (
+          <li key={a.id} style={{ marginBottom: 10 }}>
+            <strong style={{ color: 'var(--foreground)' }}>{a.user?.name || '用户'}</strong>
+            {a.anchorText ? ` · 「${a.anchorText.slice(0, 40)}」` : null}
+            <div>{a.body}</div>
+            <small>{a.status}</small>
+          </li>
+        ))}
+      </ul>
+      {canWrite ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setErr('');
+            void api
+              .createAnnotation({ articleSlug: slug, anchorText, body })
+              .then((r) => {
+                setItems((prev) => [r.annotation, ...prev]);
+                setAnchorText('');
+                setBody('');
+              })
+              .catch((ex: unknown) => setErr(ex instanceof ApiError ? ex.message : '提交失败'));
+          }}
+          style={{ display: 'grid', gap: 8, maxWidth: 480 }}
+        >
+          <input
+            placeholder="锚定原文（选中片段）"
+            value={anchorText}
+            onChange={(e) => setAnchorText(e.target.value)}
+            required
+          />
+          <textarea
+            placeholder="批注内容"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            required
+            rows={3}
+          />
+          {err ? <span style={{ color: 'var(--destructive)' }}>{err}</span> : null}
+          <Button type="submit" size="sm">
+            提交批注
+          </Button>
+        </form>
+      ) : (
+        <p style={{ color: 'var(--muted-foreground)', fontSize: 14 }}>登录后可提交批注</p>
+      )}
+    </section>
   );
 }
