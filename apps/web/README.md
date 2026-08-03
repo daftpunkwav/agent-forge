@@ -1,32 +1,40 @@
-# React + TypeScript + Vite
+# @agentforge/web
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+AgentForge 前端：Vite 8 + React 19 + TypeScript + React Router 7。
 
-Currently, two official plugins are available:
+## 开发
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+在仓库根目录：
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev:web
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+- 地址：http://127.0.0.1:5280（`strictPort`，避免与其它 Vite 项目的 5173 冲突）
+- `/api` 代理到 `http://127.0.0.1:3001`
+- 需同时运行 `npm run dev:api`
+
+可选：复制根目录 `.env.example` 中的 `VITE_API_BASE_URL`（默认走代理时可不配）。
+
+## 目录
+
+```
+src/
+  app/router.tsx     路由
+  pages/             读者 / 账户 / author / admin
+  components/        agent · anim · article · domain · home · layout · ui
+  hooks/             useAuth · useTheme · useAnimationPlayer
+  lib/               api · agentStream · hoverExplainCache · markdown …
+  styles/            tokens.css · global.css
+```
+
+## 脚本
+
+| 命令 | 说明 |
+|------|------|
+| `npm run dev` | Vite 开发服务器 |
+| `npm run build` | 生产构建 |
+| `npm run lint` | oxlint |
+
+更多架构说明见仓库根 `README.md` 与 `docs/architecture.md`。

@@ -1,5 +1,7 @@
 # AgentForge 代码质量审查报告(2026-08-02 复查)
 
+> **归档说明**：本稿为 2026-08-02 时点复查快照，**不随代码持续维护**。部分结论（如「零自动化测试」「缓存清理无权限」）可能已过时；当前状态请读 `docs/dev-progress.md`、`docs/security.md`。
+
 > 审查日期:2026-08-02
 > 范围:`apps/api/src`、`apps/web/src`、`packages/shared/src`、`apps/api/prisma/*`、根目录遗留静态代码、`docs/*`
 > 方法:静态阅读 + 双子代理并行核查(测试/lint/遗留代码/其余页面),未修改任何代码

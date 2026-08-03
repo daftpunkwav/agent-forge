@@ -1,5 +1,7 @@
 # AgentForge 代码审查报告
 
+> **归档说明**：本稿为 2026-07-23 时点审查快照，**不随代码持续维护**。当前实现状态请读 `docs/dev-progress.md`、`docs/architecture.md`。后续复查见 `docs/code-review-2026-08-02.md`。
+
 > 审查日期：2026-07-23
 > 范围：`apps/api/src`、`apps/web/src`、`apps/api/prisma/schema.prisma`、`packages/shared/src`、`services/*`、`docs/*`
 > 方法：静态阅读 + 路径搜索（未运行、未修改代码）
