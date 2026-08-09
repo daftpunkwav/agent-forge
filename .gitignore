@@ -12,3 +12,7 @@ coverage
 .vite
 *.tsbuildinfo
 _legacy
+
+# CodeGraph 本地索引
+.codegraph/
+.zcode/

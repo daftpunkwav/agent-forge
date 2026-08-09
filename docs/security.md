@@ -1,6 +1,6 @@
 # 安全清单
 
-> 最后核对：2026-08-03（对照 `apps/api/src/` 与 `apps/web/src/`）
+> 最后核对：2026-08-04（对照 `apps/api/src/` 与 `apps/web/src/`）
 
 ## 已实现
 
@@ -43,7 +43,7 @@
 - [ ] 生产 PostgreSQL + HTTPS 终止（默认仍 SQLite；已提供 `docker-compose.yml` + `docs/postgres.md` 切换步骤）
 - [ ] HttpOnly cookie 迁移（当前 refresh/access 仍存 SPA localStorage，XSS 可窃取）— **方案见 `docs/httponly-cookie-migration.md`**
 - [ ] 备份与密钥轮转流程
-- [x] 批注（`Annotation`）写入/审核 API — `GET/POST /api/v1/annotations`、`PATCH /api/v1/annotations/:id`
+- [x] 批注（`Annotation`）写入/审核 API — `GET/POST /api/v1/annotations`、`PATCH /api/v1/annotations/:id`（ACL：游客只读 approved、登录者写 pending、文章作者/admin 审；`reviewBy` 仅 `author|admin`，Agent 自动审尚未接线）
 - [ ] 评论 CRUD（产品侧未做交互后端）
 - [ ] tool-loop 深化（更多工具、MCP、observation 注入防御 / 速率细分）— **路线见 `docs/tool-loop-roadmap.md`**
 - [ ] 记忆写入策略与提示词注入防御深化
@@ -68,4 +68,5 @@
 | `/api/v1/settings` | 120/min | 登录用户 |
 | `/api/v1/topics` | 120/min | 登录用户发帖/回复 |
 | `/api/v1/annotations` | 120/min | 公开读（ACL）；写需登录 + `annotation.write`；审需作者或 admin |
-| `/api/v1/agent/*` | 40/min | hover/chat 可匿名；memory/progress 需登录；cache/clear 需 admin || `/api/v1/mcp/status` | 120/min | 无 |
+| `/api/v1/agent/*` | 40/min | hover/chat 可匿名；memory/progress 需登录；cache/clear 需 admin |
+| `/api/v1/mcp/status` | 120/min | 无 |

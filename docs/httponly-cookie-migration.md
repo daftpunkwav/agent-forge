@@ -1,6 +1,6 @@
 # 待办：HttpOnly Cookie 会话迁移
 
-> 状态：**未实现**（2026-08-03）  
+> 状态：**未实现**（2026-08-04）  
 > 相关：`docs/security.md` · `apps/api/src/lib/jwt.ts` · `apps/web/src/lib/apiToken.ts`
 
 ## 为何要做

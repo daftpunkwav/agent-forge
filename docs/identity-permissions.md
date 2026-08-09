@@ -1,25 +1,25 @@
 # 身份、权限与交流模型
 
-> 最后核对：2026-08-03
+> 最后核对：2026-08-04
 
 ## 四种身份
 
 | 身份 | 入库 | 说明 |
 |------|------|------|
 | 游客 guest | 否 | 浏览公开知识、看已通过话题；不可发帖/批注/创作；可匿名使用悬停/面板 Agent（会话 7 天 TTL） |
-| 读者 reader | 是 | 默认注册；可话题；可申请作者；批注能力为产品设计（路由未上线） |
-| 作者 author | 是 | 工作台、发文、动画；`authorTier=elite` 为优秀作者 |
+| 读者 reader | 是 | 默认注册；可话题；可申请作者；可提交批注（pending） |
+| 作者 author | 是 | 工作台、发文、动画；`authorTier=elite` 为优秀作者；可审核本人文章批注 |
 | 管理员 admin | 是 | `adminLevel` 1–100；100 为超级管理员（种子账号） |
 
 > 枚举见 `packages/shared/src/permissions.ts`：`UserRole = 'reader' \| 'author' \| 'admin'`；`authorTier = 'none' \| 'standard' \| 'elite'`；`adminLevel` 默认 0。权限覆盖 `content.* / annotation.* / topic.* / author.* / domain.manage / user.manage / moderation.review / admin.full`。
 
-认证：`Authorization: Bearer <accessToken>`；登录/注册/`PATCH /me` 另下发 `refreshToken`（SPA localStorage）。`POST /auth/refresh` 旋转；`POST /auth/logout` 吊销。
+认证：`Authorization: Bearer <accessToken>`；登录/注册/`PATCH /me` 另下发 `refreshToken`（明文下发一次，DB 仅存 sha256；SPA localStorage）。`POST /auth/refresh` 旋转吊销旧 token 并下发新对；`POST /auth/logout` 吊销（已登录则吊销该用户全部未过期 refresh；否则可凭 refresh 吊销单条）。
 
 ## 作者层级
 
 - `authorTier=standard`：普通作者  
 - `authorTier=elite`：优秀作者（先成作者再申请）  
-- `allowAgentAnnotationReview`：是否允许 Agent 代审批注（字段已有，审核 API 未上线）
+- `allowAgentAnnotationReview`：是否允许 Agent 代审批注（字段已有，Agent 自动审尚未接线；审核 API 已上线，见 `/api/v1/annotations`）
 
 ## 管理员分级
 
@@ -33,11 +33,11 @@
 
 ## 批注流
 
-> API：`/api/v1/annotations`（`routes/annotations.ts`）。游客仅见 `approved`；登录用户见 approved + 自己的；文章作者或 admin 见该文全部。
+> API：`/api/v1/annotations`（`routes/annotations.ts`，ACL 见 `services/annotationAcl.ts`）。游客仅见 `approved`；登录用户见 approved + 自己的；文章作者或 admin 见该文全部。
 
 1. 读者提交 → `pending`（需 `annotation.write`）  
-2. 若作者开启 Agent 审核 → Agent 通过/拒绝（`allowAgentAnnotationReview` 尚未接线）  
-3. 否则文章作者或管理员人工审核 → `approved` / `rejected`（`PATCH /annotations/:id`）  
+2. 作者或管理员人工审核 → `approved` / `rejected`（`PATCH /annotations/:id`，记 `reviewBy: 'author' | 'admin'`）  
+3. Agent 自动审（消费 `allowAgentAnnotationReview`）尚未接线  
 4. 游客仅可见 `approved`
 
 ## 话题

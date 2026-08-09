@@ -36,7 +36,7 @@ npm run dev:web
 
 - 站点：http://localhost:5280（固定端口，`strictPort`）
 - API：http://localhost:3001/health
-- CORS：请在 `apps/api/.env` 设 `CORS_ORIGIN=http://localhost:5280`（与 `.env.example` 一致；代码硬编码默认仍为 `5173`，未配 env 时会不匹配）
+- CORS：请在 `apps/api/.env` 设 `CORS_ORIGIN=http://localhost:5280`（与 `.env.example` 及 `apps/api/src/app.ts` 默认一致）
 
 默认管理员（由 `SEED_ADMIN_*` 控制）：
 
@@ -52,7 +52,7 @@ npm run dev:web
 - **管理**：领域管理（`adminLevel ≥ 50`）、作者申请审批（分级 `adminLevel`）
 - **双 Agent**（详见 `docs/agent-modes.md`）
   - **悬停 Agent**：单轮 Fast Direct；流式正文；服务端 `HoverExplainCache`（L2，缓存键 `v7`）+ 前端 L1；净化逻辑在 `@agentforge/shared`；记忆只读注入
-  - **Agent 面板**：`/agent/chat`、`/chat/stream`，单轮结构化提示词（Thought → Explain → Practice → Next）；会话与消息持久化、滚动摘要；记忆注入；**尚未实现真工具循环（tool-loop），也未提供推理模式切换 UI**
+  - **Agent 面板**：`/agent/chat`、`/chat/stream`，单轮结构化提示词（Thought → Explain → Practice → Next）；**P0 真 tool-loop**（`reasoningMode: react` 或勾选「允许工具」：`search_articles` / `get_article`，SSE `tool_call` / `tool_result`）；会话与消息持久化、滚动摘要；记忆注入；**完整推理模式选择 UI 待办**
 - **预留**：`services/mcp`（仅 `GET /api/v1/mcp/status` 探测）、`services/agent`（独立 Runtime 未拆分；站内 Agent 已在 `apps/api` 实现）
 
 ## 目录
@@ -63,17 +63,22 @@ apps/web                前端（Vite + React + TS）
     app/router.tsx      路由表
     pages/              路由页面（读者 / 账户 / author / admin）
     components/         agent / anim / article / domain / home / layout / ui
-    hooks/              useAuth / useTheme / useAnimationPlayer
+    hooks/              useAuth / useTheme / useAnimationPlayer /
+                        useAgentPanel / useAgentStyle
     lib/                api / apiToken / agentStream / hoverExplainCache /
-                        markdown / cardExpandLock
+                        hoverExplainSession / hoverStreamBuffer /
+                        markdown / cardExpandLock / guestKey
 apps/api                后端（Express + Prisma）
   src/
     routes/             auth, articles, animations, applications,
-                        agent, domains, settings, topics
+                        agent, domains, settings, topics, annotations
     middleware/         auth, validate, errorHandler
-    lib/                prisma, jwt, hash, errors, params, logger,
-                        llm/ (agentPrompt, providers, types)
-    services/           serialize（DTO 映射）
+    lib/                prisma, jwt, hash, byokCrypto, byokUrlPolicy,
+                        prefs, errors, params, sse, logger,
+                        llm/ (agentPrompt, providers, types, config,
+                              providerHttp, adapters/, tools/)
+    services/           serialize, hoverCache, agentMemory,
+                        agentConversation, agentOrchestrator, annotationAcl
   prisma/               schema.prisma · seed.ts · seed-content.ts · dev.db
 packages/shared         共享 DTO、权限矩阵、悬停净化（hoverSanitize）
 services/agent          独立 Agent Runtime 预留（仅 README；业务在 apps/api）
@@ -83,7 +88,7 @@ docs/                   architecture / agent-modes / animation-system /
                         identity-permissions / security / postgres /
                         httponly-cookie-migration / tool-loop-roadmap /
                         dev-progress
-                        identity-permissions / security / dev-progress
+                        （另有 dated review 快照：code-review* / comprehensive-review* / architecture-review-2026-08-04）
 ```
 
 ## 常用命令
@@ -93,7 +98,7 @@ docs/                   architecture / agent-modes / animation-system /
 | `npm run dev:web` / `dev:api` | 分别启动前端 / API |
 | `npm run build` | 构建 shared → web → api |
 | `npm run db:seed` | 种子管理员 + 领域 + 文章/动画 |
-| `npm test` | API Vitest（悬停净化等） |
+| `npm test` | api + shared Vitest（悬停净化、tool-loop、BYOK 加密、批注 ACL 等） |
 | `npm run lint` | 各 workspace oxlint |
 
 详见 `docs/architecture.md`、`docs/agent-modes.md`、`docs/security.md`、`docs/postgres.md`、`docs/dev-progress.md`、`PLAN.md`。

@@ -1,6 +1,6 @@
 # 动画系统说明
 
-> 最后核对：2026-08-03
+> 最后核对：2026-08-04
 
 ## 架构
 
@@ -37,7 +37,7 @@ components/anim/
 | layers | 分层结构 | memory |
 | timeline | 通用时间线（兜底） | 未匹配任何模板时 |
 
-映射：`buildScene.ts` 的 `TEMPLATE_KIND`；未识别 → `timeline`。
+映射：`apps/web/src/components/anim/registry.ts` 的 `TEMPLATE_VISUAL_KIND` + `TEMPLATE_KIND_ALIASES`（`buildScene.ts` 透过 `resolveVisualKind` 读取该登记）；未识别 → `timeline`。
 
 ## ReAct 环
 
@@ -64,6 +64,6 @@ components/anim/
 ## 扩展新图种
 
 1. 在 `types.ts` 增加 `VisualKind`  
-2. 在 `buildScene.ts` 写 `buildXxxScene` 并加入 `TEMPLATE_KIND`  
+2. 在 `buildScene.ts` 写 `buildXxxScene` 并在 `registry.ts` 的 `TEMPLATE_VISUAL_KIND` 加入映射  
 3. 在 `SceneCanvas.tsx` 增加渲染分支  
 4. 若需出现在作者编辑器下拉，同步扩展 `packages/shared` 的 `AnimationTemplate` 与 `ANIMATION_TEMPLATES`

@@ -1,6 +1,6 @@
 # AgentForge 架构说明
 
-> 最后核对：2026-08-03（以仓库代码为准）
+> 最后核对：2026-08-04（以仓库代码为准）
 
 ## 概览
 
@@ -13,8 +13,8 @@ Monorepo（npm workspaces：`apps/*`、`packages/*`）：
 | `packages/shared` | 共享类型、权限矩阵、悬停答案净化 | 已实现 |
 | `services/agent` | 独立 Agent Runtime 拆分预留 | **仅 README**；站内 Agent 已在 `apps/api` |
 | `services/mcp` | MCP Server 预留 | **仅 README + `GET /api/v1/mcp/status`** |
-| 种子内容 | `apps/api/prisma/seed-content.ts`（`DEFAULT_ARTICLE_SEEDS`，约 21 篇） | 已实现 |
-| `_legacy/` | 旧静态站归档 | 已迁入；`.gitignore` 忽略 |
+| 种子内容 | `apps/api/prisma/seed-content.ts`（`DEFAULT_ARTICLE_SEEDS`，20 篇 + 5 个领域） | 已实现 |
+| `_legacy/` | 旧静态站归档（已停维护） | 已迁入；`.gitignore` 已忽略（46 文件历史已纳入 git 跟踪，新内容不会再进 git） |
 
 根目录若存在空壳 `api/`，以 `apps/api` 为准，勿混用。
 
@@ -22,7 +22,7 @@ Monorepo（npm workspaces：`apps/*`、`packages/*`）：
 
 运行时身份：游客 / 读者 / 作者（含 `authorTier=elite`）/ 管理员（`adminLevel` 1–100）。
 
-认证：Bearer JWT **access**（默认 15m）+ **refresh**（默认 7d，DB 存 hash，旋转吊销）；payload 含 `sub / email / role / authorTier / adminLevel`。  
+认证：Bearer JWT **access**（默认 `15m`，`JWT_ACCESS_EXPIRES_IN` 可改）+ **refresh**（默认 `7d`，`JWT_REFRESH_EXPIRES_IN` 可改，DB 仅存 sha256 hash，旋转吊销）；payload 含 `sub / email / role / authorTier / adminLevel`。  
 Refresh/access 目前仍存前端 localStorage；HttpOnly Cookie 迁移见 **`docs/httponly-cookie-migration.md`**。
 
 详见 `docs/identity-permissions.md`、`docs/security.md`。
@@ -59,16 +59,17 @@ Refresh/access 目前仍存前端 localStorage；HttpOnly Cookie 迁移见 **`do
 
 ### 主要数据模型
 
-`apps/api/prisma/schema.prisma`（13 个模型）：
+`apps/api/prisma/schema.prisma`（15 个模型）：
 
 - `User`（`role`、`authorTier`、`adminLevel`、`allowAgentAnnotationReview`、`preferences`）
+- `RefreshToken`（refresh 旋转/吊销，存 sha256）
 - `Domain`（`agent | llm` track）
 - `Article` / `AnimationDef` / `ArticleAnimation`
 - `AgentConversation` / `AgentMessage`（匿名会话 TTL 7 天）
 - `AgentMemory` / `LearningProgress` / `HoverExplainCache`
 - `Topic` / `TopicReply`
 - `AuthorApplication`（`author | elite`）
-- `Annotation`（**模型已有，尚无 API 路由**）
+- `Annotation`（GET/POST/PATCH 见 `/api/v1/annotations`）
 
 ## 前端结构（Web）
 
@@ -81,17 +82,18 @@ Refresh/access 目前仍存前端 localStorage；HttpOnly Cookie 迁移见 **`do
   - `article/` — `ArticleLayout` / `TableOfContents` / `ArticleBody` / `ArticleCardInlineAgent`
   - `anim/` — `AnimationViewer` + `core/` + `primitives/` + `templates/`
   - `domain/` · `home/` · `layout/AppShell` · `ui/`
-- `hooks/` — `useAuth` / `useTheme` / `useAnimationPlayer`
-- `lib/` — `api` / `apiToken` / `agentStream` / `hoverExplainCache` / `markdown` / `cardExpandLock`
+- `hooks/` — `useAuth` / `useTheme` / `useAnimationPlayer` / `useAgentPanel` / `useAgentStyle`
+- `lib/` — `api` / `apiToken` / `agentStream` / `hoverExplainCache` / `hoverExplainSession` / `hoverStreamBuffer` / `markdown` / `cardExpandLock` / `guestKey`
 - `styles/` — `tokens.css` / `global.css`
 
 Vite：端口 **5280**、`host: 127.0.0.1`、`/api` 代理到 `3001`。
 
 ## 后端结构（API）
 
-- 路由：`auth` · `articles` · `animations` · `applications` · `domains` · `settings` · `topics` · `agent`
+- 路由：`auth` · `articles` · `animations` · `applications` · `domains` · `settings` · `topics` · `agent` · `annotations`
 - 中间件：`optionalAuth` / `requireAuth` / `requireRole` / `requirePermission` / `requireAdminLevel`；Zod `validate`；统一 `errorHandler`
-- LLM：`providers.ts`（三种 API 格式 + BYOK）；`agentPrompt.ts`（Prompt + 复用 shared 净化）
+- LLM：`providers.ts`（三种 API 格式 + BYOK，调用委托 `adapters/`）；`agentPrompt.ts`（Prompt + 复用 shared 净化）；`tools/`（P0 tool-loop 最小集：`search_articles` / `get_article`）
+- 服务：`services/agentOrchestrator.ts`（讲解/对话编排）、`services/agentConversation.ts`（会话/摘要/匿名 TTL）、`services/agentMemory.ts`（记忆/BYOK/话题）、`services/hoverCache.ts`（L2 缓存 v7）、`services/annotationAcl.ts`（批注可见性/审核）、`services/serialize.ts`（DTO）
 - 日志：`lib/logger.ts`（Pino；开发 pino-pretty）
 
 ## 安全要点

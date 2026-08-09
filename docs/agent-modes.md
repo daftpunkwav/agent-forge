@@ -6,7 +6,7 @@
 
 文档区分 **目标架构（Target）** 与 **当前实现（Current）**，避免把愿景写成已完成。
 
-> 最后核对：2026-08-03
+> 最后核对：2026-08-04
 
 ---
 
@@ -145,6 +145,7 @@ User Message
 
 | 日期 | 说明 |
 |------|------|
+| 2026-08-04 | 对照代码核对：模型/路由/工具循环/批注 API/seed 计数/hooks-lib 列表等与现状一致 |
 | 2026-08-03 | **P0 tool-loop**：`search_articles` / `get_article` + prompt-based ReAct；SSE tool_call/tool_result；面板「允许工具」 |
 | 2026-08-03 | 缓存键 `v7`；净化迁入 `@agentforge/shared`；明确 Agent 已在 apps/api 实装、非 501；admin 才能清缓存 |
 | 2026-07-23 | 对照代码纠正 TTL、mode=fast\|deep、三种 Provider 格式、MCP/Runtime 未实现 |

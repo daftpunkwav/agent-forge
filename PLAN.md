@@ -1,9 +1,9 @@
 # AgentForge — 产品与实施计划（修订版）
 
-> **状态（2026-08-03）**：核心读者/作者/管理/双 Agent 主路径已落地。  
-> **未实现**：真 tool-loop、推理模式切换 UI、MCP 进程、独立 Agent Runtime、批注 API、评论 CRUD。  
+> **状态（2026-08-04）**：核心读者/作者/管理/双 Agent 主路径、批注读写、auth refresh、P0 tool-loop 已落地。  
+> **未实现**：推理模式切换 UI（仅"允许工具"勾选）、MCP 进程、独立 Agent Runtime、Agent 自动审注、评论 CRUD。  
 > 阶段实现情况详见 `docs/dev-progress.md`。  
-> 下文 §1–§6 保留早期产品意图；其中「Agent 本次不实现 / 返回 501」等表述**已被后续实现取代**，以 `docs/architecture.md` 与代码为准。
+> 下文 §1–§6 保留早期产品意图；其中「Agent 本次不实现 / 返回 501」「批注 API 未上线」等表述**已被后续实现取代**，以 `docs/architecture.md` 与代码为准。
 
 ---
 
@@ -16,8 +16,8 @@
 | 读者端 | 学习路径、富文本文章、可分步动画、注册登录、申请作者、话题社区 | ✅ |
 | 作者端 | 工作台、Markdown、动画模板编辑、发布/草稿 | ✅ |
 | 系统种子内容 | 核心知识点长文 + 配套动画（`seed-content.ts`） | ✅ |
-| 站内 Agent | 悬停快讲 + 面板对话 + BYOK + 记忆/进度 | ✅ 单轮；无 tool-loop |
-| 预留 | 批注审核、MCP、独立 Runtime、评论 | 模型/探测占位 |
+| 站内 Agent | 悬停快讲 + 面板对话 + BYOK + 记忆/进度 + tool-loop（P0） | ✅ P0 tool-loop 已落地；模式选择 UI 待办 |
+| 预留 | Agent 自动审注、MCP 进程、独立 Runtime、评论 | 批注读/写/审 API 已落地；其余占位 |
 
 **设计原则：** 组件化、模块单一职责、可扩展 monorepo、安全默认、适合公开发布。
 
@@ -31,7 +31,7 @@
 | 包管理 | npm workspaces（无 pnpm） | `apps/*` + `packages/*` |
 | 动画作者工具 | 模板 + 步骤参数（非自由画布） | ✅ |
 | 内容策略 | 系统种子长文 + 作者可续写 | ✅ |
-| Agent | 站内双 Agent 已实现；真 tool-loop / 模式 UI 延后 | 取代早期「仅 501」决策 |
+| Agent | 站内双 Agent 已实现；P0 tool-loop 已落地；模式选择 UI 延后 | 取代早期「仅 501」决策 |
 | 评论 | 不做交互后端 | 仍未实现 |
 | 数据库（开发） | SQLite；生产可切 PostgreSQL | 默认 `file:./dev.db` |
 | Web 端口 | **5280**（避免 5173 冲突） | `vite.config.ts` |
@@ -82,20 +82,21 @@ admin  →  审批申请、领域管理（adminLevel 分级）
 **API（摘要）**：
 
 ```
-POST/GET/PATCH  /api/v1/auth/{register,login,logout,me}
+POST/GET/PATCH  /api/v1/auth/{register,login,logout,me,refresh}
 CRUD            /api/v1/articles · /animations · /domains · /topics
                 /api/v1/author-applications
+                /api/v1/annotations
                 /api/v1/settings
                 /api/v1/agent/{meta,providers,explain,chat,memory,progress,cache/clear}
 GET             /api/v1/mcp/status   # reserved
 GET             /health
 ```
 
-无 `/auth/refresh`、无 comments API、无 annotations API。
+无 comments API；其余路由均已落地。
 
 ### 3.4 数据模型要点
 
-见 `apps/api/prisma/schema.prisma`：User、Domain、Article、AnimationDef、ArticleAnimation、Topic、TopicReply、AuthorApplication、AgentConversation、AgentMessage、AgentMemory、LearningProgress、HoverExplainCache、Annotation（无路由）。
+见 `apps/api/prisma/schema.prisma`（15 个模型）：User、RefreshToken、Domain、Article、AnimationDef、ArticleAnimation、Topic、TopicReply、AuthorApplication、Annotation、AgentConversation、AgentMessage、AgentMemory、LearningProgress、HoverExplainCache。
 
 动画嵌入：`:::animation{id="..."}:::`
 
@@ -108,9 +109,10 @@ GET             /health
 特别更正：
 
 - Agent 浮动面板**已可用**（非「即将推出」）
-- JWT 为 **access-only**（非 access + httpOnly refresh）
+- JWT 为 **access + refresh**（refresh 旋转吊销、存 SPA localStorage；HttpOnly Cookie 迁移待办，见 `docs/httponly-cookie-migration.md`）
 - 默认 LLM Provider 为 **StepFun**（可换 OpenAI / Generic / BYOK）
 - 管理员密码**无内置兜底**，须 `SEED_ADMIN_PASSWORD`
+- 批注 API **已上线**（`/api/v1/annotations` GET/POST/PATCH）
 
 ---
 
@@ -120,7 +122,7 @@ GET             /health
 |-------|------|------|
 | A 脚手架与设计系统 | monorepo、tokens、AppShell | ✅ |
 | B 组件 + 动画引擎 | VisualKind × 模板映射 | ✅ |
-| C Auth + RBAC | Prisma、JWT、中间件 | ✅（agent 已实装，非 501） |
+| C Auth + RBAC | Prisma、JWT(access + refresh)、中间件 | ✅（agent 已实装，非 501） |
 | D 作者端 CMS | 工作台、MD、动画编辑、发布 | ✅ |
 | E 种子内容 | `seed-content.ts` | ✅ |
 | F 读者体验 | 首页、申请、审批、话题、资讯等 | ✅ |
@@ -130,8 +132,8 @@ GET             /health
 
 ## 8. 明确不做 / 延后（当前版本）
 
-- 站内 Agent **真** tool-loop / 推理模式切换 UI / 完整编排  
-- 批注写入/审核 API（模型已有）  
+- 站内 Agent 推理模式切换 UI（仅"允许工具"勾选 → `reasoningMode: react`，缺完整模式选择器）  
+- Agent 自动审注（`allowAgentAnnotationReview` 字段已有，未接线）  
 - 评论真实发布  
 - 自由画布动画编排器  
 - MCP Server 进程  
@@ -156,7 +158,9 @@ GET             /health
 - [ ] 作者写 MD、建动画、发布；读者端可见  
 - [ ] XSS：恶意 MD 被消毒  
 - [ ] 未授权访问 `/author/*` 与写接口被拒绝  
-- [ ] `/api/v1/agent/explain` 与 `/chat` 在配置 Provider 后可用（**不再期望 501**）  
+- [ ] `/api/v1/agent/explain`、`/explain/stream`、`/chat`、`/chat/stream` 在配置 Provider 后可用（**不再期望 501**）  
+- [ ] P0 tool-loop（`reasoningMode: react` 或勾选"允许工具"）行为符合预期  
+- [ ] `/api/v1/annotations` GET/POST/PATCH 工作：游客仅见 approved、读者提交 pending、作者/admin 审核  
 - [ ] 生产 `JWT_SECRET` / `SEED_ADMIN_PASSWORD` / `CORS_ORIGIN` 已配置  
 - [ ] 生产 build 无 secret 泄漏  
 
