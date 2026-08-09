@@ -5,7 +5,7 @@
 import type { ApiFormat, ChatMessage, ProviderConfig } from '../types.js';
 import { callLlm } from '../providers.js';
 import { extractVisibleAnswer } from '../agentPrompt.js';
-import { TOOL_LOOP_MAX_ITERS, TOOL_TIMEOUT_MS } from '../config.js';
+import { TOOL_LOOP_MAX_ITERS, TOOL_LOOP_OVERALL_MS, TOOL_TIMEOUT_MS } from '../config.js';
 import { logger } from '../../logger.js';
 import { parseToolCall } from './parseToolCall.js';
 import { executeTool } from './registry.js';
@@ -21,6 +21,8 @@ export type RunToolLoopOpts = {
   signal?: AbortSignal;
   maxIters?: number;
   toolTimeoutMs?: number;
+  /** R-08：循环级总时限覆盖（默认 TOOL_LOOP_OVERALL_MS） */
+  overallTimeoutMs?: number;
   onEvent?: (ev: ToolLoopEvent) => void;
 };
 
@@ -38,7 +40,7 @@ function previewObservation(s: string, max = 160): string {
   return t.length > max ? `${t.slice(0, max)}…` : t;
 }
 
-/** 合并外层 abort 与单次工具超时 */
+/** 合并外层 abort 与单次工具超时（外层信号即循环级总时限信号） */
 function toolSignal(outer: AbortSignal | undefined, timeoutMs: number): AbortSignal {
   const timed = AbortSignal.timeout(timeoutMs);
   if (!outer) return timed;
@@ -61,28 +63,55 @@ export async function runToolLoop(opts: RunToolLoopOpts): Promise<ToolLoopResult
     { role: 'user', content: opts.userContent },
   ];
 
+  // R-08：循环级总时限——防止 5 轮 × (30s LLM + 8s 工具) ≈ 190s 空跑
+  const overallMs = opts.overallTimeoutMs ?? TOOL_LOOP_OVERALL_MS;
+  const deadlineSignal = AbortSignal.timeout(overallMs);
+  const loopSignal =
+    opts.signal && typeof AbortSignal.any === 'function'
+      ? AbortSignal.any([opts.signal, deadlineSignal])
+      : opts.signal || deadlineSignal;
+
   let model = opts.provider.model;
   let format = opts.provider.format;
   let lastThinking = '';
   let hitMaxIters = false;
 
   for (let i = 0; i < maxIters; i++) {
-    if (opts.signal?.aborted) {
+    if (loopSignal.aborted) {
+      // R-08：总时限触顶 → 优雅收尾；客户端断开（外层取消）→ 正常中断
+      if (deadlineSignal.aborted && !opts.signal?.aborted) {
+        logger.warn({ event: 'tool_loop_deadline', iterations: i + 1 }, 'tool loop deadline');
+        const answer = '这个问题涉及的检索步骤较多，已超过本轮时限。请缩小问题范围，或关闭「允许工具」直接提问。';
+        opts.onEvent?.({ type: 'delta', text: answer });
+        return { answer, thinking: lastThinking, model, format, iterations: i + 1, hitMaxIters: true };
+      }
       const err = new Error('Aborted');
       err.name = 'AbortError';
       throw err;
     }
 
-    const result = await callLlm(
-      {
-        mode: 'deep',
-        maxTokens: opts.maxTokens,
-        temperature: opts.temperature,
-        messages,
-        signal: opts.signal,
-      },
-      opts.provider,
-    );
+    let result: Awaited<ReturnType<typeof callLlm>>;
+    try {
+      result = await callLlm(
+        {
+          mode: 'deep',
+          maxTokens: opts.maxTokens,
+          temperature: opts.temperature,
+          messages,
+          signal: loopSignal,
+        },
+        opts.provider,
+      );
+    } catch (e) {
+      // R-08：总时限触顶——优雅收尾，告知用户可缩小范围重试；不当作系统故障
+      if (deadlineSignal.aborted && !opts.signal?.aborted) {
+        logger.warn({ event: 'tool_loop_deadline', iterations: i + 1 }, 'tool loop deadline');
+        const answer = '这个问题涉及的检索步骤较多，已超过本轮时限。请缩小问题范围，或关闭「允许工具」直接提问。';
+        opts.onEvent?.({ type: 'delta', text: answer });
+        return { answer, thinking: lastThinking, model, format, iterations: i + 1, hitMaxIters: true };
+      }
+      throw e;
+    }
     model = result.model;
     format = result.format;
 
@@ -116,9 +145,21 @@ export async function runToolLoop(opts: RunToolLoopOpts): Promise<ToolLoopResult
 
     opts.onEvent?.({ type: 'tool_call', name: toolCall.name, args: toolCall.args });
 
-    const exec = await executeTool(toolCall.name, toolCall.args, {
-      signal: toolSignal(opts.signal, toolTimeoutMs),
-    });
+    let exec;
+    try {
+      exec = await executeTool(toolCall.name, toolCall.args, {
+        signal: toolSignal(loopSignal, toolTimeoutMs),
+      });
+    } catch (e) {
+      // R-08：总时限在工具执行窗口内触顶——同样优雅收尾，不静默截断流
+      if (deadlineSignal.aborted && !opts.signal?.aborted) {
+        logger.warn({ event: 'tool_loop_deadline', iterations: i + 1 }, 'tool loop deadline');
+        const answer = '这个问题涉及的检索步骤较多，已超过本轮时限。请缩小问题范围，或关闭「允许工具」直接提问。';
+        opts.onEvent?.({ type: 'delta', text: answer });
+        return { answer, thinking: lastThinking, model, format, iterations: i + 1, hitMaxIters: true };
+      }
+      throw e;
+    }
 
     opts.onEvent?.({
       type: 'tool_result',

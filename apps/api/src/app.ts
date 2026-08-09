@@ -14,6 +14,7 @@ import { settingsRouter } from './routes/settings.js';
 import { topicsRouter } from './routes/topics.js';
 import { annotationsRouter } from './routes/annotations.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { prisma } from './lib/prisma.js';
 
 export function createApp() {
   const app = express();
@@ -64,17 +65,22 @@ export function createApp() {
     message: { error: { code: 'RATE_LIMIT', message: '请求过于频繁，请稍后再试' } },
   });
 
-  app.use(generalLimiter);
-
+  // R-03：liveness 浅检查——必须在限流器之前，LB 高频探测不吃限流预算
   app.get('/health', (_req, res) => {
     res.json({ ok: true, service: 'agentforge-api', ts: new Date().toISOString() });
   });
 
-  const agentLimiter = rateLimit({
-    windowMs: 60_000,
-    max: 40,
-    message: { error: { code: 'RATE_LIMIT', message: 'Agent 请求过于频繁' } },
+  // R-03：readiness 深检查——DB 不可用时 503，让 LB/编排系统摘流而非打挂
+  app.get('/ready', async (_req, res) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ ok: true, db: 'up' });
+    } catch {
+      res.status(503).json({ ok: false, db: 'down' });
+    }
   });
+
+  app.use(generalLimiter);
 
   app.use('/api/v1/auth', authLimiter, authRouter);
   app.use('/api/v1/articles', articlesRouter);
@@ -82,7 +88,9 @@ export function createApp() {
   app.use('/api/v1/author-applications', applicationsRouter);
   app.use('/api/v1/domains', domainsRouter);
   app.use('/api/v1/settings', settingsRouter);
-  app.use('/api/v1/agent', agentLimiter, agentRouter);
+  // R-10：Agent 限流分桶定义已下沉到 routes/agent.ts（按端点挂不同桶），
+  // app.ts 只做装配；Agent 域仍受上方 generalLimiter 约束。
+  app.use('/api/v1/agent', agentRouter);
   app.use('/api/v1/topics', topicsRouter);
   app.use('/api/v1/annotations', annotationsRouter);
 

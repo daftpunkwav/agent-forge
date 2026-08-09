@@ -1,8 +1,9 @@
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, type FormEvent } from 'react';
 import { ACCENTS, useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { AgentFloat } from '@/components/agent/AgentFloat';
+import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 
 const nav = [
   { to: '/', label: '首页', end: true },
@@ -19,6 +20,8 @@ export function AppShell() {
   const [accentOpen, setAccentOpen] = useState(false);
   const [q, setQ] = useState('');
   const navigate = useNavigate();
+  // R-09 L2：页面边界按 pathname 重置，错误页不会粘在下一页
+  const location = useLocation();
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
@@ -259,7 +262,10 @@ export function AppShell() {
       </header>
 
       <main style={{ flex: 1, minHeight: '60vh' }}>
-        <Outlet />
+        {/* R-09 L2：页面边界——单页面崩溃不带走页头页脚与其他页面 */}
+        <ErrorBoundary key={location.pathname} name="page">
+          <Outlet />
+        </ErrorBoundary>
       </main>
 
       <footer
@@ -354,7 +360,10 @@ export function AppShell() {
         </div>
       </footer>
 
-      <AgentFloat />
+      {/* R-09 L3：Agent 静默边界——双 Agent 崩溃时静默隐藏，不影响任何页面 */}
+      <ErrorBoundary name="agent" fallback={null}>
+        <AgentFloat />
+      </ErrorBoundary>
 
       <style>{`
         @media (max-width: 900px) {

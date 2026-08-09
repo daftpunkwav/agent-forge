@@ -8,7 +8,7 @@ import { AppError } from '../lib/errors.js';
 import {
   callLlm,
   LlmCallError,
-  resolveProvider,
+  resolveProviderChain,
 } from '../lib/llm/providers.js';
 import {
   buildDeepSystem,
@@ -25,6 +25,7 @@ import {
   loadRecentMessages,
   persistTurn,
 } from './agentConversation.js';
+import { getHoverCacheSafe } from './hoverCache.js';
 import {
   loadUserContext,
   maybeSaveImportantMemory,
@@ -139,8 +140,10 @@ export function resolveReactEnabled(body: ChatBody): boolean {
 
 export async function prepareChat(body: ChatBody, userId: string | undefined) {
   const ctx = await loadUserContext(userId, body.context?.route);
-  const provider = resolveProvider(ctx.byok);
-  if (!provider) throw noProviderError();
+  // R-04：主备故障转移链（BYOK → 首选服务端 → 其余服务端）；provider 用于元信息/提示词，chain 用于调用
+  const chain = resolveProviderChain(ctx.byok);
+  if (!chain.length) throw noProviderError();
+  const provider = chain[0];
 
   const style = body.style || ctx.style;
   const mode = body.mode || 'deep';
@@ -182,7 +185,7 @@ export async function prepareChat(body: ChatBody, userId: string | undefined) {
     .filter(Boolean)
     .join('\n');
 
-  return { ctx, provider, style, mode, reactEnabled, conv, system, userContent };
+  return { ctx, provider, chain, style, mode, reactEnabled, conv, system, userContent };
 }
 
 /** B-02：chat 同步/流式共用收尾——持久化、话题记忆、重要记忆 */
@@ -229,8 +232,10 @@ export function noProviderError(): AppError {
 
 export async function runExplain(body: ExplainBody, userId: string | undefined) {
   const ctx = await loadUserContext(userId, body.selection.route);
-  const provider = resolveProvider(ctx.byok);
-  if (!provider) throw noProviderError();
+  // R-04：主备故障转移链；provider 用于元信息/提示词，chain 用于调用
+  const chain = resolveProviderChain(ctx.byok);
+  if (!chain.length) throw noProviderError();
+  const provider = chain[0];
 
   const style = body.style || ctx.style;
   const isHover = body.mode === 'hover';
@@ -266,6 +271,7 @@ export async function runExplain(body: ExplainBody, userId: string | undefined) 
 
   return {
     provider,
+    chain,
     style,
     isHover,
     system,
@@ -273,4 +279,26 @@ export async function runExplain(body: ExplainBody, userId: string | undefined) 
     topic: body.selection.text,
     mode: body.mode,
   };
+}
+
+export type ExplainPrep = Awaited<ReturnType<typeof runExplain>>;
+
+/**
+ * R-06：悬停缓存命中策略——同步/流式端点共用。
+ * 先按默认风格预查（可跳过 Provider 解析，缓存即降级层）；
+ * 未命中且已解析出真实风格（prep）且风格不同，再按真实风格二查一次。
+ */
+export async function resolveHoverCacheHit(
+  body: ExplainBody,
+  prep?: Pick<ExplainPrep, 'isHover' | 'topic' | 'style'>,
+): Promise<{ style: string; answer: string } | null> {
+  if (body.mode !== 'hover') return null;
+  const preStyle = body.style || 'professional'; // 与 loadUserContext 默认风格一致
+  const preCached = await getHoverCacheSafe(body.selection.text, preStyle);
+  if (preCached) return { style: preStyle, answer: preCached };
+  if (!prep?.isHover) return null;
+  const preChecked = preStyle === prep.style;
+  if (preChecked) return null;
+  const cached = await getHoverCacheSafe(prep.topic, prep.style);
+  return cached ? { style: prep.style, answer: cached } : null;
 }

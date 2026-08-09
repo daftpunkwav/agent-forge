@@ -12,6 +12,39 @@ import type { ByokConfig } from '../lib/llm/types.js';
 
 const MAX_PREF_MEMORIES = 20;
 
+/**
+ * R-11：hover 高频路径用户上下文短缓存（进程内，TTL 60s）。
+ * loadUserContext 每次执行 3 条 DB 查询 + BYOK 解密，而记忆/进度在 60s 内几乎不变。
+ * 设置变更时调用 invalidateUserContext 主动失效；多副本部署时 TTL 是最坏不一致窗口（文档化即可）。
+ */
+const CTX_TTL_MS = 60_000;
+/** R-11：进程内缓存条目硬上限，超出按写入序淘汰最旧，防长期运行无限增长 */
+const CTX_MAX_ENTRIES = 5000;
+type UserCtx = Awaited<ReturnType<typeof loadUserContextInner>>;
+const ctxCache = new Map<string, { at: number; value: UserCtx }>();
+
+export function invalidateUserContext(userId: string): void {
+  for (const k of ctxCache.keys()) if (k.startsWith(`${userId}::`)) ctxCache.delete(k);
+}
+
+/** 带短缓存壳：无 userId 或缓存未命中时走真实查询 */
+export async function loadUserContext(userId?: string, route?: string): Promise<UserCtx> {
+  if (!userId) return loadUserContextInner(userId, route);
+  const key = `${userId}::${route || ''}`;
+  const hit = ctxCache.get(key);
+  if (hit && Date.now() - hit.at < CTX_TTL_MS) return hit.value;
+  // 过期条目立即删除，避免惰性过期导致 Map 无限增长
+  if (hit) ctxCache.delete(key);
+  const value = await loadUserContextInner(userId, route);
+  ctxCache.set(key, { at: Date.now(), value });
+  // 超出硬上限：删除最旧一条（Map 保持插入序，首键即最旧）
+  if (ctxCache.size > CTX_MAX_ENTRIES) {
+    const oldest = ctxCache.keys().next();
+    if (!oldest.done) ctxCache.delete(oldest.value);
+  }
+  return value;
+}
+
 /** pref: 前缀记忆数量上限，超出按 updatedAt 淘汰最旧（B-08） */
 async function trimPrefMemories(userId: string) {
   try {
@@ -63,7 +96,7 @@ export async function maybeSaveImportantMemory(
   }
 }
 
-export async function loadUserContext(userId?: string, route?: string) {
+async function loadUserContextInner(userId?: string, route?: string) {
   if (!userId) {
     return {
       style: 'professional',

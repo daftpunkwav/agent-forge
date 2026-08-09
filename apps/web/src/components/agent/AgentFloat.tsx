@@ -5,6 +5,7 @@ import { useAgentStyle } from '@/hooks/useAgentStyle';
 import { useAgentPanel } from '@/hooks/useAgentPanel';
 import { AGENT_CACHE_CLEARED_EVENT } from '@/lib/hoverExplainCache';
 import {
+  agentSuspended,
   IncompleteHoverKeys,
   peekHoverSessionCache,
   runHoverExplainStream,
@@ -429,6 +430,8 @@ export function AgentFloat() {
 
       const fire = () => {
         if (sessionRef.current?.gen !== gen) return;
+        // R-09：前端熔断窗口内静默不预取（连续失败后暂停，给恢复中的后端减压）
+        if (agentSuspended()) return;
         const gate = canFireRequest();
         if (!gate.ok || gate.wait > 0) {
           // 窗口打满或冷却中：延后，仍绑定同一 gen

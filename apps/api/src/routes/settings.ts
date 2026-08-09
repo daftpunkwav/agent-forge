@@ -21,6 +21,7 @@ import {
 } from '../lib/byokCrypto.js';
 import { assertSafeByokBaseUrl } from '../lib/byokUrlPolicy.js';
 import { AppError } from '../lib/errors.js';
+import { invalidateUserContext } from '../services/agentMemory.js';
 
 export const settingsRouter = Router();
 
@@ -146,6 +147,8 @@ settingsRouter.patch(
         where: { id: req.user!.id },
         data: { preferences: JSON.stringify(preferences) },
       });
+      // R-11：偏好/BYOK 变更后主动失效用户上下文短缓存，避免悬停读到旧风格/旧 BYOK
+      invalidateUserContext(req.user!.id);
 
       res.json({
         preferences: {

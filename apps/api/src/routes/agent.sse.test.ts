@@ -10,10 +10,14 @@ import type { LlmRequest, StreamChunk } from '../lib/llm/types.js';
 
 const h = vi.hoisted(() => ({
   streamLlmMock: vi.fn(),
+  runToolLoopMock: vi.fn(),
   prismaHoverFindUnique: vi.fn(),
   prismaHoverUpsert: vi.fn(),
   prismaHoverDelete: vi.fn(),
   prismaHoverUpdate: vi.fn(),
+  prismaHoverDeleteMany: vi.fn(),
+  prismaConvCreate: vi.fn(),
+  prismaMsgFindMany: vi.fn(),
 }));
 
 vi.mock('../lib/prisma.js', () => ({
@@ -23,14 +27,15 @@ vi.mock('../lib/prisma.js', () => ({
       upsert: h.prismaHoverUpsert,
       delete: h.prismaHoverDelete,
       update: h.prismaHoverUpdate,
+      deleteMany: h.prismaHoverDeleteMany,
     },
     agentConversation: {
       deleteMany: vi.fn(),
       findUnique: vi.fn(),
-      create: vi.fn(),
+      create: h.prismaConvCreate,
       update: vi.fn(),
     },
-    agentMessage: { findMany: vi.fn(), createMany: vi.fn(), count: vi.fn() },
+    agentMessage: { findMany: h.prismaMsgFindMany, createMany: vi.fn(), count: vi.fn() },
     agentMemory: { findMany: vi.fn(), upsert: vi.fn(), count: vi.fn(), deleteMany: vi.fn() },
     user: { findUnique: vi.fn() },
     learningProgress: { findMany: vi.fn() },
@@ -40,8 +45,23 @@ vi.mock('../lib/prisma.js', () => ({
 
 vi.mock('../lib/llm/providers.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/llm/providers.js')>();
-  return { ...actual, streamLlm: h.streamLlmMock };
+  // R-04：路由的 LLM 入口已改为 failover 包装（resolveStreamWithFallback），
+  // 测试仍按原语义 mock 单个 provider 的流——包装返回真实单链 + mock 的 stream。
+  return {
+    ...actual,
+    streamLlm: h.streamLlmMock,
+    resolveStreamWithFallback: vi.fn(
+      async (req: LlmRequest, chain: { provider: { id: string } }[]) => ({
+        provider: chain[0],
+        stream: h.streamLlmMock(req),
+      }),
+    ),
+  };
 });
+
+vi.mock('../lib/llm/tools/index.js', () => ({
+  runToolLoop: h.runToolLoopMock,
+}));
 
 import { createApp } from '../app.js';
 import { LlmCallError, resetProviderCache } from '../lib/llm/providers.js';
@@ -58,6 +78,7 @@ beforeAll(async () => {
   h.prismaHoverUpsert.mockResolvedValue({} as never);
   h.prismaHoverDelete.mockResolvedValue({} as never);
   h.prismaHoverUpdate.mockResolvedValue({} as never);
+  h.prismaHoverDeleteMany.mockResolvedValue({ count: 0 } as never);
   const app = createApp();
   await new Promise<void>((resolve, reject) => {
     server = app.listen(0, (err?: Error) => {
@@ -191,5 +212,60 @@ describe('POST /agent/explain/stream（悬停）', () => {
     // 复述规则的片段被拦截；正常思考仍可下发
     expect(all).not.toContain('禁止输出写作计划');
     expect(thinkingEvents.length).toBeGreaterThan(0);
+  });
+});
+
+describe('POST /agent/chat/stream（react 分支）', () => {
+  beforeEach(() => {
+    h.prismaConvCreate.mockResolvedValue({
+      id: 'conv-react-1',
+      guestKey: 'gk-react-1',
+      summary: null,
+    });
+    h.prismaMsgFindMany.mockResolvedValue([]);
+    h.runToolLoopMock.mockImplementation(
+      async (opts: { onEvent?: (ev: { type: string; text?: string }) => void }) => {
+        opts.onEvent?.({ type: 'delta', text: '工具循环回答。' });
+        return {
+          answer: '工具循环回答。',
+          thinking: '',
+          model: 'step-3.7-flash',
+          format: 'anthropic_messages',
+          iterations: 1,
+          hitMaxIters: false,
+        };
+      },
+    );
+  });
+
+  it('首个事件为 meta（conversationId/guestKey/reasoningMode=react），随后 delta/final/done', async () => {
+    const res = await fetch(`${base}/agent/chat/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: '什么是 ReAct', reasoningMode: 'react' }),
+    });
+    expect(res.ok).toBe(true);
+    const text = await res.text();
+    const events = text
+      .split('\n')
+      .filter((l) => l.startsWith('data:'))
+      .map((l) => JSON.parse(l.slice(5).trim()) as Record<string, unknown>);
+    // 前端 onMeta 是流式路径接收 conversationId/guestKey 的唯一渠道：
+    // 缺失会导致多轮上下文丢失、guestKey 不持久化（本用例即该回归的看守）
+    expect(events[0]?.type).toBe('meta');
+    const meta = events[0] as {
+      conversationId?: string;
+      guestKey?: string;
+      reasoningMode?: string;
+      providerId?: string;
+    };
+    expect(meta.conversationId).toBe('conv-react-1');
+    expect(meta.guestKey).toBe('gk-react-1');
+    expect(meta.reasoningMode).toBe('react');
+    expect(meta.providerId).toBe('stepfun');
+    const types = events.map((e) => e.type);
+    expect(types).toContain('delta');
+    expect(types).toContain('final');
+    expect(types[types.length - 1]).toBe('done');
   });
 });

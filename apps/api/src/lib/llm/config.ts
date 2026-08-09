@@ -36,3 +36,9 @@ export const TOOL_TIMEOUT_MS = Math.max(
   1000,
   parseInt(process.env.TOOL_TIMEOUT_MS || '8000', 10) || 8000,
 );
+
+/** ReAct tool-loop 整体时限（R-08）：须小于前端 tools 模式超时 90s，留出 final 余量 */
+export const TOOL_LOOP_OVERALL_MS = Math.max(
+  5000,
+  parseInt(process.env.TOOL_LOOP_OVERALL_MS || '75000', 10) || 75000,
+);

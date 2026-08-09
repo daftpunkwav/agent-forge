@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   byokToProvider,
   callLlm,
+  callLlmWithFallback,
   extractAnthropicParts,
   loadProviders,
   resolveAnthropicMessagesUrl,
@@ -14,6 +15,7 @@ import {
   resetProviderCache,
   resolveProvider,
 } from './providers.js';
+import { resetCircuits } from './resilience.js';
 
 const KEYS = [
   'STEPFUN_API_KEY',
@@ -36,11 +38,13 @@ const KEYS = [
 
 beforeEach(() => {
   resetProviderCache();
+  resetCircuits();
 });
 
 afterEach(() => {
   for (const k of KEYS) delete process.env[k];
   resetProviderCache();
+  resetCircuits();
 });
 
 describe('resolveAnthropicMessagesUrl', () => {
@@ -179,6 +183,80 @@ describe('loadProviders / byokToProvider / resolveProvider', () => {
     process.env.STEPFUN_BASE_URL = 'https://api.stepfun.com/step_plan';
     expect(resolveProvider({ enabled: false } as never)?.id).toBe('stepfun');
     expect(resolveProvider(null)?.id).toBe('stepfun');
+  });
+});
+
+describe('R-04 callLlmWithFallback failover 语义', () => {
+  const errResponse = (status: number) =>
+    new Response(JSON.stringify({ error: `upstream ${status}` }), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+  const chain = () => [
+    { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', apiKey: 'k1', model: 'gpt-4o-mini', format: 'openai_chat' as const, vision: true },
+    { id: 'stepfun', name: 'StepFun', baseUrl: 'https://api.stepfun.com/step_plan', apiKey: 'k2', model: 'step-3.7-flash', format: 'anthropic_messages' as const, vision: true },
+  ];
+
+  it('主 provider 网络失败 → 自动切到备选，返回实际服务者', async () => {
+    // B-05：TypeError 在主 provider 内部会重试一次，故需连续两次网络失败才最终失败 → 触发 failover
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ content: [{ type: 'text', text: '备选回答' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    const { result, provider } = await callLlmWithFallback(
+      { mode: 'fast', messages: [{ role: 'user', content: 'hi' }] },
+      chain(),
+    );
+    expect(result.text).toBe('备选回答');
+    expect(provider.id).toBe('stepfun');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    fetchMock.mockRestore();
+  });
+
+  it('主 provider 502 → 切备选（5xx 属上游故障）', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(errResponse(502))
+      .mockResolvedValueOnce(errResponse(502))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ content: [{ type: 'text', text: 'ok' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    const { provider } = await callLlmWithFallback(
+      { mode: 'fast', messages: [{ role: 'user', content: 'hi' }] },
+      chain(),
+    );
+    expect(provider.id).toBe('stepfun');
+    fetchMock.mockRestore();
+  });
+
+  it('4xx 配置错误 → 直接抛，不 failover', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(errResponse(401));
+    await expect(
+      callLlmWithFallback({ mode: 'fast', messages: [{ role: 'user', content: 'hi' }] }, chain()),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(fetchMock).toHaveBeenCalledTimes(1); // 仅主 provider 尝试一次（B-05 4xx 不重试）
+    fetchMock.mockRestore();
+  });
+
+  it('本地容量满（LLM_CAPACITY 503）→ 直接抛，不沿链重试', async () => {
+    const { LlmCallError } = await import('./providerHttp.js');
+    const capError = new LlmCallError(503, 'AI 服务繁忙，请稍后重试', { url: '', raw: '' }, 'LLM_CAPACITY');
+    // B-05：503 属可重试 → 主 provider 内部重试一次后仍失败（2 次 fetch），随后 failover 检查排除容量错误 → 抛 503，备选不尝试
+    const spy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(capError);
+    await expect(
+      callLlmWithFallback({ mode: 'fast', messages: [{ role: 'user', content: 'hi' }] }, chain()),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(spy).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
   });
 });
 

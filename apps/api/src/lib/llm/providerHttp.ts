@@ -7,6 +7,8 @@ export class LlmCallError extends Error {
     public readonly status: number,
     public readonly messageForClient: string,
     public readonly diagnostic: { url: string; raw: string },
+    /** 业务标记，用于区分同类状态码的不同语义（如 503：上游熔断 vs 本地容量满） */
+    public readonly code?: string,
   ) {
     super(messageForClient);
     this.name = 'LlmCallError';

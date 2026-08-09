@@ -1,5 +1,6 @@
-# 可选：本地 PostgreSQL（生产推荐）
-# 默认开发仍可用 SQLite（apps/api/.env 中 DATABASE_URL=file:./dev.db）
+# 本地完整栈（生产形态）：PostgreSQL + API（含健康/就绪探针，R-03）
+# 前端建议静态托管（build 产物 apps/web/dist）或另起 nginx，不在本文件强耦合。
+# 用法：JWT_SECRET=... STEPFUN_API_KEY=... docker compose up -d
 services:
   postgres:
     image: postgres:16-alpine
@@ -18,6 +19,33 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: agentforge-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      # R-07：编排层关键 env 缺失直接起不来，与启动期 validateEnv 双重保障
+      DATABASE_URL: postgresql://agentforge:agentforge@postgres:5432/agentforge?schema=public
+      JWT_SECRET: ${JWT_SECRET:?must set JWT_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5280}
+      STEPFUN_API_KEY: ${STEPFUN_API_KEY:-}
+      # 可选服务端 Provider（P1-1 故障转移链用）
+      # OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - '3001:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3001/ready || exit 1']
+      interval: 10s
+      timeout: 3s
+      retries: 6
 
 volumes:
   agentforge_pg_data:

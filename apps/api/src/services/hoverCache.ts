@@ -69,3 +69,36 @@ export async function setHoverCache(topic: string, style: string, answer: string
     logger.warn({ err: String(e), key }, 'hover cache: write failed');
   }
 }
+
+/**
+ * R-06：缓存读隔离——读失败视为 miss（返回 null），由调用方降级到 LLM。
+ * 缓存是优化层，绝不能成为关键路径的单点。
+ */
+export async function getHoverCacheSafe(topic: string, style: string): Promise<string | null> {
+  maybePruneHoverCache();
+  try {
+    return await getHoverCache(topic, style);
+  } catch (e) {
+    logger.warn({ err: String(e) }, 'hover cache: read failed, degrade to LLM path');
+    return null;
+  }
+}
+
+/**
+ * R-12：节流清理过期悬停缓存（30 分钟至多一次，不阻塞主链路）。
+ * 复用 B-07 同款节流模式（agentConversation.ts）；硬保留期 7 天，
+ * 未被再次查询的 key 不再无限滞留。
+ */
+let lastPruneAt = 0;
+const PRUNE_INTERVAL_MS = 30 * 60 * 1000;
+const HARD_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 天硬保留期
+
+function maybePruneHoverCache(): void {
+  const now = Date.now();
+  if (now - lastPruneAt < PRUNE_INTERVAL_MS) return;
+  lastPruneAt = now;
+  void prisma.hoverExplainCache
+    .deleteMany({ where: { updatedAt: { lt: new Date(now - HARD_RETENTION_MS) } } })
+    .then((r) => r.count && logger.info({ event: 'hover_cache_prune', count: r.count }, 'hover cache pruned'))
+    .catch((e) => logger.warn({ err: String(e) }, 'hover cache prune failed'));
+}

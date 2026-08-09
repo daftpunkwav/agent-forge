@@ -16,6 +16,31 @@ import { createHoverStreamAccumulator } from './hoverStreamBuffer';
 export const INCOMPLETE_KEY_TTL_MS = 5 * 60 * 1000;
 export const INCOMPLETE_KEY_MAX = 200;
 
+/**
+ * R-09 配套：前端 Agent 熔断。连续 3 次失败 → 暂停预取 2 分钟（静默降级：
+ * 悬停不再出气泡，面板仍可用并显示错误文案）。成功一次即复位。
+ */
+const FAIL_THRESHOLD = 3;
+const SUSPEND_MS = 2 * 60 * 1000;
+let consecutiveFails = 0;
+let suspendedUntil = 0;
+
+export function agentSuspended(): boolean {
+  return Date.now() < suspendedUntil;
+}
+
+export function recordAgentSuccess(): void {
+  consecutiveFails = 0;
+  suspendedUntil = 0;
+}
+
+export function recordAgentFailure(): void {
+  consecutiveFails += 1;
+  if (consecutiveFails >= FAIL_THRESHOLD) {
+    suspendedUntil = Date.now() + SUSPEND_MS;
+  }
+}
+
 /** B-11：incomplete 标记有 TTL/上限，避免长期累积且永不命中缓存 */
 export class IncompleteHoverKeys {
   private readonly map = new Map<string, number>();
@@ -161,6 +186,8 @@ export async function runHoverExplainStream(
         didStream: false,
         fromCache: true,
       };
+      // R-09 配套：缓存命中也是 Agent 可用信号，复位前端熔断
+      recordAgentSuccess();
       params.onFinal?.(result);
       return { ...result, aborted: false };
     }
@@ -189,6 +216,9 @@ export async function runHoverExplainStream(
     const hasAnswer = Boolean(cleaned);
     const text = cleaned || failMessage;
     const complete = isSafeHoverDisplay(text);
+    // R-09 配套：final 正常结算 → Agent 链路可用，复位前端熔断。
+    // 空/不安全答案不误计失败（悬停代码片段、标点常产出空答案，与上游故障无关）。
+    recordAgentSuccess();
     if (complete) pushHoverSessionCache(params.incomplete, key, text);
     else params.incomplete.mark(key);
     lastResult = { text, hasAnswer, complete, didStream, fromCache: false };
@@ -243,6 +273,8 @@ export async function runHoverExplainStream(
         if (ev.type === 'error') {
           hadStreamError = true;
           params.incomplete.mark(key);
+          // R-09 配套：上游错误计入前端熔断（连续失败后静默暂停预取）
+          recordAgentFailure();
           params.onStreamError?.(ev.message);
         }
       },
@@ -262,6 +294,8 @@ export async function runHoverExplainStream(
       };
     }
     params.incomplete.mark(key);
+    // R-09 配套：传输层失败（网络/服务端 5xx）计入前端熔断
+    recordAgentFailure();
     const msg = err instanceof Error ? err.message : failMessage;
     params.onStreamError?.(msg);
     return {
