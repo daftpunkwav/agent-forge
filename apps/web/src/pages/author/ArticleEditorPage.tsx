@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
-import { ARTICLE_CATEGORIES } from '@agentforge/shared';
-import type { AnimationDef } from '@agentforge/shared';
+import { ARTICLE_CATEGORIES } from '@core/contracts';
+import type { AnimationDef } from '@core/contracts';
 import { Field, Input, Select, TextArea } from '@/components/ui/Input';
 // TextArea 仍用于摘要等字段
 import { Button } from '@/components/ui/Button';

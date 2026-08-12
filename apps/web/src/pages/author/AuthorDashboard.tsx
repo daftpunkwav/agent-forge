@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
-import type { ArticleSummary, AnimationDef } from '@agentforge/shared';
+import type { ArticleSummary, AnimationDef } from '@core/contracts';
 import { Tag } from '@/components/ui/Tag';
 import { useAuth } from '@/hooks/useAuth';
-import { ANIMATION_TEMPLATES } from '@agentforge/shared';
+import { ANIMATION_TEMPLATES } from '@core/contracts';
 
 export function AuthorDashboard() {
   const { isAuthor, isAdmin, loading: authLoading } = useAuth();

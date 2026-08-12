@@ -7,8 +7,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { PublicUser } from '@agentforge/shared';
-import { can, isAdminLike, isAuthorLike, roleLabel } from '@agentforge/shared';
+import type { PublicUser } from '@core/contracts';
+import { can, isAdminLike, isAuthorLike, roleLabel } from '@core/contracts';
 import { api, ApiError, clearTokens, getRefreshToken, getToken, setTokens } from '@/lib/api';
 
 interface AuthCtx {

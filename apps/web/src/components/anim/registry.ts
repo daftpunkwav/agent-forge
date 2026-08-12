@@ -2,8 +2,8 @@
  * 动画模板登记表：template → VisualKind 的单一入口。
  * 新增模板时：1) shared AnimationTemplate 2) DEFAULT_STEPS 3) 本表 VISUAL_KIND。
  */
-import type { AnimationStep, AnimationTemplate } from '@agentforge/shared';
-import { ANIMATION_TEMPLATES } from '@agentforge/shared';
+import type { AnimationStep, AnimationTemplate } from '@core/contracts';
+import { ANIMATION_TEMPLATES } from '@core/contracts';
 import type { VisualKind } from './core/types';
 import { DEFAULT_STEPS } from './templates/defaultSteps';
 

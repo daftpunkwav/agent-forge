@@ -1,6 +1,6 @@
-# @agentforge/web
+# @core/web
 
-AgentForge 前端：Vite 8 + React 19 + TypeScript + React Router 7。
+平台前端（web）：Vite 8 + React 19 + TypeScript + React Router 7。
 
 ## 开发
 
@@ -11,8 +11,8 @@ npm install
 npm run dev:web
 ```
 
-- 地址：http://127.0.0.1:5280（`strictPort`，避免与其它 Vite 项目的 5173 冲突）
-- `/api` 代理到 `http://127.0.0.1:3001`
+- 地址：http://127.0.0.1:8180（`strictPort`，避免与其它 Vite 项目的 5173 冲突）
+- `/api` 代理到 `http://127.0.0.1:8181`
 - 需同时运行 `npm run dev:api`
 
 可选：复制根目录 `.env.example` 中的 `VITE_API_BASE_URL`（默认走代理时可不配）。
@@ -37,4 +37,4 @@ src/
 | `npm run build` | 生产构建 |
 | `npm run lint` | oxlint |
 
-更多架构说明见仓库根 `README.md` 与 `docs/architecture.md`。
+更多架构说明见仓库根 `README.md` 与 `docs/architecture/overview.md`。

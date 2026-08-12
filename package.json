@@ -1,24 +1,26 @@
 {
-  "name": "agentforge",
+  "name": "platform",
   "private": true,
   "version": "0.1.0",
-  "description": "AgentForge — Agent/LLM 学习平台",
+  "description": "Grimoire —— 交互式 Agent/LLM 学习平台(模块化单体,业务域独立 workspace)",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "services/*"
   ],
   "scripts": {
-    "dev": "echo Run dev:web and dev:api in two terminals",
-    "dev:web": "npm run dev --workspace=@agentforge/web",
-    "dev:api": "npm run dev --workspace=@agentforge/api",
-    "build": "npm run build --workspace=@agentforge/shared && npm run build --workspace=@agentforge/web && npm run build --workspace=@agentforge/api",
-    "build:web": "npm run build --workspace=@agentforge/web",
-    "build:api": "npm run build --workspace=@agentforge/api",
-    "db:generate": "npm run db:generate --workspace=@agentforge/api",
-    "db:migrate": "npm run db:migrate --workspace=@agentforge/api",
-    "db:seed": "npm run db:seed --workspace=@agentforge/api",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "npm run dev --workspace=@core/web",
+    "dev:api": "npm run dev --workspace=@core/api",
+    "build": "npm run build --workspace=@core/contracts && npm run build --workspace=@core/foundation && npm run build --workspace=@core/llm && npm run build --workspace=@core/identity && npm run build --workspace=@core/content && npm run build --workspace=@core/community && npm run build --workspace=@core/agent && npm run build --workspace=@core/api && npm run build --workspace=@core/web",
+    "build:web": "npm run build --workspace=@core/web",
+    "build:api": "npm run build --workspace=@core/api",
+    "db:generate": "npm run db:generate --workspace=@core/api",
+    "db:migrate": "npm run db:migrate --workspace=@core/api",
+    "db:seed": "npm run db:seed --workspace=@core/api",
     "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspace=@agentforge/api && npm run test --workspace=@agentforge/shared --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspace=@core/api --if-present && npm run test --workspace=@core/contracts --if-present && npm run test --workspace=@core/foundation --if-present && npm run test --workspace=@core/identity --if-present && npm run test --workspace=@core/content --if-present && npm run test --workspace=@core/community --if-present && npm run test --workspace=@core/agent --if-present && npm run test --workspace=@core/llm --if-present"
   },
   "engines": {
     "node": ">=20.3"

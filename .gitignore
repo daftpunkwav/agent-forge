@@ -5,13 +5,16 @@ build
 .env.local
 *.log
 .DS_Store
-apps/api/prisma/*.db
-apps/api/prisma/*.db-journal
-apps/api/dev.db
+# SQLite 开发库（宿主 services/api/prisma/ 下）
+services/api/prisma/*.db
+services/api/prisma/*.db-journal
+services/api/prisma/prisma/
 coverage
 .vite
 *.tsbuildinfo
 _legacy
+# Playwright MCP 运行时捕获产物（页面快照/console 日志）
+.playwright-mcp/
 
 # CodeGraph 本地索引
 .codegraph/

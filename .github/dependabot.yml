@@ -1,0 +1,24 @@
+# 依赖安全更新:每周五自动检查 npm 依赖,有漏洞/更新则开 Dependabot PR
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: friday
+      time: '09:00'
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    groups:
+      # 常规依赖合并成一个 PR,减少噪音;重大安全更新由 Dependabot 自动单独开
+      npm-prod:
+        dependency-type: production
+      npm-dev:
+        dependency-type: development
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: friday
+      time: '09:00'
+      timezone: Asia/Shanghai

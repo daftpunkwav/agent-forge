@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import type { DomainSummary } from '@agentforge/shared';
+import type { DomainSummary } from '@core/contracts';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';

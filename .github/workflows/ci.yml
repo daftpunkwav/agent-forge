@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [master, main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -16,13 +23,31 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
+      - name: Lint (all workspaces)
+        run: npm run lint
+      - name: Typecheck (all workspaces)
+        run: npm run typecheck --workspaces --if-present
       - name: Build shared
-        run: npm run build --workspace=@agentforge/shared
+        run: npm run build --workspace=@core/contracts
       - name: API unit tests
-        run: npm test --workspace=@agentforge/api
+        run: npm test --workspace=@core/api
       - name: Shared unit tests
-        run: npm test --workspace=@agentforge/shared --if-present
-      - name: Typecheck / build web
-        run: npm run build --workspace=@agentforge/web
+        run: npm test --workspace=@core/contracts --if-present
+      - name: Build web
+        run: npm run build --workspace=@core/web
       - name: Build api
-        run: npm run build --workspace=@agentforge/api
+        run: npm run build --workspace=@core/api
+
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Dependency audit (production deps, high+)
+        run: npm audit --omit=dev --audit-level=high

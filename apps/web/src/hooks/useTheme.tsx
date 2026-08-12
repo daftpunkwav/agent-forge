@@ -29,8 +29,8 @@ interface ThemeCtx {
 }
 
 const Ctx = createContext<ThemeCtx | null>(null);
-const KEY_THEME = 'agentforge-theme';
-const KEY_ACCENT = 'agentforge-accent';
+const KEY_THEME = 'theme';
+const KEY_ACCENT = 'accent';
 
 function resolveTheme(): Theme {
   const saved = localStorage.getItem(KEY_THEME) as Theme | null;

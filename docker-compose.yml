@@ -1,21 +1,23 @@
 # 本地完整栈（生产形态）：PostgreSQL + API（含健康/就绪探针，R-03）
 # 前端建议静态托管（build 产物 apps/web/dist）或另起 nginx，不在本文件强耦合。
-# 用法：JWT_SECRET=... STEPFUN_API_KEY=... docker compose up -d
+# 用法：JWT_SECRET=... POSTGRES_PASSWORD=... CORS_ORIGIN=... STEPFUN_API_KEY=... docker compose up -d
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: agentforge-postgres
+    container_name: core-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: agentforge
-      POSTGRES_PASSWORD: agentforge
-      POSTGRES_DB: agentforge
+      POSTGRES_USER: core
+      # 口令必须显式设置（默认空即 fail-fast），禁止使用示例值，避免公网弱口令数据库
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?must set POSTGRES_PASSWORD}
+      POSTGRES_DB: core
     ports:
-      - '5432:5432'
+      # 仅回环发布；生产部署应删除此映射，只让容器网络内部可达（见 docs/operations/deployment.md）
+      - '127.0.0.1:5432:5432'
     volumes:
-      - agentforge_pg_data:/var/lib/postgresql/data
+      - core_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U agentforge -d agentforge']
+      test: ['CMD-SHELL', 'pg_isready -U core -d core']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -23,29 +25,32 @@ services:
   api:
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
-    container_name: agentforge-api
+      dockerfile: services/api/Dockerfile
+    container_name: core-api
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      PORT: 3001
+      PORT: 8181
+      # 容器内显式放开绑定(默认仅回环;生产容器/反代后需 0.0.0.0,见 docs/operations/deployment.md)
+      HOST: 0.0.0.0
       # R-07：编排层关键 env 缺失直接起不来，与启动期 validateEnv 双重保障
-      DATABASE_URL: postgresql://agentforge:agentforge@postgres:5432/agentforge?schema=public
+      DATABASE_URL: postgresql://core:${POSTGRES_PASSWORD:?must set POSTGRES_PASSWORD}@postgres:5432/core?schema=public
       JWT_SECRET: ${JWT_SECRET:?must set JWT_SECRET}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5280}
+      CORS_ORIGIN: ${CORS_ORIGIN:?must set CORS_ORIGIN}
       STEPFUN_API_KEY: ${STEPFUN_API_KEY:-}
       # 可选服务端 Provider（P1-1 故障转移链用）
       # OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
-      - '3001:3001'
+      # 仅回环发布；生产部署应删除此映射，公网入口走反向代理（见 docs/operations/deployment.md）
+      - '127.0.0.1:8181:8181'
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3001/ready || exit 1']
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8181/ready || exit 1']
       interval: 10s
       timeout: 3s
       retries: 6
 
 volumes:
-  agentforge_pg_data:
+  core_pg_data:

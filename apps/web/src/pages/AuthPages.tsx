@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { BRAND } from '@/app/brand';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Field, Input } from '@/components/ui/Input';
@@ -34,7 +35,7 @@ export function LoginPage() {
   }
 
   return (
-    <AuthCard title="登录 AgentForge" subtitle="登录后可追踪学习进度并申请成为作者">
+    <AuthCard title={`登录 ${BRAND.name}`} subtitle="登录后可追踪学习进度并申请成为作者">
       <form onSubmit={onSubmit}>
         <Field label="邮箱">
           <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -87,7 +88,7 @@ export function RegisterPage() {
   }
 
   return (
-    <AuthCard title="注册 AgentForge" subtitle="创建读者账号，开启系统化 Agent 学习">
+    <AuthCard title={`注册 ${BRAND.name}`} subtitle="创建读者账号，开启系统化 Agent 学习">
       <form onSubmit={onSubmit}>
         <Field label="昵称">
           <Input required value={name} onChange={(e) => setName(e.target.value)} />

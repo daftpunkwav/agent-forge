@@ -1,4 +1,4 @@
-import type { AnimationStep, AnimationTemplate } from '@agentforge/shared';
+import type { AnimationStep, AnimationTemplate } from '@core/contracts';
 import type { SceneModel, VisualKind, VizEdge, VizFrame, VizNode } from './types';
 import { resolveVisualKind } from '../registry';
 

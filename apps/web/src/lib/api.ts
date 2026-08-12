@@ -5,7 +5,7 @@ import type {
   AuthTokens,
   DomainSummary,
   PublicUser,
-} from '@agentforge/shared';
+} from '@core/contracts';
 
 import {
   clearTokens,
@@ -240,14 +240,14 @@ export const api = {
     if (params?.pageSize) q.set('pageSize', String(params.pageSize));
     if (params?.articleId) q.set('articleId', params.articleId);
     const qs = q.toString();
-    return request<PageResult<import('@agentforge/shared').TopicSummary>>(
+    return request<PageResult<import('@core/contracts').TopicSummary>>(
       `/topics${qs ? `?${qs}` : ''}`,
     );
   },
 
   getTopic: (id: string) =>
     request<{
-      topic: import('@agentforge/shared').TopicSummary;
+      topic: import('@core/contracts').TopicSummary;
       replies: { id: string; body: string; createdAt: string; author: { id: string; name: string } }[];
     }>(`/topics/${id}`),
 
@@ -258,7 +258,7 @@ export const api = {
     articleId?: string;
     articleSlug?: string;
   }) =>
-    request<{ topic: import('@agentforge/shared').TopicSummary }>('/topics', {
+    request<{ topic: import('@core/contracts').TopicSummary }>('/topics', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
@@ -417,7 +417,7 @@ export const api = {
     if (params.articleId) q.set('articleId', params.articleId);
     if (params.articleSlug) q.set('articleSlug', params.articleSlug);
     const qs = q.toString();
-    return request<{ items: import('@agentforge/shared').AnnotationItem[] }>(
+    return request<{ items: import('@core/contracts').AnnotationItem[] }>(
       `/annotations${qs ? `?${qs}` : ''}`,
     );
   },
@@ -429,13 +429,13 @@ export const api = {
     sectionId?: string;
     body: string;
   }) =>
-    request<{ annotation: import('@agentforge/shared').AnnotationItem }>('/annotations', {
+    request<{ annotation: import('@core/contracts').AnnotationItem }>('/annotations', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
 
   reviewAnnotation: (id: string, body: { status: 'approved' | 'rejected'; agentNote?: string }) =>
-    request<{ annotation: import('@agentforge/shared').AnnotationItem }>(`/annotations/${id}`, {
+    request<{ annotation: import('@core/contracts').AnnotationItem }>(`/annotations/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),

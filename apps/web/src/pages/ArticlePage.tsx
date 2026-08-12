@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
-import type { AnnotationItem, ArticleDetail } from '@agentforge/shared';
+import type { AnnotationItem, ArticleDetail } from '@core/contracts';
 import { ArticleBody } from '@/components/article/ArticleBody';
 import { ArticleLayout, ArticleTags } from '@/components/article/ArticleLayout';
 import { Button } from '@/components/ui/Button';
@@ -102,7 +102,7 @@ export function ArticlePage() {
               variant="secondary"
               onClick={() => {
                 window.dispatchEvent(
-                  new CustomEvent('agentforge:explain', {
+                  new CustomEvent('agent:explain', {
                     detail: {
                       text: `${article.title}\n\n${article.summary}\n\n${article.markdown.slice(0, 3000)}`,
                       title: article.title,

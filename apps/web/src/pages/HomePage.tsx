@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
-import type { ArticleSummary } from '@agentforge/shared';
+import type { ArticleSummary } from '@core/contracts';
 import { Tag } from '@/components/ui/Tag';
 import { ArticleCardInlineAgent } from '@/components/article/ArticleCardInlineAgent';
 import { HomeHeroAnim } from '@/components/home/HomeHeroAnim';
@@ -281,13 +281,13 @@ function DomainCarousel({ mode }: { mode: ViewMode }) {
 
 export function HomePage() {
   const [mode, setMode] = useState<ViewMode>(() => {
-    const s = localStorage.getItem('agentforge-view-mode');
+    const s = localStorage.getItem('ui.view-mode');
     return s === 'list' ? 'list' : 'grid';
   });
   const [latestIds, setLatestIds] = useState<string[]>([]);
 
   useEffect(() => {
-    localStorage.setItem('agentforge-view-mode', mode);
+    localStorage.setItem('ui.view-mode', mode);
   }, [mode]);
 
   return (

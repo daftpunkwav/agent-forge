@@ -1,7 +1,7 @@
 /** 与 api.ts 共享 token 读写，避免循环依赖 */
 
-const ACCESS_KEY = 'agentforge-token';
-const REFRESH_KEY = 'agentforge-refresh-token';
+const ACCESS_KEY = 'auth-token';
+const REFRESH_KEY = 'auth-refresh-token';
 
 export function getToken(): string | null {
   return localStorage.getItem(ACCESS_KEY);

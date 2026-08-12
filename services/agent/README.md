@@ -13,8 +13,8 @@
 | 记忆 / 进度 | `GET|POST /memory` · `POST /progress` |
 | 悬停 L2 缓存清理 | `POST /cache/clear`（admin） |
 | Prompt / Provider | `apps/api/src/lib/llm/` |
-| 净化逻辑 | `@agentforge/shared`（`hoverSanitize`） |
+| 净化逻辑 | `@core/contracts`（`hoverSanitize`） |
 
 **尚未实现**：真实 tool-loop、推理模式切换 UI、本目录独立进程。
 
-产品目标与路线图见 `docs/agent-modes.md`。成熟后再将编排层迁入本服务，并对前端保持现有 SSE 契约。
+产品目标与路线图见 `docs/architecture/agent-modes.md`。成熟后再将编排层迁入本服务，并对前端保持现有 SSE 契约。

@@ -653,8 +653,8 @@ export function AgentFloat() {
       setOpen(true);
       void deepExplain(detail.text, detail.title, detail.articleSlug);
     }
-    window.addEventListener('agentforge:explain', onExplain);
-    return () => window.removeEventListener('agentforge:explain', onExplain);
+    window.addEventListener('agent:explain', onExplain);
+    return () => window.removeEventListener('agent:explain', onExplain);
   }, [deepExplain]);
 
   return (

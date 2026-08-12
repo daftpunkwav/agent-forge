@@ -1,12 +1,21 @@
-<!-- OPENWIKI:START -->
+## Git 规范
 
-## OpenWiki
+### 提交信息（Conventional Commits）
 
-This repository has a generated `openwiki/` evidence index. It is optional just-in-time context, not required startup reading.
+```
+<type>: <subject>
+```
 
-- Treat source code and tests as authoritative. A brief's unknowns and review items are verification gaps, not automatic requirements.
-- Prefer the narrowest quiet validation that proves the changed behavior. Preserve complete failure output.
+type 用 `feat`/`fix`/`docs`/`refactor`/`chore`/`test`/`perf` 等标准类型；subject 祈使语气、≤ 50 字符，直接描述行为，不写内部阶段编号（如 P0–P9）；一个提交只做一件事。
 
-The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
+示例：`feat: 初始化项目代码库`、`fix: 修复长会话上下文溢出`
 
-<!-- OPENWIKI:END -->
+### 分支命名
+
+```
+<type>/<kebab-case-描述>
+```
+
+type 同上，描述用 kebab-case。
+
+示例：`feat/context-compaction`、`fix/memory-dedup`

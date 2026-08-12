@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "agentforge-static (legacy)",
+      "name": "legacy-static",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server"],
       "cwd": "${workspaceFolder}/_legacy",

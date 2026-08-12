@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { ArticleSummary } from '@agentforge/shared';
+import type { ArticleSummary } from '@core/contracts';
 import { Tag } from '@/components/ui/Tag';
 import { MarkdownView } from '@/components/agent/MarkdownView';
 import { useAgentStyle } from '@/hooks/useAgentStyle';

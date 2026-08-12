@@ -2,7 +2,7 @@
  * 行内 / 对话框悬停讲解共用 L1 缓存
  * TTL 20min · LRU 64 · 仅完整且安全的讲解（拒绝思考轨迹 / 改稿过程）
  *
- * 清洗逻辑已统一迁移至 @agentforge/shared，此文件只保留缓存存储与 key 逻辑。
+ * 清洗逻辑已统一迁移至 @core/contracts，此文件只保留缓存存储与 key 逻辑。
  */
 
 import {
@@ -12,7 +12,7 @@ import {
   looksLikeHoverPlanning,
   isCompleteHoverAnswer,
   isLikelyHoverTeachingClient,
-} from '@agentforge/shared';
+} from '@core/contracts';
 
 // 重新导出供组件直接使用（保持现有 import 路径兼容）
 export {
@@ -33,7 +33,7 @@ const MAX = 64;
 const store = new Map<string, Entry>();
 
 /** 与 AgentFloat 等监听者同步清空内存缓存 */
-export const AGENT_CACHE_CLEARED_EVENT = 'agentforge:agent-cache-cleared';
+export const AGENT_CACHE_CLEARED_EVENT = 'agent:cache-cleared';
 
 /** 清空浏览器端 L1 悬停缓存，并广播事件供气泡组件清空各自 Map */
 export function clearAllHoverCaches(): number {

@@ -25,9 +25,9 @@ export function SettingsPage() {
   const { theme, toggle, setTheme, accent, setAccent } = useTheme();
   const { user } = useAuth();
   const [autoplay, setAutoplay] = useState(
-    () => localStorage.getItem('agentforge-autoplay') === '1',
+    () => localStorage.getItem('ui.autoplay') === '1',
   );
-  const [speed, setSpeed] = useState(() => localStorage.getItem('agentforge-anim-speed') || '1');
+  const [speed, setSpeed] = useState(() => localStorage.getItem('ui.anim-speed') || '1');
   const [agentStyle, setAgentStyle] = useState('professional');
   const [styles, setStyles] = useState<{ id: string; label: string }[]>([]);
   const [formats, setFormats] = useState<{ id: string; label: string; desc: string }[]>([]);
@@ -56,11 +56,11 @@ export function SettingsPage() {
   const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
-    localStorage.setItem('agentforge-autoplay', autoplay ? '1' : '0');
+    localStorage.setItem('ui.autoplay', autoplay ? '1' : '0');
   }, [autoplay]);
 
   useEffect(() => {
-    localStorage.setItem('agentforge-anim-speed', speed);
+    localStorage.setItem('ui.anim-speed', speed);
   }, [speed]);
 
   useEffect(() => {

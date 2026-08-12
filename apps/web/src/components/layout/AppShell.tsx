@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { ACCENTS, useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { AgentFloat } from '@/components/agent/AgentFloat';
+import { BRAND } from '@/app/brand';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 
 const nav = [
@@ -65,7 +66,7 @@ export function AppShell() {
                 flexShrink: 0,
               }}
             >
-              AgentForge
+              {BRAND.name}
             </Link>
 
             <nav className="desktop-nav" style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
@@ -286,10 +287,10 @@ export function AppShell() {
         >
           <div>
             <div style={{ fontFamily: 'var(--font-serif)', fontSize: '1.4rem', fontWeight: 700 }}>
-              AgentForge
+              {BRAND.name}
             </div>
             <p style={{ marginTop: 8, fontSize: 13, color: 'var(--muted-foreground)' }}>
-              Agent 锻造坊 · 从零到一掌握 Agent 开发
+              {BRAND.tagline}
             </p>
           </div>
           <div>
@@ -356,7 +357,7 @@ export function AppShell() {
             color: 'var(--muted-foreground)',
           }}
         >
-          AgentForge 2026 · 持续迭代中
+          {BRAND.footer}
         </div>
       </footer>
 

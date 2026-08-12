@@ -1,6 +1,6 @@
 # MCP 服务（预留）
 
-AgentForge 将通过 **Model Context Protocol (MCP)** 把站内能力暴露给外部 Agent Host。
+平台将通过 **Model Context Protocol (MCP)** 把站内能力暴露给外部 Agent Host。
 
 ## 状态
 
@@ -39,4 +39,4 @@ services/mcp/
 - guest → 公共已发布内容  
 - reader / author / admin → 按 `packages/shared` 权限矩阵过滤 tools  
 
-当前请勿在生产启用未完成的 MCP 进程。详见 `docs/agent-modes.md`。
+当前请勿在生产启用未完成的 MCP 进程。详见 `docs/architecture/agent-modes.md`。

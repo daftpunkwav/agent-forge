@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ANIMATION_TEMPLATES, type AnimationStep } from '@agentforge/shared';
+import { ANIMATION_TEMPLATES, type AnimationStep } from '@core/contracts';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { resolveDefaultSteps } from '@/components/anim/registry';

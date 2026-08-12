@@ -1,4 +1,4 @@
-# AgentForge 开发进度报告
+# Grimoire 开发进度报告
 
 > 报告日期：2026-08-04  
 > 范围：以 `apps/`、`packages/`、`services/`、`docs/` 当前代码为准  
@@ -51,7 +51,7 @@ LLM：`providers.ts`（`anthropic_messages` / `openai_chat` / `openai_responses`
 
 - `POST /explain` · `/explain/stream`（`hover | click`）
 - Prompt：`buildHoverSystem`（2–3 句、≤220 字）
-- 净化：`@agentforge/shared`（`extractHoverAnswer` 等）
+- 净化：`@core/contracts`（`extractHoverAnswer` 等）
 - L2：`HoverExplainCache`，键前缀 **`v7`**，TTL 2h / 热 24h（hits≥8）
 - L1：前端 `hoverExplainCache.ts`
 - `POST /cache/clear`：**admin**
@@ -72,11 +72,11 @@ LLM：`providers.ts`（`anthropic_messages` / `openai_chat` / `openai_responses`
 
 ### 1.6 安全
 
-见 `docs/security.md`：bcrypt 12、JWT access、CORS、helmet、限流 120/20/40、Zod、DOMPurify、Pino、BYOK 脱敏、`SEED_ADMIN_PASSWORD` 必填。
+见 `docs/architecture/security.md`：bcrypt 12、JWT access、CORS、helmet、限流 120/20/40、Zod、DOMPurify、Pino、BYOK 脱敏、`SEED_ADMIN_PASSWORD` 必填。
 
 ### 1.7 种子
 
-- 管理员：`SEED_ADMIN_EMAIL`（默认 `admin@agentforge.local`）+ **必填** `SEED_ADMIN_PASSWORD`（≥8，无兜底）；`adminLevel=100`、`authorTier=elite`；提权需 `SEED_FORCE_ADMIN=1`
+- 管理员：`SEED_ADMIN_EMAIL`（默认 `admin@example.local`）+ **必填** `SEED_ADMIN_PASSWORD`（≥8，无兜底）；`adminLevel=100`、`authorTier=elite`；提权需 `SEED_FORCE_ADMIN=1`
 - 领域：reasoning / frameworks / protocols / engineering / llm-foundations（5 个，seed.ts `DOMAIN_DEFS`）
 - 文章：20 篇（`DEFAULT_ARTICLE_SEEDS`）
 
@@ -98,7 +98,7 @@ LLM：`providers.ts`（`anthropic_messages` / `openai_chat` / `openai_responses`
 4. **流式 LLM**：Anthropic / OpenAI Chat 解析 thinking+text；Responses 流式有限时回退非流式  
 5. **动画数据流**：`AnimationDef.steps` → serialize → `buildScene` → `SceneCanvas`
 
-更细的净化分层与 bug 历史见既有实现注释与 `docs/agent-modes.md`。
+更细的净化分层与 bug 历史见既有实现注释与 `docs/architecture/agent-modes.md`。
 
 ---
 
@@ -109,7 +109,7 @@ LLM：`providers.ts`（`anthropic_messages` / `openai_chat` / `openai_responses`
 | 项 | 说明 |
 |----|------|
 | 完整推理模式选择 UI | 现仅"允许工具"勾选 → `reasoningMode: react`；缺 `react / plan_execute / socratic / chat` 选择器 |
-| tool-loop 深化 | P1/P2：更多只读工具、`save_memory` 写权限与确认、observation 注入防御、tool 专属限流、原生 function-calling（见 `docs/tool-loop-roadmap.md`） |
+| tool-loop 深化 | P1/P2：更多只读工具、`save_memory` 写权限与确认、observation 注入防御、tool 专属限流、原生 function-calling（见 `docs/roadmap/tool-loop-roadmap.md`） |
 | MCP 进程 | 仅 status 探测 |
 | 独立 Agent Runtime | `services/agent` 仅 README |
 | Agent 自动审注 | `allowAgentAnnotationReview` 字段已有，未接线 |
@@ -128,10 +128,10 @@ LLM：`providers.ts`（`anthropic_messages` / `openai_chat` / `openai_responses`
 |----|------|
 | Docker / compose | `docker-compose.yml`（Postgres 占位）；无应用容器镜像 |
 | CI | 无 |
-| 生产 PostgreSQL 迁移脚本 | 需改 provider + `db push` 或迁移（步骤见 `docs/postgres.md`） |
+| 生产 PostgreSQL 迁移脚本 | 需改 provider + `db push` 或迁移（步骤见 `docs/operations/postgres.md`） |
 | 监控（Sentry 等） | 无 |
 | i18n | 中文硬编码 |
-| HttpOnly Cookie 迁移 | refresh/access 仍存 SPA localStorage，方案见 `docs/httponly-cookie-migration.md` |
+| HttpOnly Cookie 迁移 | refresh/access 仍存 SPA localStorage，方案见 `docs/roadmap/httponly-cookie-migration.md` |
 
 ### 3.4 前端体验缺口
 
@@ -146,9 +146,9 @@ LLM：`providers.ts`（`anthropic_messages` / `openai_chat` / `openai_responses`
 
 ## 4. 修改建议（简）
 
-1. **P0 已落地**：最小 tool-loop（`search_articles` / `get_article`）+ 工具状态 SSE；继续按 `docs/tool-loop-roadmap.md` 推进 P1/P2  
+1. **P0 已落地**：最小 tool-loop（`search_articles` / `get_article`）+ 工具状态 SSE；继续按 `docs/roadmap/tool-loop-roadmap.md` 推进 P1/P2  
 2. **批注**：前端接入 `/api/v1/annotations` 的列表/提交/审核 UI；可选：补 Agent 自动审核接线（消费 `allowAgentAnnotationReview`）  
-3. **安全**：推进 HttpOnly Cookie 迁移（`docs/httponly-cookie-migration.md`）；落地后刷新文档对应项  
+3. **安全**：推进 HttpOnly Cookie 迁移（`docs/roadmap/httponly-cookie-migration.md`）；落地后刷新文档对应项  
 4. **CORS**：`app.ts` 默认已为 `5280`，与 `.env.example` 一致，无需调整  
 5. **测试**：扩展悬停净化边界；补 `ensureConversation` 归属用例；加一条注册→发文 e2e  
 6. **部署**：最小应用 `Dockerfile` + 现成 Postgres compose  

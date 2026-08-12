@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { DomainSummary } from '@agentforge/shared';
+import type { DomainSummary } from '@core/contracts';
 import { api } from '@/lib/api';
 import { DomainSection } from '@/components/domain/DomainSection';
 
@@ -9,12 +9,12 @@ type ViewMode = 'grid' | 'list';
 export function LlmOverviewPage() {
   const [domains, setDomains] = useState<DomainSummary[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    const s = localStorage.getItem('agentforge-domain-view');
+    const s = localStorage.getItem('ui.domain-view');
     return s === 'list' ? 'list' : 'grid';
   });
 
   useEffect(() => {
-    localStorage.setItem('agentforge-domain-view', viewMode);
+    localStorage.setItem('ui.domain-view', viewMode);
   }, [viewMode]);
 
   useEffect(() => {

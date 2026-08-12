@@ -1,15 +1,15 @@
-# AgentForge — 产品与实施计划（修订版）
+# Grimoire — 产品与实施计划（修订版）
 
 > **状态（2026-08-04）**：核心读者/作者/管理/双 Agent 主路径、批注读写、auth refresh、P0 tool-loop 已落地。  
 > **未实现**：推理模式切换 UI（仅"允许工具"勾选）、MCP 进程、独立 Agent Runtime、Agent 自动审注、评论 CRUD。  
 > 阶段实现情况详见 `docs/dev-progress.md`。  
-> 下文 §1–§6 保留早期产品意图；其中「Agent 本次不实现 / 返回 501」「批注 API 未上线」等表述**已被后续实现取代**，以 `docs/architecture.md` 与代码为准。
+> 下文 §1–§6 保留早期产品意图；其中「Agent 本次不实现 / 返回 501」「批注 API 未上线」等表述**已被后续实现取代**，以 `docs/architecture/overview.md` 与代码为准。
 
 ---
 
 ## 1. 产品目标
 
-**AgentForge（Agent 锻造坊）**：可上线的 Agent/LLM 学习平台。
+**Grimoire**：可上线的 Agent/LLM 学习平台。
 
 | 能力 | 说明 | 当前 |
 |------|------|------|
@@ -43,7 +43,7 @@
 ### 3.1 Monorepo（当前实际）
 
 ```
-AgentForge/
+Grimoire/
 ├── package.json                 # workspaces + scripts
 ├── .env.example
 ├── apps/
@@ -69,7 +69,7 @@ author →  工作台、MD / 动画编辑、发布（含 authorTier）
 admin  →  审批申请、领域管理（adminLevel 分级）
 ```
 
-详见 `docs/identity-permissions.md`。
+详见 `docs/architecture/identity-permissions.md`。
 
 ### 3.3 路由地图（当前）
 
@@ -104,12 +104,12 @@ GET             /health
 
 ## 4–6. 功能规格 / 安全 / 组件（原则仍有效）
 
-读者/作者规格、种子篇幅要求、动画播放器、安全基线、组件化原则仍以早期设计为准；**实现细节以 `docs/architecture.md`、`docs/security.md`、`docs/animation-system.md` 为准**。
+读者/作者规格、种子篇幅要求、动画播放器、安全基线、组件化原则仍以早期设计为准；**实现细节以 `docs/architecture/overview.md`、`docs/architecture/security.md`、`docs/architecture/animation-system.md` 为准**。
 
 特别更正：
 
 - Agent 浮动面板**已可用**（非「即将推出」）
-- JWT 为 **access + refresh**（refresh 旋转吊销、存 SPA localStorage；HttpOnly Cookie 迁移待办，见 `docs/httponly-cookie-migration.md`）
+- JWT 为 **access + refresh**（refresh 旋转吊销、存 SPA localStorage；HttpOnly Cookie 迁移待办，见 `docs/roadmap/httponly-cookie-migration.md`）
 - 默认 LLM Provider 为 **StepFun**（可换 OpenAI / Generic / BYOK）
 - 管理员密码**无内置兜底**，须 `SEED_ADMIN_PASSWORD`
 - 批注 API **已上线**（`/api/v1/annotations` GET/POST/PATCH）

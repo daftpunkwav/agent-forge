@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { ArticleSummary, DomainSummary } from '@agentforge/shared';
+import type { ArticleSummary, DomainSummary } from '@core/contracts';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { ArticleCardInlineAgent, type ArticleCardLayout } from '@/components/article/ArticleCardInlineAgent';

@@ -1,5 +1,5 @@
 /** 匿名会话 guestKey：localStorage 持久化，随 chat 请求回传以防 IDOR */
-const KEY = 'agentforge-guest-key';
+const KEY = 'guest-key';
 
 export function getGuestKey(): string {
   try {

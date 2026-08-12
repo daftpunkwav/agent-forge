@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { AnimationDef } from '@agentforge/shared';
+import type { AnimationDef } from '@core/contracts';
 import {
   injectHeadingIds,
   renderMarkdown,

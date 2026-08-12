@@ -1,4 +1,4 @@
-import type { AnimationStep, AnimationTemplate } from '@agentforge/shared';
+import type { AnimationStep, AnimationTemplate } from '@core/contracts';
 
 /**
  * 默认步骤语义：

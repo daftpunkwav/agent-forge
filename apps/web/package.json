@@ -1,16 +1,17 @@
 {
-  "name": "@agentforge/web",
+  "name": "@core/web",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "cross-env NODE_ENV=development vite",
+    "dev": "node scripts/check-port.mjs && cross-env NODE_ENV=development vite",
     "build": "cross-env NODE_ENV=production tsc -b && cross-env NODE_ENV=production vite build",
+    "typecheck": "tsc -b",
     "lint": "oxlint",
     "preview": "cross-env NODE_ENV=production vite preview"
   },
   "dependencies": {
-    "@agentforge/shared": "*",
+    "@core/contracts": "*",
     "dompurify": "^3.2.6",
     "marked": "^15.0.12",
     "react": "^19.2.7",
@@ -23,7 +24,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "cross-env": "^10.1.0",
-    "oxlint": "^1.71.0",
+    "oxlint": "^1.76.0",
     "typescript": "~5.9.3",
     "vite": "^8.1.1"
   }
