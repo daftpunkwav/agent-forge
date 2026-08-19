@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { validate, optionalAuth, requireAuth, requirePermission, badRequest, forbidden, notFound, param } from '@core/foundation';
-import type { PrismaClient, Topic } from '@prisma/client';
-import type { ArticleQueryPort, UserQueryPort } from '../ports.js';
+import type { PrismaClient } from '@prisma/client';
+import type { ArticleQueryPort } from '@core/contracts';
+import type { UserSummaryPort as UserQueryPort } from '@core/contracts';
+import { attachTopicRefs, toTopicSummary } from '../serialize.js';
 
 const createSchema = z.object({
   title: z.string().min(2).max(200),
@@ -15,61 +17,6 @@ const createSchema = z.object({
 const replySchema = z.object({
   body: z.string().min(1).max(4000),
 });
-
-/** 批量补作者名与关联文章(跨服务边界:不 join user/article 表,经注入端口取) */
-async function attachRefs(
-  rows: Topic[],
-  deps: { users: UserQueryPort; articles: ArticleQueryPort },
-): Promise<ReturnType<typeof mapTopic>[]> {
-  const [authors, articles] = await Promise.all([
-    deps.users.getUserSummaries(rows.map((r) => r.authorId)),
-    deps.articles.getArticlesByIds(rows.map((r) => r.articleId).filter(Boolean) as string[]),
-  ]);
-  const authorName = new Map(authors.map((a) => [a.id, a.name]));
-  const articleMeta = new Map(articles.map((a) => [a.id, a]));
-  return rows.map((r) =>
-    mapTopic({
-      id: r.id,
-      title: r.title,
-      body: r.body,
-      kind: r.kind,
-      status: r.status,
-      articleId: r.articleId,
-      createdAt: r.createdAt,
-      author: { id: r.authorId, name: authorName.get(r.authorId) || '未知' },
-      article: r.articleId && articleMeta.has(r.articleId)
-        ? articleMeta.get(r.articleId)!
-        : null,
-    }),
-  );
-}
-
-/** 话题序列化(独立于 Prisma join,字段与旧 toTopicSummary 等价) */
-function mapTopic(t: {
-  id: string;
-  title: string;
-  body: string;
-  kind: string;
-  status: string;
-  articleId: string | null;
-  createdAt: Date;
-  author: { id: string; name: string };
-  article: { id: string; slug: string; title: string } | null;
-  replyCount?: number;
-}) {
-  return {
-    id: t.id,
-    title: t.title,
-    body: t.body,
-    kind: t.kind,
-    status: t.status,
-    articleId: t.articleId,
-    article: t.article ?? null,
-    author: t.author,
-    replyCount: t.replyCount ?? 0,
-    createdAt: t.createdAt.toISOString(),
-  };
-}
 
 export function createTopicsRouter(
   prisma: PrismaClient,
@@ -95,7 +42,7 @@ export function createTopicsRouter(
         }),
       ]);
       // 列表只回 160 字摘要，详情接口回全文（见 GET /:id）
-      const items = (await attachRefs(rows, deps)).map((t) => ({
+      const items = (await attachTopicRefs(rows, deps)).map((t) => ({
         ...t,
         body: t.body.slice(0, 160),
       }));
@@ -135,7 +82,7 @@ export function createTopicsRouter(
         ? await deps.articles.getArticlesByIds([topic.articleId]).then((a) => [a[0] ?? null])
         : [null];
       res.json({
-        topic: mapTopic({
+        topic: toTopicSummary({
           id: topic.id,
           title: topic.title,
           body: topic.body,
@@ -182,7 +129,7 @@ export function createTopicsRouter(
             articleId,
           },
         });
-        const [created] = await attachRefs([topic], deps);
+        const [created] = await attachTopicRefs([topic], deps);
         res.status(201).json({ topic: created });
       } catch (e) {
         next(e);

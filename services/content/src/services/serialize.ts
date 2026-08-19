@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import type { Annotation, Article, AnimationDef } from '@prisma/client';
 import type {
   ArticleSummary,
@@ -99,15 +98,3 @@ export function toAnnotationItem(a: Annotation & { user?: AuthorRef }): Annotati
   };
 }
 
-export function slugify(title: string): string {
-  const base = title
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_]+/g, '-')
-    .replace(/[^\w\u4e00-\u9fff-]+/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 80);
-  // 兜底用随机短串而非时间戳：同一毫秒两次保存也会生成不同 slug
-  return base || `article-${Date.now().toString(36)}${randomBytes(3).toString('hex')}`;
-}

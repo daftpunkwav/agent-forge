@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { validate, optionalAuth, requireAuth, requirePermission, badRequest, notFound, param } from '@core/foundation';
 import type { PrismaClient } from '@prisma/client';
 import { toArticleSummary } from '../services/serialize.js';
-import type { UserQueryPort } from '../ports.js';
+import type { UserSummaryPort as UserQueryPort } from '@core/contracts';
 
 const createSchema = z.object({
   name: z.string().min(1).max(80),

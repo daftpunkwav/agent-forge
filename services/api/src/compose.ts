@@ -14,7 +14,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { LlmGateway } from '@core/llm';
 import type { UserQueryPort } from '@core/contracts';
 import { createIdentityRouters } from '@core/identity';
-import { getUserSummaries, getUserPreferences } from '@core/identity';
+import { createIdentityRepository } from '@core/identity';
 import { createContentRouters, createContentRepository } from '@core/content';
 import { createCommunityRouters } from '@core/community';
 import { createAgentRuntime, createAgentRouter } from '@core/agent';
@@ -35,11 +35,8 @@ export function compose(
 ): ComposeResult {
   // ---- 各服务 repository / 端口实现 ----
   const contentRepo = createContentRepository(prisma);
-  // identity 提供 UserQueryPort(getUserSummaries + getUserPreferences)
-  const usersPort: UserQueryPort = {
-    getUserSummaries: (ids: string[]) => getUserSummaries(prisma, ids),
-    getUserPreferences: (userId: string) => getUserPreferences(prisma, userId),
-  };
+  // identity 提供 UserQueryPort 适配器(服务自带,宿主不再手搓)
+  const usersPort = createIdentityRepository(prisma);
 
   // ---- 服务装配(依赖图无环:identity/content/community/llm 互不依赖,agent 依赖 ports) ----
   // 偏好/BYOK 变更 → 失效 agent 用户上下文缓存。

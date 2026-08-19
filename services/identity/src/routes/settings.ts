@@ -14,7 +14,7 @@ import {
 } from '@core/foundation';
 import { API_FORMATS, type ByokConfig } from '@core/contracts';
 import type { PrismaClient } from '@prisma/client';
-import type { LlmGatewayPort } from '../ports.js';
+import type { LlmGatewayPort } from '@core/contracts';
 
 const AGENT_STYLES = ['professional', 'friendly', 'sassy', 'concise', 'socratic'] as const;
 

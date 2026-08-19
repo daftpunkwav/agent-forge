@@ -10,9 +10,8 @@ import {
   buildHoverRetrySystem,
   buildHoverSystem,
   buildReactSystem,
-  extractHoverAnswer,
-  isSafeHoverPublicAnswer,
 } from '../lib/agentPrompt.js';
+import { extractHoverAnswer, isSafeHoverPublicAnswer } from '@core/contracts';
 import { HOVER_RETRY_TIMEOUT_MS } from '../lib/agentConstants.js';
 import { LLM_TOKEN_LIMITS } from '@core/contracts';
 import type { AgentDeps } from '../ports.js';

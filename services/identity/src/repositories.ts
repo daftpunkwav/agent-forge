@@ -5,7 +5,7 @@
  */
 import type { PrismaClient } from '@prisma/client';
 import { parsePrefs } from '@core/foundation';
-import type { ByokConfig } from '@core/contracts';
+import type { ByokConfig, UserQueryPort } from '@core/contracts';
 
 /** 批量用户摘要(content/community 序列化作者用) */
 export async function getUserSummaries(
@@ -19,6 +19,17 @@ export async function getUserSummaries(
     select: { id: true, name: true },
   });
   return rows;
+}
+
+/**
+ * 组合根用的 UserQueryPort 适配器(对称于 content 的 createContentRepository)。
+ * 身份由 identity 服务自身提供,宿主不再手搓对象字面量;微服务化时此适配器换 HTTP 客户端。
+ */
+export function createIdentityRepository(prisma: PrismaClient): UserQueryPort {
+  return {
+    getUserSummaries: (ids: string[]) => getUserSummaries(prisma, ids),
+    getUserPreferences: (userId: string) => getUserPreferences(prisma, userId),
+  };
 }
 
 /** 单用户偏好(含 BYOK 密文;agent 解密后供 LLM 网关),用户不存在返回 null */

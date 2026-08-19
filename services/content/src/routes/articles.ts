@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { validate, optionalAuth, requireAuth, requireRole, badRequest, conflict, forbidden, notFound, param } from '@core/foundation';
+import { validate, optionalAuth, requireAuth, requireRole, badRequest, conflict, forbidden, notFound, param, attachUserRefs } from '@core/foundation';
 import type { PrismaClient, Article } from '@prisma/client';
-import { slugify, toArticleDetail, toArticleSummary } from '../services/serialize.js';
-import type { UserQueryPort } from '../ports.js';
+import { toArticleDetail, toArticleSummary } from '../services/serialize.js';
+import { slugify } from '../domain/slug.js';
+import type { UserSummaryPort as UserQueryPort } from '@core/contracts';
 
 const createSchema = z.object({
   title: z.string().min(1).max(200),
@@ -23,20 +24,12 @@ const updateSchema = createSchema.partial().extend({
 });
 
 /** 批量补作者名(跨服务边界：不 join user 表,经用户端口批量取) */
-async function attachAuthors(rows: Article[], users: UserQueryPort) {
-  const authors = await users.getUserSummaries(rows.map((r) => r.authorId));
-  const byId = new Map(authors.map((a) => [a.id, a.name]));
-  return rows.map((r) => ({
-    ...toArticleSummary(r),
-    author: byId.has(r.authorId) ? { id: r.authorId, name: byId.get(r.authorId)! } : undefined,
-  }));
-}
+const attachAuthors = (rows: Article[], users: UserQueryPort) =>
+  attachUserRefs(rows, users, (r) => r.authorId, (r, author) => ({ ...toArticleSummary(r), author }));
 
 /** 单条作者名(详情/创建/更新响应用) */
-async function fetchAuthor(users: UserQueryPort, authorId: string) {
-  const authors = await users.getUserSummaries([authorId]);
-  return authors[0] ? { id: authors[0].id, name: authors[0].name } : undefined;
-}
+const fetchAuthor = (users: UserQueryPort, authorId: string) =>
+  attachUserRefs([{ authorId }], users, (r) => r.authorId, (_r, author) => author).then((a) => a[0]);
 
 export function createArticlesRouter(prisma: PrismaClient, users: UserQueryPort): Router {
   const articlesRouter = Router();

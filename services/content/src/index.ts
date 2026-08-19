@@ -8,7 +8,10 @@ import { createArticlesRouter } from './routes/articles.js';
 import { createAnimationsRouter } from './routes/animations.js';
 import { createDomainsRouter } from './routes/domains.js';
 import { createAnnotationsRouter } from './routes/annotations.js';
-import type { UserQueryPort } from './ports.js';
+import type { UserSummaryPort } from '@core/contracts';
+
+/** content 只消费用户摘要子集(收窄自 contracts 的 UserQueryPort) */
+export type UserQueryPort = UserSummaryPort;
 
 export interface ContentDeps {
   prisma: import('@prisma/client').PrismaClient;
@@ -39,4 +42,3 @@ export function createContentRouter(deps: ContentDeps): Router {
 
 export { createContentRepository } from './repositories.js';
 export type { ArticleQueryPort } from './repositories.js';
-export type { UserQueryPort } from './ports.js';

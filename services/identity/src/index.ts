@@ -7,7 +7,7 @@ import { Router } from 'express';
 import { createAuthRouter } from './routes/auth.js';
 import { createApplicationsRouter } from './routes/applications.js';
 import { createSettingsRouter } from './routes/settings.js';
-import type { LlmGatewayPort } from './ports.js';
+import type { LlmGatewayPort } from '@core/contracts';
 
 export interface IdentityDeps {
   prisma: import('@prisma/client').PrismaClient;
@@ -36,5 +36,5 @@ export function createIdentityRouter(deps: IdentityDeps): Router {
   return Router().use(auth, applications, settings);
 }
 
-export { getUserSummaries, getUserPreferences } from './repositories.js';
-export type { LlmGatewayPort, UserQueryPort } from './ports.js';
+export { getUserSummaries, getUserPreferences, createIdentityRepository } from './repositories.js';
+export type { LlmGatewayPort, UserQueryPort } from '@core/contracts';

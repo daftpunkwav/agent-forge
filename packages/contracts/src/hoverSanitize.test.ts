@@ -7,7 +7,7 @@ import {
   isCompleteHoverAnswer,
   isLikelyHoverTeaching,
   looksLikeHoverPlanning,
-} from './agentPrompt.js';
+} from './hoverSanitize.js';
 
 const cases: Array<{
   name: string;

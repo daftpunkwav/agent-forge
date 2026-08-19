@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { validate, optionalAuth, requireAuth, requirePermission, badRequest, forbidden, notFound, param } from '@core/foundation';
+import { validate, optionalAuth, requireAuth, requirePermission, badRequest, forbidden, notFound, param, attachUserRefs } from '@core/foundation';
 import type { PrismaClient, Annotation } from '@prisma/client';
 import { toAnnotationItem } from '../services/serialize.js';
 import {
@@ -8,7 +8,7 @@ import {
   canReviewAnnotation,
   resolveReviewBy,
 } from '../services/annotationAcl.js';
-import type { UserQueryPort } from '../ports.js';
+import type { UserSummaryPort as UserQueryPort } from '@core/contracts';
 
 const createSchema = z
   .object({
@@ -28,15 +28,11 @@ const reviewSchema = z.object({
 });
 
 /** 批量补批注作者名(不 join user 表) */
-async function attachAnnotationUsers(rows: Annotation[], users: UserQueryPort) {
-  const ids = [...new Set(rows.map((r) => r.userId))];
-  const authors = await users.getUserSummaries(ids);
-  const byId = new Map(authors.map((a) => [a.id, a.name]));
-  return rows.map((r) => ({
+const attachAnnotationUsers = (rows: Annotation[], users: UserQueryPort) =>
+  attachUserRefs(rows, users, (r) => r.userId, (r, author) => ({
     ...toAnnotationItem(r),
-    user: byId.has(r.userId) ? { id: r.userId, name: byId.get(r.userId)! } : undefined,
+    user: author,
   }));
-}
 
 export function createAnnotationsRouter(prisma: PrismaClient, users: UserQueryPort): Router {
   const annotationsRouter = Router();

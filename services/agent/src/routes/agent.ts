@@ -21,13 +21,9 @@ import type { LlmResponse, ProviderConfig, StreamChunk } from '@core/contracts';
 import { LLM_TOKEN_LIMITS } from '@core/contracts';
 import { extractVisibleAnswer } from '@core/foundation';
 import { chatSchema, explainSchemaFixed } from '../services/agentOrchestrator.js';
-import {
-  AGENT_MODE_META,
-  extractHoverAnswer,
-  isSafeHoverPublicAnswer,
-  looksLikeHoverPlanning,
-  isSystemEcho,
-} from '../lib/agentPrompt.js';
+import { createStreamConsumer } from '../lib/streamConsumers.js';
+import { AGENT_MODE_META } from '../lib/agentPrompt.js';
+import { extractHoverAnswer, looksLikeHoverPlanning } from '@core/contracts';
 import type { AgentRuntime } from '../runtime.js';
 
 export function createAgentRouter(runtime: AgentRuntime): Router {
@@ -226,191 +222,142 @@ export function createAgentRouter(runtime: AgentRuntime): Router {
       // 缓存命中 / 流完成 / 出错一律 endSseSession 收尾（B-10 单点化）
       const sse = createSseSession(req, res);
       let llmStream: AsyncGenerator<StreamChunk, void, unknown> | undefined;
-      let servedBy: ProviderConfig | undefined;
-      try {
-        const body = req.body as Parameters<typeof runExplain>[0];
-
-        // R-06：同 /explain——缓存先于 Provider，命中即流式返回缓存
-        const hit = await resolveHoverCacheHit(body);
-        if (hit) {
-          sseWriteHoverCache(res, body, hit.style, hit.answer);
-          await endSseSession(sse);
-          return;
-        }
-
-        const prep = await runExplain(body, req.user?.id);
-
-        // 预查未命中：登录用户偏好风格可能覆盖默认，风格不同则按真实 style 再查一次
-        const hit2 = await resolveHoverCacheHit(body, prep);
-        if (hit2) {
-          sseWriteHoverCache(res, body, hit2.style, hit2.answer);
-          await endSseSession(sse);
-          return;
-        }
-
-        let thinkingAcc = '';
-        let textAcc = '';
-        // I3：仅累积通过 per-delta 门控的安全思考片段，final 用它保持流式/最终一致
-        let safeThinking = '';
-        /**
-         * 悬停硬规则：
-         * 1) 生成过程中：thinking/text 只服务端累计，客户端只收 status:thinking
-         * 2) 累计中周期性 extract；一旦得到 ≥2 句安全讲解 → 早停上游 LLM
-         * 3) 结束后仍空 → 极简重试一次；再空则 final.answer=""（前端失败态）
-         * 4) 仅把安全讲解 soft-stream 为 delta；final.thinking 恒 ""
-         */
-        let lastHoverStatusAt = 0;
-        let lastProbeAt = 0;
-        let lastProbeLen = 0;
-        let earlyAnswer = '';
-
-        // R-04：流式 failover——首个 chunk 前失败可换备选；已产出 chunk 后不再切换（避免双份内容）
-        const resolved = await llm.resolveStreamWithFallback(
-          {
-            mode: prep.isHover ? 'fast' : 'deep',
-            maxTokens: prep.isHover ? 220 : 2048,
-            temperature: prep.isHover ? 0.15 : undefined,
-            // I2：统一挂 sse.signal——hover 用于早停，click/deep 用于客户端断开时取消上游
-            signal: sse.signal,
-            messages: [
-              { role: 'system', content: prep.system },
-              { role: 'user', content: prep.userMsg },
-            ],
-          },
-          prep.chain,
-        );
-        servedBy = resolved.provider;
-        llmStream = resolved.stream;
-
-        sseWrite(res, {
-          type: 'meta',
-          model: servedBy.model,
-          format: servedBy.format,
-          providerId: servedBy.id,
-          mode: body.mode,
-          style: prep.style,
-          meta: prep.isHover ? AGENT_MODE_META.fast : AGENT_MODE_META.deep,
-        });
-
-        const emitHoverThinkingStatus = () => {
-          const now = Date.now();
-          if (now - lastHoverStatusAt < 100) return;
-          lastHoverStatusAt = now;
-          sseWrite(res, { type: 'status', status: 'thinking' });
-        };
-
-        const probeEarlyAnswer = () => {
-          if (!prep.isHover || earlyAnswer) return;
-          const total = thinkingAcc.length + textAcc.length;
-          const now = Date.now();
-          if (now - lastProbeAt < 220 && total - lastProbeLen < 60) return;
-          lastProbeAt = now;
-          lastProbeLen = total;
-          const candidate = extractHoverAnswer(thinkingAcc, textAcc);
-          // 早停要求至少 2 句，避免半截单句抢跑
-          const n = (candidate.match(/[。！]/g) || []).length;
-          if (candidate && n >= 2 && isSafeHoverPublicAnswer(candidate)) {
-            earlyAnswer = candidate;
-            // B-06：早停命中打点（省 token 的可观测性）
-            logger.info(
-              { event: 'hover_early_stop', topic: prep.topic.slice(0, 60), chars: total },
-              'hover early stop',
-            );
-            sse.abort();
-          }
-        };
-
+        let servedBy: ProviderConfig | undefined;
         try {
-          for await (const chunk of resolved.stream) {
-            if (sse.gone()) {
-              sse.abort();
-              return;
-            }
-            if (earlyAnswer) break;
-            if (chunk.kind === 'thinking') {
-              thinkingAcc += chunk.text;
-              if (prep.isHover) {
-                emitHoverThinkingStatus();
-                probeEarlyAnswer();
-              } else {
-                // A-04：思考片段命中 system 规则复述不回传客户端（final 门控是兜底，流式先拦）
-                if (isSystemEcho(chunk.text)) {
-                  logger.warn({ event: 'thinking_echo_blocked' }, 'thinking echo chunk dropped');
-                  continue;
-                }
-                safeThinking += chunk.text;
-                sseWrite(res, { type: 'thinking', text: chunk.text });
-              }
-            } else {
-              textAcc += chunk.text;
-              if (prep.isHover) {
-                emitHoverThinkingStatus();
-                probeEarlyAnswer();
-              } else {
-                sseWrite(res, { type: 'delta', text: chunk.text });
-              }
-            }
+          const body = req.body as Parameters<typeof runExplain>[0];
+
+          // R-06：同 /explain——缓存先于 Provider，命中即流式返回缓存
+          const hit = await resolveHoverCacheHit(body);
+          if (hit) {
+            sseWriteHoverCache(res, body, hit.style, hit.answer);
+            await endSseSession(sse);
+            return;
           }
-        } catch (e) {
-          // 早停 abort 为预期；其它错误上抛到外层
-          if (!(e instanceof Error && e.name === 'AbortError') && !earlyAnswer && !sse.signal.aborted) {
-            throw e;
+
+          const prep = await runExplain(body, req.user?.id);
+
+          // 预查未命中：登录用户偏好风格可能覆盖默认，风格不同则按真实 style 再查一次
+          const hit2 = await resolveHoverCacheHit(body, prep);
+          if (hit2) {
+            sseWriteHoverCache(res, body, hit2.style, hit2.answer);
+            await endSseSession(sse);
+            return;
           }
-        }
-        // 早停（hover）正是通过 sse.abort() 触发的，此处不能以 aborted 为返回条件；
-        // 客户端断开由 writableEnded/destroyed 判定（I2 已让 click 模式信号达上游）
-        if (sse.gone()) {
-          return;
-        }
-        if (prep.isHover) {
-          // R-04：兜底重试打向实际服务者——failover 后链首可能正故障，打链首会再次失败
-          const answer = await finalizeHoverAnswer(
-            servedBy,
-            prep.userMsg,
-            earlyAnswer || extractHoverAnswer(thinkingAcc, textAcc),
-            () => sseWrite(res, { type: 'status', status: 'thinking' }),
+
+          /**
+           * 悬停硬规则（流式消费器封装，见 lib/streamConsumers.ts）：
+           * 1) 生成过程中：thinking/text 只服务端累计，客户端只收 status:thinking
+           * 2) 累计中周期性 extract；一旦得到 ≥2 句安全讲解 → 早停上游 LLM
+           * 3) 结束后仍空 → 极简重试一次；再空则 final.answer=""（前端失败态）
+           * 4) 仅把安全讲解 soft-stream 为 delta；final.thinking 恒 ""
+           */
+          const consumer = createStreamConsumer({
+            mode: prep.isHover ? 'hover' : 'deep',
+            topic: prep.topic,
+            statusThrottleMs: 100,
+            abort: () => sse.abort(),
+            onStatus: () => sseWrite(res, { type: 'status', status: 'thinking' }),
+            onThinking: (text) => sseWrite(res, { type: 'thinking', text }),
+            onText: (text) => sseWrite(res, { type: 'delta', text }),
+          });
+
+          // R-04：流式 failover——首个 chunk 前失败可换备选；已产出 chunk 后不再切换（避免双份内容）
+          const resolved = await llm.resolveStreamWithFallback(
+            {
+              mode: prep.isHover ? 'fast' : 'deep',
+              maxTokens: prep.isHover ? 220 : 2048,
+              temperature: prep.isHover ? 0.15 : undefined,
+              // I2：统一挂 sse.signal——hover 用于早停，click/deep 用于客户端断开时取消上游
+              signal: sse.signal,
+              messages: [
+                { role: 'system', content: prep.system },
+                { role: 'user', content: prep.userMsg },
+              ],
+            },
+            prep.chain,
           );
-          if (answer) {
-            void hoverCache.setHoverCache(prep.topic, prep.style, answer);
-            await softStreamHoverAnswer(res, answer, 36);
-          }
+          servedBy = resolved.provider;
+          llmStream = resolved.stream;
+
           sseWrite(res, {
-            type: 'final',
-            answer: answer || '',
-            thinking: '',
-            complete: Boolean(answer),
+            type: 'meta',
+            model: servedBy.model,
+            format: servedBy.format,
+            providerId: servedBy.id,
+            mode: body.mode,
+            style: prep.style,
+            meta: prep.isHover ? AGENT_MODE_META.fast : AGENT_MODE_META.deep,
           });
-        } else {
-          const visible = extractVisibleAnswer(thinkingAcc, textAcc);
-          // A-04：deep 正文命中策划特征时留痕（不强制清空）
-          if (visible.answer && looksLikeHoverPlanning(visible.answer)) {
-            logger.warn(
-              { event: 'deep_planning_leak', mode: body.mode },
-              'deep answer looks like planning',
+
+          try {
+            for await (const chunk of resolved.stream) {
+              if (sse.gone()) {
+                sse.abort();
+                return;
+              }
+              if (consumer.handle(chunk) === 'break') break;
+            }
+          } catch (e) {
+            // 早停 abort 为预期；其它错误上抛到外层
+            if (!(e instanceof Error && e.name === 'AbortError') && !consumer.result().earlyAnswer && !sse.signal.aborted) {
+              throw e;
+            }
+          }
+          // 早停（hover）正是通过 sse.abort() 触发的，此处不能以 aborted 为返回条件；
+          // 客户端断开由 writableEnded/destroyed 判定（I2 已让 click 模式信号达上游）
+          if (sse.gone()) {
+            return;
+          }
+          const { thinkingAcc, textAcc, safeThinking, earlyAnswer } = consumer.result();
+          if (prep.isHover) {
+            // R-04：兜底重试打向实际服务者——failover 后链首可能正故障，打链首会再次失败
+            const answer = await finalizeHoverAnswer(
+              servedBy,
+              prep.userMsg,
+              earlyAnswer || extractHoverAnswer(thinkingAcc, textAcc),
+              () => sseWrite(res, { type: 'status', status: 'thinking' }),
             );
+            if (answer) {
+              void hoverCache.setHoverCache(prep.topic, prep.style, answer);
+              await softStreamHoverAnswer(res, answer, 36);
+            }
+            sseWrite(res, {
+              type: 'final',
+              answer: answer || '',
+              thinking: '',
+              complete: Boolean(answer),
+            });
+          } else {
+            const visible = extractVisibleAnswer(thinkingAcc, textAcc);
+            // A-04：deep 正文命中策划特征时留痕（不强制清空）
+            if (visible.answer && looksLikeHoverPlanning(visible.answer)) {
+              logger.warn(
+                { event: 'deep_planning_leak', mode: body.mode },
+                'deep answer looks like planning',
+              );
+            }
+            sseWrite(res, {
+              type: 'final',
+              answer: visible.answer,
+              // I3：final 用流式中已过 per-delta 门控的安全 thinking，
+              // 避免整串 isSystemEcho 把已展示的合法思考一并清空
+              thinking: safeThinking,
+            });
           }
-          sseWrite(res, {
-            type: 'final',
-            answer: visible.answer,
-            // I3：final 用流式中已过 per-delta 门控的安全 thinking，
-            // 避免整串 isSystemEcho 把已展示的合法思考一并清空
-            thinking: safeThinking,
-          });
+          sseWrite(res, { type: 'done' });
+          void memory.rememberTopic(req.user?.id, prep.topic, body.mode);
+        } catch (e) {
+          if (!(e instanceof Error && e.name === 'AbortError') && !sse.gone()) {
+            // A-01：SSE 错误消息只发安全文案，不泄露 url/raw
+            const message = llm.isLlmCallError(e) ? e.messageForClient : '讲解生成失败，请稍后重试';
+            sseWrite(res, { type: 'error', message });
+          }
+        } finally {
+          // B-10：统一收尾——停心跳/解绑、关闭未消费完的流（释放舱壁名额）、res.end 防重
+          await endSseSession(sse, llmStream);
         }
-        sseWrite(res, { type: 'done' });
-        void memory.rememberTopic(req.user?.id, prep.topic, body.mode);
-      } catch (e) {
-        if (!(e instanceof Error && e.name === 'AbortError') && !sse.gone()) {
-          // A-01：SSE 错误消息只发安全文案，不泄露 url/raw
-          const message = llm.isLlmCallError(e) ? e.messageForClient : '讲解生成失败，请稍后重试';
-          sseWrite(res, { type: 'error', message });
-        }
-      } finally {
-        // B-10：统一收尾——停心跳/解绑、关闭未消费完的流（释放舱壁名额）、res.end 防重
-        await endSseSession(sse, llmStream);
-      }
-    },
-  );
+      },
+    );
 
   agentRouter.post(
     '/chat',
@@ -578,10 +525,14 @@ export function createAgentRouter(runtime: AgentRuntime): Router {
           return;
         }
 
-        let thinkingAcc = '';
-        let textAcc = '';
-        // I3：仅累积通过 per-delta 门控的安全思考片段，final 用它保持流式/最终一致
-        let safeThinking = '';
+        // I3：仅累积通过 per-delta 门控的安全思考片段(流式消费器封装,见 lib/streamConsumers.ts)
+        const consumer = createStreamConsumer({
+          mode: mode === 'fast' ? 'fast' : 'deep',
+          abort: () => sse.abort(),
+          onStatus: () => sseWrite(res, { type: 'status', status: 'thinking' }),
+          onThinking: (text) => sseWrite(res, { type: 'thinking', text }),
+          onText: (text) => sseWrite(res, { type: 'delta', text }),
+        });
 
         try {
           // R-04：流式 failover——首个 chunk 前失败可换备选；已产出 chunk 后不再切换
@@ -620,27 +571,7 @@ export function createAgentRouter(runtime: AgentRuntime): Router {
               sse.abort();
               return;
             }
-            if (chunk.kind === 'thinking') {
-              thinkingAcc += chunk.text;
-              if (mode === 'fast') {
-                sseWrite(res, { type: 'status', status: 'thinking' });
-              } else {
-                // A-04：思考片段命中 system 规则复述不回传客户端（final 门控是兜底，流式先拦）
-                if (isSystemEcho(chunk.text)) {
-                  logger.warn({ event: 'thinking_echo_blocked' }, 'thinking echo chunk dropped');
-                  continue;
-                }
-                safeThinking += chunk.text;
-                sseWrite(res, { type: 'thinking', text: chunk.text });
-              }
-            } else {
-              textAcc += chunk.text;
-              if (mode === 'fast') {
-                sseWrite(res, { type: 'status', status: 'thinking' });
-              } else {
-                sseWrite(res, { type: 'delta', text: chunk.text });
-              }
-            }
+            if (consumer.handle(chunk) === 'break') break;
           }
         } catch (e) {
           if (e instanceof Error && e.name === 'AbortError') return;
@@ -651,6 +582,7 @@ export function createAgentRouter(runtime: AgentRuntime): Router {
         if (sse.gone() || sse.signal.aborted) {
           return;
         }
+        const { thinkingAcc, textAcc, safeThinking } = consumer.result();
         const visible = extractVisibleAnswer(thinkingAcc, textAcc);
         // A-04：deep 正文命中策划特征时留痕（不强制清空）
         if (visible.answer && looksLikeHoverPlanning(visible.answer)) {

@@ -32,6 +32,7 @@ export {
 } from './byokCrypto.js';
 export { assertSafeByokBaseUrl, isSafeByokBaseUrl, isPrivateOrSpecialIpv4 } from './byokUrlPolicy.js';
 export { extractVisibleAnswer } from './llmAnswerExtract.js';
+export { attachUserRefs } from './attachUserRefs.js';
 
 // HTTP 中间件与请求校验
 export { validate } from './validate.js';

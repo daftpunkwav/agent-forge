@@ -1,20 +1,5 @@
 import type { AgentStyle } from '@core/contracts';
 
-// 悬停清洗逻辑已迁移至 @core/contracts，此处 re-export 保持现有 API 兼容
-export {
-  HOVER_CARD_MAX_SENTENCES,
-  HOVER_CARD_MAX_CHARS,
-  stripSelfRevisionDraft,
-  isLikelyHoverTeaching,
-  finalizeHoverCardText,
-  progressiveHoverAnswer,
-  extractHoverAnswer,
-  isCompleteHoverAnswer,
-  looksLikeHoverPlanning,
-  isSystemEcho,
-  isSafeHoverPublicAnswer,
-} from '@core/contracts';
-
 const STYLE_PROMPTS: Record<AgentStyle, string> = {
   professional:
     '说话风格：专业、克制、术语准确。少用感叹号，结构清晰，先结论后理由。',

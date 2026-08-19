@@ -4,7 +4,10 @@
  */
 import { Router } from 'express';
 import { createTopicsRouter } from './routes/topics.js';
-import type { ArticleQueryPort, UserQueryPort } from './ports.js';
+import type { ArticleQueryPort, UserSummaryPort } from '@core/contracts';
+
+/** community 只消费用户摘要子集 */
+export type UserQueryPort = UserSummaryPort;
 
 export interface CommunityDeps {
   prisma: import('@prisma/client').PrismaClient;
@@ -22,4 +25,4 @@ export function createCommunityRouter(deps: CommunityDeps): Router {
   return Router().use(topics);
 }
 
-export type { ArticleQueryPort, UserQueryPort } from './ports.js';
+export type { ArticleQueryPort } from '@core/contracts';
