@@ -23,16 +23,16 @@
     "@core/content": "*",
     "@core/community": "*",
     "@core/agent": "*",
-    "@prisma/client": "^6.10.1",
+    "@prisma/client": "^7.9.1",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
+    "dotenv": "^17.4.2",
     "express": "^5.1.0",
-    "express-rate-limit": "^7.5.1",
-    "helmet": "^8.1.0",
+    "express-rate-limit": "^8.6.2",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
     "pino": "^10.3.1",
-    "zod": "^3.25.67"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
