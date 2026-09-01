@@ -17,10 +17,11 @@ const HOVER_CACHE_HOT_HITS = 8;
 /**
  * 缓存 key 版本号：语义或样式影响缓存内容时 +1（历史：v1 无样式维度 → v7 堵口令泄漏）。
  * 升级后旧 key 自然过期，无需手工清库。
+ * 注意：v8 — 剔除 token 截断尾句（如「因为微调是。」）后升级。
  * 注意：后端 key（sha256 入库）与前端 L1 key（明文 style::topic）不同——
  * L1/L2 独立查询，两端 key 无需一致；L1 不版本化，随 L2 升级自然失效。
  */
-const HOVER_CACHE_KEY_VERSION = 'v7';
+const HOVER_CACHE_KEY_VERSION = 'v8';
 
 export function createHoverCache(prisma: import('@prisma/client').PrismaClient) {
   function hoverCacheKey(topic: string, style: string): string {

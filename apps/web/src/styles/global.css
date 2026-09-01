@@ -694,7 +694,8 @@ textarea {
 }
 .article-card-inline.is-expanded {
   z-index: 8;
-  max-height: var(--card-expand-h);
+  /* 展开后随讲解增高，避免 2～3 句长文被 max-height 裁切 */
+  max-height: none;
   min-height: var(--card-base-h);
   height: auto;
   overflow: visible;
@@ -709,10 +710,9 @@ textarea {
   max-height: none;
 }
 
-/* feed：首页双列；expand 贴合 2～3 句，避免空高 */
+/* feed：首页双列；展开后高度随文增长 */
 .article-card-inline--feed {
   --card-base-h: 152px;
-  --card-expand-h: 320px;
   padding: 14px 16px;
   flex-direction: row;
 }
@@ -733,7 +733,6 @@ textarea {
 /* grid：知识地图 / 领域 */
 .article-card-inline--grid {
   --card-base-h: 140px;
-  --card-expand-h: 300px;
   padding: 12px 13px;
   flex-direction: column;
 }
@@ -759,7 +758,6 @@ textarea {
 /* list：横条列表 */
 .article-card-inline--list {
   --card-base-h: 80px;
-  --card-expand-h: 280px;
   padding: 12px 16px;
   flex-direction: row;
   align-items: center;

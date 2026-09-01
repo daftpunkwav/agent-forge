@@ -80,9 +80,9 @@ export const API_FORMATS: { id: ApiFormat; label: string; desc: string }[] = [
 /** LLM 调用参数预算单一真相来源(agent 组装与 llm 兜底共用) */
 export const LLM_TOKEN_LIMITS = {
   /** 悬停快讲：短、直给 */
-  hover: { maxTokens: 220, temperature: 0.15 },
+  hover: { maxTokens: 400, temperature: 0.15 },
   /** 悬停空答案时的极简兜底重试（无记忆、关 thinking） */
-  hoverRetry: { maxTokens: 220, temperature: 0.1 },
+  hoverRetry: { maxTokens: 400, temperature: 0.1 },
   /** 面板快答（chat fast） */
   chatFast: { maxTokens: 600, temperature: 0.3 },
   /** 面板/详情深度讲解（chat deep / click deep） */

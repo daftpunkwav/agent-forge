@@ -4,6 +4,11 @@ import { ACCENTS, useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError } from '@/lib/api';
 import { clearAllHoverCaches } from '@/lib/hoverExplainCache';
+import {
+  applySettingsSnapshot,
+  getSettingsCached,
+  invalidateSettingsCache,
+} from '@/lib/settingsCache';
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select } from '@/components/ui/Input';
 import { Tag } from '@/components/ui/Tag';
@@ -65,8 +70,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (!user) return;
-    api
-      .getSettings()
+    getSettingsCached(user.id)
       .then((r) => {
         setSettingsLoaded(true);
         setLoadError('');
@@ -128,6 +132,14 @@ export function SettingsPage() {
         },
       };
       const r = await api.updateSettings(body);
+      invalidateSettingsCache();
+      applySettingsSnapshot(user.id, {
+        preferences: r.preferences,
+        agentStyles: styles,
+        apiFormats: formats,
+        serverProviders,
+        providers: serverProviders,
+      });
       const b = r.preferences.byok as { apiKeyMasked?: string; hasApiKey?: boolean } | undefined;
       if (b) {
         setByokKeyMasked(b.apiKeyMasked || '');

@@ -56,9 +56,10 @@ export function createApp(opts: CreateAppOptions) {
 
   const generalLimiter = rateLimit({
     windowMs: 60_000,
-    max: 120,
+    max: process.env.NODE_ENV === 'development' ? 600 : 120,
     standardHeaders: true,
     legacyHeaders: false,
+    message: { error: { code: 'RATE_LIMIT', message: '请求过于频繁，请稍后再试' } },
   });
   const authLimiter = rateLimit({
     windowMs: 60_000,

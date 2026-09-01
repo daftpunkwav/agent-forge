@@ -60,10 +60,15 @@ function looksTruncatedTeachingTail(s: string): boolean {
   if (!t) return true;
   const body = t.replace(/[。！]+$/, '');
   if (/[的与和及于在被把将可更越很太]$/.test(body) && body.length < 80) return true;
-  // 打开了引号未闭合
+  // token 截断：判断句未完（「因为微调是」「因为…是」）
+  if (/因为[^。！]{1,32}是$/.test(body)) return true;
+  if (/[^。！]{1,12}是$/.test(body) && /因为|而是|则是/.test(body)) return true;
+  /** 打开了引号未闭合 */
   const opens = (t.match(/["「"]/g) || []).length;
   const closes = (t.match(/["」"]/g) || []).length;
   if (opens > closes) return true;
+  // 句末「只/仅+单字动词」等半截（模型 token 截断常见）
+  if (/[只仅][学训调改练演测]\s*[。．]$/.test(t)) return true;
   return false;
 }
 
@@ -457,9 +462,18 @@ export function finalizeHoverCardText(raw: string): string {
       if (end > 0) out = out.slice(0, end + 1);
     } else return '';
   }
-  // 任一句半截 → 整段不可用
-  const sentences = out.split(/(?<=[。！])/).map((x) => x.trim()).filter(Boolean);
-  if (sentences.some((s) => looksTruncatedTeachingTail(s) || isSelfTalkSentence(s))) return '';
+  // 尾句半截：剔除后若前文仍完整则放行（避免整段作废）
+  let sentences = out.split(/(?<=[。！])/).map((x) => x.trim()).filter(Boolean);
+  while (
+    sentences.length > 0 &&
+    (looksTruncatedTeachingTail(sentences[sentences.length - 1]) ||
+      isSelfTalkSentence(sentences[sentences.length - 1]))
+  ) {
+    sentences.pop();
+  }
+  if (!sentences.length) return '';
+  out = sentences.join('');
+  if (!out || !/[。！]/.test(out)) return '';
   return out.slice(0, HOVER_CARD_MAX_CHARS + 20);
 }
 
@@ -598,7 +612,7 @@ export function sanitizeHoverDisplay(raw: string): string {
   if (!s) return '';
   // 先剥改稿 / 旁白
   const stripped = stripSelfRevisionDraft(s);
-  if (stripped && isSafeHoverPublicAnswer(stripped)) return stripped.slice(0, 600);
+  if (stripped && isSafeHoverPublicAnswer(stripped)) return stripped.slice(0, HOVER_CARD_MAX_CHARS + 40);
   // 原文按句硬过滤
   const units = s
     .replace(/\s*[-•]\s+/g, '\n')
@@ -614,7 +628,7 @@ export function sanitizeHoverDisplay(raw: string): string {
     if (kept.length >= 3) break;
   }
   const out = kept.join('');
-  if (out && isSafeHoverPublicAnswer(out)) return out.slice(0, 600);
+  if (out && isSafeHoverPublicAnswer(out)) return out.slice(0, HOVER_CARD_MAX_CHARS + 40);
   return '';
 }
 

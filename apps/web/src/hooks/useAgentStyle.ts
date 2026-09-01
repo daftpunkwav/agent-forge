@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
+import { getSettingsCached, invalidateSettingsCache } from '@/lib/settingsCache';
 
 /**
  * 读取用户 preferences.agentStyle；无用户时保持 defaultStyle。
@@ -15,10 +15,11 @@ export function useAgentStyle(defaultStyle: string, override?: string) {
       setStyle(override);
       return;
     }
-    // 无用户：保持 defaultStyle 初值，不强制回写（与 AgentFloat 一致）
-    if (!user) return;
-    api
-      .getSettings()
+    if (!user) {
+      invalidateSettingsCache();
+      return;
+    }
+    getSettingsCached(user.id)
       .then((r) => {
         const s = r.preferences.agentStyle;
         if (typeof s === 'string') setStyle(s);

@@ -13,7 +13,7 @@ import {
 } from '@core/foundation';
 import { extractVisibleAnswer } from '@core/foundation';
 import type { LlmResponse, ProviderConfig, StreamChunk } from '@core/contracts';
-import { extractHoverAnswer, looksLikeHoverPlanning } from '@core/contracts';
+import { extractHoverAnswer, looksLikeHoverPlanning, LLM_TOKEN_LIMITS } from '@core/contracts';
 import { explainSchemaFixed } from '../schemas.js';
 import { createStreamConsumer } from '../lib/streamConsumers.js';
 import { AGENT_MODE_META } from '../lib/agentPrompt.js';
@@ -62,8 +62,8 @@ export function mountExplainRoutes(
           const r = await llm.callLlmWithFallback(
             {
               mode: prep.isHover ? 'fast' : 'deep',
-              maxTokens: prep.isHover ? 220 : 2048,
-              temperature: prep.isHover ? 0.15 : undefined,
+              maxTokens: prep.isHover ? LLM_TOKEN_LIMITS.hover.maxTokens : LLM_TOKEN_LIMITS.clickDeep.maxTokens,
+              temperature: prep.isHover ? LLM_TOKEN_LIMITS.hover.temperature : undefined,
               messages: [
                 { role: 'system', content: prep.system },
                 { role: 'user', content: prep.userMsg },
@@ -143,8 +143,8 @@ export function mountExplainRoutes(
         const resolved = await llm.resolveStreamWithFallback(
           {
             mode: prep.isHover ? 'fast' : 'deep',
-            maxTokens: prep.isHover ? 220 : 2048,
-            temperature: prep.isHover ? 0.15 : undefined,
+            maxTokens: prep.isHover ? LLM_TOKEN_LIMITS.hover.maxTokens : LLM_TOKEN_LIMITS.clickDeep.maxTokens,
+            temperature: prep.isHover ? LLM_TOKEN_LIMITS.hover.temperature : undefined,
             signal: sse.signal,
             messages: [
               { role: 'system', content: prep.system },

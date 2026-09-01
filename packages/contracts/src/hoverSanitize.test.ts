@@ -74,6 +74,13 @@ const cases: Array<{
     expectOk: true,
   },
   {
+    name: 'shot-finetune-token-cut',
+    text: '适合微调的场景：领域语料稳定、需要长期一致的回答风格/格式，或要把私有知识烙进模型里——SFT 塑型、偏好对齐调味，LoRA 则低成本撬动大模型。然而一旦知识更新快、答案要可溯源，或只是临时缺事实，更划算的是先用 RAG 或工具调用，因为微调是。',
+    expectOk: true,
+    forbid: /因为微调是|RAG 或工具调用，因为/,
+    include: /LoRA|大模型/,
+  },
+  {
     name: 'mixed-revision-then-clean',
     text: '首先第一句讲核心。那调整下：LLM 本质是概率驱动的文本续写器，能力取决于训练数据与算力。它没有真实世界感知，也不能保证事实正确。',
     expectOk: true,

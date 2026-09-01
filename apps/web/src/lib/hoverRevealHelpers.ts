@@ -1,7 +1,7 @@
 /**
  * 悬停讲解 UI 揭示辅助（卡片内联 / 页面气泡共用）
  */
-import { isSafeHoverDisplay } from './hoverExplainCache';
+import { isSafeHoverDisplay, sanitizeHoverDisplay } from './hoverExplainCache';
 
 /** 最短「思考中」展示后再揭晓 */
 export function scheduleMinThinkReveal(opts: {
@@ -32,17 +32,11 @@ export function scheduleMinThinkReveal(opts: {
   }
 }
 
-/** 流式片段：仅展示到完整句号且通过安全质检 */
+/** 流式片段：清洗后仅展示完整句（剔除 token 截断尾句） */
 export function pickSafeHoverSentence(partial: string, minChars = 8): string | null {
-  if (!partial || !isSafeHoverDisplay(partial)) return null;
-  let show = partial;
-  if (!/[。！]$/.test(show)) {
-    const lastEnd = Math.max(show.lastIndexOf('。'), show.lastIndexOf('！'));
-    if (lastEnd < minChars) return null;
-    show = show.slice(0, lastEnd + 1);
-    if (!isSafeHoverDisplay(show)) return null;
-  }
-  return show;
+  const cleaned = sanitizeHoverDisplay(partial);
+  if (!cleaned || cleaned.length < minChars) return null;
+  return cleaned;
 }
 
 /** 非安全文案兜底为失败提示 */
