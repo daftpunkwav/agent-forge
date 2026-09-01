@@ -4,7 +4,12 @@ import type { ArticleSummary } from '@core/contracts';
 import { Tag } from '@/components/ui/Tag';
 import { MarkdownView } from '@/components/agent/MarkdownView';
 import { useAgentStyle } from '@/hooks/useAgentStyle';
-import { isSafeHoverDisplay, sanitizeHoverDisplay } from '@/lib/hoverExplainCache';
+import { isSafeHoverDisplay } from '@/lib/hoverExplainCache';
+import {
+  coerceHoverFailText,
+  pickSafeHoverSentence,
+  scheduleMinThinkReveal,
+} from '@/lib/hoverRevealHelpers';
 import {
   IncompleteHoverKeys,
   runHoverExplainStream,
@@ -135,50 +140,40 @@ export function ArticleCardInlineAgent({
    */
   function tryRevealAnswer(gen: number, opts?: { streamed?: boolean }) {
     if (gen !== genRef.current || !sessionOn.current) return;
-    if (!hasLock.current) return; // 还在等上一张收起
+    if (!hasLock.current) return;
     const text = pendingAnswer.current;
     if (text == null) return;
 
-    const elapsed = Date.now() - thinkStartedAt.current;
-    const wait = Math.max(0, MIN_THINK_MS - elapsed);
-    if (thinkTimer.current) clearTimeout(thinkTimer.current);
-    thinkTimer.current = setTimeout(() => {
-      thinkTimer.current = null;
-      if (gen !== genRef.current || !sessionOn.current || !hasLock.current) return;
-      const finalText = pendingAnswer.current;
-      if (finalText == null) return;
-      // 流式已在展示：直接覆盖，不打断布局
-      if (opts?.streamed) {
+    scheduleMinThinkReveal({
+      minThinkMs: MIN_THINK_MS,
+      startedAt: thinkStartedAt.current,
+      timerRef: thinkTimer,
+      isStale: () => gen !== genRef.current || !sessionOn.current || !hasLock.current,
+      onReveal: () => {
+        const finalText = pendingAnswer.current;
+        if (finalText == null) return;
+        if (opts?.streamed) {
+          pendingAnswer.current = null;
+          setExpanded(true);
+          setPhase('answer');
+          setAnswer(finalText);
+          setBodyVisible(true);
+          return;
+        }
         pendingAnswer.current = null;
-        setExpanded(true);
-        setPhase('answer');
-        setAnswer(finalText);
-        setBodyVisible(true);
-        return;
-      }
-      pendingAnswer.current = null;
-      setBody(() => {
-        setExpanded(true);
-        setAnswer(finalText);
-        setPhase('answer');
-      });
-    }, wait);
+        setBody(() => {
+          setExpanded(true);
+          setAnswer(finalText);
+          setPhase('answer');
+        });
+      },
+    });
   }
 
-  /**
-   * 仅写入「安全讲解」。思考中不撑高卡片；首句到达再 expand，高度随文字增长。
-   */
   function applySafePartial(gen: number, partial: string) {
     if (gen !== genRef.current || !sessionOn.current) return;
-    if (!partial || !isSafeHoverDisplay(partial)) return;
-    // 仅展示到完整句号（不展示？与半截）
-    let show = partial;
-    if (!/[。！]$/.test(show)) {
-      const lastEnd = Math.max(show.lastIndexOf('。'), show.lastIndexOf('！'));
-      if (lastEnd < 8) return;
-      show = show.slice(0, lastEnd + 1);
-      if (!isSafeHoverDisplay(show)) return;
-    }
+    const show = pickSafeHoverSentence(partial);
+    if (!show) return;
     pendingAnswer.current = show;
     if (!hasLock.current) return;
 
@@ -186,28 +181,19 @@ export function ArticleCardInlineAgent({
       if (gen !== genRef.current || !sessionOn.current || !hasLock.current) return;
       const t = pendingAnswer.current;
       if (!t || !isSafeHoverDisplay(t)) return;
-      // 有正文再展开，避免「思考中」时空高卡片
       setExpanded(true);
       setPhase('answer');
       setAnswer(t);
       setBodyVisible(true);
     };
 
-    const elapsed = Date.now() - thinkStartedAt.current;
-    if (elapsed < MIN_THINK_MS) {
-      if (thinkTimer.current) clearTimeout(thinkTimer.current);
-      thinkTimer.current = setTimeout(() => {
-        thinkTimer.current = null;
-        reveal();
-      }, MIN_THINK_MS - elapsed);
-      return;
-    }
-
-    if (thinkTimer.current) {
-      clearTimeout(thinkTimer.current);
-      thinkTimer.current = null;
-    }
-    reveal();
+    scheduleMinThinkReveal({
+      minThinkMs: MIN_THINK_MS,
+      startedAt: thinkStartedAt.current,
+      timerRef: thinkTimer,
+      isStale: () => gen !== genRef.current || !sessionOn.current || !hasLock.current,
+      onReveal: reveal,
+    });
   }
 
   async function runExplain() {
@@ -223,11 +209,7 @@ export function ArticleCardInlineAgent({
 
     const storeAnswer = (text: string, opts?: { streamed?: boolean }) => {
       if (gen !== genRef.current || !sessionOn.current) return;
-      // 非安全文案：用失败提示，绝不展示思考原文
-      const safe = isSafeHoverDisplay(text) ? text : sanitizeHoverDisplay(text);
-      pendingAnswer.current =
-        safe ||
-        (text.startsWith('讲解') ? text : '讲解生成失败，请再悬停试一次');
+      pendingAnswer.current = coerceHoverFailText(text);
       tryRevealAnswer(gen, opts);
     };
 
