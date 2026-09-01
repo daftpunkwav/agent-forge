@@ -8,7 +8,8 @@
     "build": "cross-env NODE_ENV=production tsc -b && cross-env NODE_ENV=production vite build",
     "typecheck": "tsc -b",
     "lint": "oxlint",
-    "preview": "cross-env NODE_ENV=production vite preview"
+    "preview": "cross-env NODE_ENV=production vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "@core/contracts": "*",
@@ -26,6 +27,7 @@
     "cross-env": "^10.1.0",
     "oxlint": "^1.76.0",
     "typescript": "~5.9.3",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "vitest": "^3.2.7"
   }
 }
