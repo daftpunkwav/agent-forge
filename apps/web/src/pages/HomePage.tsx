@@ -1,181 +1,37 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '@/lib/api';
-import type { ArticleSummary } from '@core/contracts';
 import { Tag } from '@/components/ui/Tag';
-import { ArticleCardInlineAgent } from '@/components/article/ArticleCardInlineAgent';
 import { HomeHeroAnim } from '@/components/home/HomeHeroAnim';
+import { HomeFeedColumn } from '@/components/home/HomeFeedColumn';
+import {
+  HOME_DOMAINS,
+  HOME_DOMAIN_ROTATE_MS,
+  HOME_DOMAIN_VISIBLE,
+} from '@/components/home/homeDomains';
 
 type ViewMode = 'grid' | 'list';
-
-const DOMAINS = [
-  {
-    title: '推理模式',
-    en: 'Reasoning Patterns',
-    desc: 'ReAct · CoT · GoT · ToT — 理解 Agent 如何思考与行动',
-    to: '/knowledge',
-    tags: ['ReAct', 'CoT', 'GoT', 'ToT'],
-    color: 'var(--chart-1)',
-  },
-  {
-    title: '框架',
-    en: 'Frameworks',
-    desc: 'LangChain · AutoGen · CrewAI 架构与适用场景',
-    to: '/knowledge',
-    tags: ['LangChain', 'AutoGen', 'CrewAI'],
-    color: 'var(--chart-2)',
-  },
-  {
-    title: '协议与工程',
-    en: 'Protocol & Engineering',
-    desc: 'MCP、Context、Loop、Harness、Memory、评估与工具调用',
-    to: '/knowledge',
-    tags: ['MCP', 'Loop', 'Harness'],
-    color: 'var(--chart-3)',
-  },
-  {
-    title: 'LLM 基础',
-    en: 'Foundations',
-    desc: 'Transformer、分词、微调与 Prompting',
-    to: '/llm',
-    tags: ['Transformer', 'Token'],
-    color: 'var(--chart-5)',
-  },
-  {
-    title: '评测与安全',
-    en: 'Eval & Safety',
-    desc: '基准评测、红队测试与输出护栏',
-    to: '/knowledge',
-    tags: ['Eval', 'Guard'],
-    color: 'var(--chart-4)',
-  },
-  {
-    title: '记忆系统',
-    en: 'Memory',
-    desc: '短期上下文、长期记忆与检索增强',
-    to: '/knowledge',
-    tags: ['RAG', 'Memory'],
-    color: 'var(--chart-2)',
-  },
-];
-
-/** 知识领域：同时可见数量，其余自动轮播 */
-const DOMAIN_VISIBLE = 4;
-const DOMAIN_ROTATE_MS = 5200;
-
-/** 热门 / 最新 各最多展示条数 */
-const FEED_LIMIT = 10;
-
-function FeedColumn({
-  title,
-  eyebrow,
-  sort,
-  excludeIds,
-  onIds,
-}: {
-  title: string;
-  eyebrow: string;
-  sort: 'latest' | 'popular';
-  excludeIds: string[];
-  onIds: (ids: string[]) => void;
-}) {
-  const [items, setItems] = useState<ArticleSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const excludeKey = excludeIds.join(',');
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    api
-      .listArticles({
-        status: 'published',
-        page: 1,
-        pageSize: FEED_LIMIT,
-        sort,
-        exclude: excludeIds.length ? excludeIds : undefined,
-      })
-      .then((r) => {
-        if (cancelled) return;
-        const list = r.items.slice(0, FEED_LIMIT);
-        setItems(list);
-        onIds(list.map((x) => x.id));
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setItems([]);
-          onIds([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sort, excludeKey]);
-
-  return (
-    <section style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-      <div className="eyebrow" style={{ marginBottom: 10 }}>
-        {eyebrow}
-      </div>
-      <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 24, margin: '0 0 16px' }}>{title}</h2>
-      <div
-        className="feed-col-list"
-        style={{
-          display: 'grid',
-          gridTemplateRows: `repeat(${FEED_LIMIT}, minmax(152px, auto))`,
-          gap: 12,
-          flex: 1,
-        }}
-      >
-        {loading && items.length === 0
-          ? Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="card skeleton-card" style={{ minHeight: 152 }} />
-            ))
-          : items.length === 0
-            ? (
-                <p style={{ color: 'var(--muted-foreground)', fontSize: 14 }}>暂无文章</p>
-              )
-            : items.map((a, i) => (
-                <div
-                  key={a.id}
-                  style={{
-                    animation: 'feed-in 0.45s ease both',
-                    animationDelay: `${Math.min(i, 6) * 0.05}s`,
-                    minHeight: 148,
-                  }}
-                >
-                  <ArticleCardInlineAgent article={a} layout="feed" />
-                </div>
-              ))}
-      </div>
-    </section>
-  );
-}
 
 function DomainCarousel({ mode }: { mode: ViewMode }) {
   const [offset, setOffset] = useState(0);
   const [anim, setAnim] = useState(true);
 
   useEffect(() => {
-    if (DOMAINS.length <= DOMAIN_VISIBLE) return;
+    if (HOME_DOMAINS.length <= HOME_DOMAIN_VISIBLE) return;
     const id = window.setInterval(() => {
       setAnim(false);
       requestAnimationFrame(() => {
-        setOffset((o) => (o + 1) % DOMAINS.length);
+        setOffset((o) => (o + 1) % HOME_DOMAINS.length);
         setAnim(true);
       });
-    }, DOMAIN_ROTATE_MS);
+    }, HOME_DOMAIN_ROTATE_MS);
     return () => clearInterval(id);
   }, []);
 
   const visible = useMemo(() => {
-    if (DOMAINS.length <= DOMAIN_VISIBLE) return DOMAINS;
+    if (HOME_DOMAINS.length <= HOME_DOMAIN_VISIBLE) return HOME_DOMAINS;
     const list = [];
-    for (let i = 0; i < DOMAIN_VISIBLE; i++) {
-      list.push(DOMAINS[(offset + i) % DOMAINS.length]);
+    for (let i = 0; i < HOME_DOMAIN_VISIBLE; i++) {
+      list.push(HOME_DOMAINS[(offset + i) % HOME_DOMAINS.length]);
     }
     return list;
   }, [offset]);
@@ -243,7 +99,7 @@ function DomainCarousel({ mode }: { mode: ViewMode }) {
           </Link>
         ))}
       </div>
-      {DOMAINS.length > DOMAIN_VISIBLE ? (
+      {HOME_DOMAINS.length > HOME_DOMAIN_VISIBLE ? (
         <div
           style={{
             display: 'flex',
@@ -252,7 +108,7 @@ function DomainCarousel({ mode }: { mode: ViewMode }) {
             marginTop: 14,
           }}
         >
-          {DOMAINS.map((_, i) => (
+          {HOME_DOMAINS.map((_, i) => (
             <button
               key={i}
               type="button"
@@ -402,14 +258,14 @@ export function HomePage() {
         }}
         className="home-feed-grid"
       >
-        <FeedColumn
+        <HomeFeedColumn
           title="热门文章"
           eyebrow="POPULAR"
           sort="popular"
           excludeIds={latestIds}
           onIds={() => undefined}
         />
-        <FeedColumn
+        <HomeFeedColumn
           title="最新文章"
           eyebrow="LATEST"
           sort="latest"
