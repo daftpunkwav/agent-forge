@@ -24,7 +24,9 @@ export function createApp(opts: CreateAppOptions) {
   app.use(helmet());
   app.use(
     cors({
-      origin: (process.env.CORS_ORIGIN || 'http://localhost:5280').split(',').map((s) => s.trim()),
+      origin: (process.env.CORS_ORIGIN || 'http://localhost:8180,http://127.0.0.1:8180')
+        .split(',')
+        .map((s) => s.trim()),
       credentials: true,
     }),
   );
