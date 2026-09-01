@@ -13,6 +13,13 @@ import { getDefaultUserContextCache } from './userContextCache.js';
 
 const MAX_PREF_MEMORIES = 20;
 
+/** loadUserContext 返回值；供进程内短缓存泛型约束 */
+export type UserCtx = {
+  style: string;
+  memoryBlock: string;
+  byok: ByokConfig | null;
+};
+
 export function createAgentMemory(
   prisma: import('@prisma/client').PrismaClient,
   users: UserQueryPort,
