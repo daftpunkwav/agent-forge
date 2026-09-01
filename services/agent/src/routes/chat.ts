@@ -18,6 +18,7 @@ import { chatSchema } from '../schemas.js';
 import { createStreamConsumer } from '../lib/streamConsumers.js';
 import { AGENT_MODE_META } from '../lib/agentPrompt.js';
 import type { AgentRuntime } from '../runtime.js';
+import { writeAgentSseError } from './agentSseHelpers.js';
 
 export function mountChatRoutes(
   agentRouter: Router,
@@ -260,10 +261,7 @@ export function mountChatRoutes(
         }
         sseWrite(res, { type: 'done' });
       } catch (e) {
-        if (!(e instanceof Error && e.name === 'AbortError') && !sse.gone()) {
-          const message = llm.isLlmCallError(e) ? e.messageForClient : '生成失败，请稍后重试';
-          sseWrite(res, { type: 'error', message });
-        }
+        writeAgentSseError(sse, res, llm, e, '生成失败，请稍后重试');
       } finally {
         await endSseSession(sse, llmStream);
       }

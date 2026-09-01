@@ -18,39 +18,11 @@ import { explainSchemaFixed } from '../schemas.js';
 import { createStreamConsumer } from '../lib/streamConsumers.js';
 import { AGENT_MODE_META } from '../lib/agentPrompt.js';
 import type { AgentRuntime } from '../runtime.js';
-
-function hoverCacheJson(body: { mode: 'hover' | 'click' }, style: string, cached: string) {
-  return {
-    explanation: cached,
-    mode: body.mode,
-    model: 'cache',
-    format: 'cache',
-    style,
-    providerId: 'hover-cache',
-    cached: true,
-    meta: AGENT_MODE_META.fast,
-  };
-}
-
-function sseWriteHoverCache(
-  res: Parameters<typeof sseWrite>[0],
-  body: { mode: 'hover' | 'click' },
-  style: string,
-  cached: string,
-) {
-  sseWrite(res, {
-    type: 'meta',
-    model: 'cache',
-    format: 'cache',
-    providerId: 'hover-cache',
-    mode: body.mode,
-    style,
-    cached: true,
-    meta: AGENT_MODE_META.fast,
-  });
-  sseWrite(res, { type: 'final', answer: cached, thinking: '' });
-  sseWrite(res, { type: 'done' });
-}
+import {
+  hoverCacheJson,
+  sseWriteHoverCache,
+  writeAgentSseError,
+} from './agentSseHelpers.js';
 
 export function mountExplainRoutes(
   agentRouter: Router,
@@ -245,10 +217,7 @@ export function mountExplainRoutes(
         sseWrite(res, { type: 'done' });
         void memory.rememberTopic(req.user?.id, prep.topic, body.mode);
       } catch (e) {
-        if (!(e instanceof Error && e.name === 'AbortError') && !sse.gone()) {
-          const message = llm.isLlmCallError(e) ? e.messageForClient : '讲解生成失败，请稍后重试';
-          sseWrite(res, { type: 'error', message });
-        }
+        writeAgentSseError(sse, res, llm, e, '讲解生成失败，请稍后重试');
       } finally {
         await endSseSession(sse, llmStream);
       }
