@@ -2,11 +2,12 @@
 
 > **审查日期**: 2026-09-02  
 > **审查者**: Composer (Cursor)  
-> **审查范围**: commit `e61a0e2591a1b53b3e7e36b910eb2e9a00e4ae43` / branch `master` / 全仓源码（非抽样）  
-> **代码行数**: 约 61,870 行（含文档/配置）；TypeScript/JS 源码约 22,171 行，测试约 2,474 行  
-> **模块数**: 12 workspace 包 · **业务数**: 6 核心 + 2 支撑 · **审查文件数**: 304（排除 node_modules/dist）  
-> **总体评级**: ⭐ **中**  
-> **P0 问题**: 3 · **严重问题**: 5 · **总违例**: 38
+> **审查范围**: commit `83d75f47`（审查基准）→ 修复止于 `8ee4faf` / branch `master`  
+> **代码行数**: workspace 主包 TypeScript 约 21,029 行；`.ts/.tsx` 文件 211 个；测试文件 32 个  
+> **模块数**: 10 个活跃 workspace 包（`apps/web` + 8 `services/*` + 2 `packages/*`；`desktop`/`mobile`/`mcp` 仅占位）  
+> **业务数**: 5 核心 + 3 支撑 · **审查文件数**: 211（全部 `.ts/.tsx`，排除 `node_modules`/`dist`）  
+> **总体评级**: ⭐ **良**  
+> **P0 问题**: 2 · **严重问题**: 6 · **总违例**: 32
 
 ---
 
@@ -14,40 +15,53 @@
 
 ### 0.1 一句话定论
 
-后端域边界设计扎实（`@core/contracts` 端口 + CI 强制 `check-domain-boundaries.mjs`），但**前端 `apps/web` 仍是多业务上帝对象/上帝组件**，且**共享 SQLite + 进程内可变状态**在多实例部署下会破坏边界语义——架构「纸面解耦」与「运行时可替换性」之间存在明显裂缝。
+后端模块化单体与 CI 域边界保持有效；**2026-09-02 晚间修复批次**已处理 typecheck 失败、Agent schema 层耦合、悬停模块拆分、文章 Repository、identity 设置拆分、SSE 辅助函数、openwiki 路径对齐与首页 Feed 拆分。**仍待演进**：单库 Prisma、进程内缓存、localStorage Token、`hoverSanitize` 留在 `contracts`（`apps/web` 域边界禁止 import `foundation`）。
 
-### 0.2 TOP 10 关键问题
+### 0.2 修复批次摘要（`6265d35` → `8ee4faf`）
+
+| 提交 | 内容 |
+| --- | --- |
+| `6265d35` | `agentMemory` 补充 `UserCtx`，typecheck 通过 |
+| `cfbdd4d` | Agent Zod schema 移出 `routes/` |
+| `d397b98` | 悬停 Agent 拆模块 + `agentEvents` 契约 |
+| `0a38d03` | `hoverRevealHelpers` 统一卡片/气泡揭示逻辑 |
+| `0384b01` | `ArticleRepository` 下沉文章 CRUD |
+| `a1728e1` | identity 设置拆分 + Agent SSE 辅助 |
+| `54f18aa` | 首页 `HomeFeedColumn` + 悬停揭示测试 |
+| `8ee4faf` | openwiki 架构说明对齐当前 monorepo |
+
+### 0.3 TOP 10 关键问题（审查时快照，部分已修复）
 
 | 序 | 原则优先级 | 严重度 | 位置 | 问题 | 影响 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | P0 | 严重 | `apps/web/src/lib/api.ts:134-442` | 单一 `api` 对象覆盖 auth/articles/community/agent 等 10+ 业务域 | 任一域 API 变更牵动全文件；无法按域独立演进/测试 |
-| 2 | P0 | 严重 | `apps/web/src/components/agent/AgentFloat.tsx:1-918` | 悬停 Agent + 面板 Agent UI/状态/流式/动画混于 918 行组件 | 双 Agent 模式无法独立迭代；圈复杂度高 |
-| 3 | P0 | 高 | `services/content/src/routes/articles.ts:34-333` | Fat Router：路由 + Zod + 浏览去重缓存 + 权限 + CRUD 同文件 | content 域内职责混杂，单测困难 |
-| 4 | P1 | 严重 | `apps/web/src/components/agent/AgentFloat.tsx` | 上帝文件 918 行（阈值严重 500） | 维护/审查成本极高 |
-| 5 | P1 | 高 | `services/agent/src/services/agentOrchestrator.ts:24-319` | Schema 定义、编排、缓存策略、错误映射、记忆副作用同文件 | 变更理由 >3（路由契约/编排/缓存各独立） |
-| 6 | P2 | 严重 | `services/api/prisma/schema.prisma:1-322` | 15 模型单库共享；各域服务均注入同一 `PrismaClient` | 物理层未隔离；仅靠脚本约束跨域表访问 |
-| 7 | P2 | 高 | `services/content/src/routes/articles.ts:42-56` 等 | 进程内 `Map` 状态（浏览去重、Agent 上下文缓存、LLM Provider 缓存） | 多实例部署计数/缓存不一致 |
-| 8 | P2 | 高 | `services/api/src/index.ts:8` vs `scripts/dev.mjs:26` | API 默认端口 `3001` 与开发脚本/文档 `8181` 不一致 | 直连 `dev:api` 与 `npm run dev` 行为分裂 |
-| 9 | P2 | 高 | `services/agent/src/routes/chat.ts:17` | 路由层 import 编排层 Zod schema | 层间反向依赖，替换 orchestrator 牵动路由 |
-| 10 | P3 | 中 | `apps/web` 全目录 | 前端零测试（21 个 `*.test.ts` 均在后端/packages） | 22k+ 行 UI 无自动化回归网 |
+| 1 | P1 | 严重 | `apps/web/src/components/agent/useHoverAgent.ts:24-641` | 单 Hook 642 行，承载节流/缓存/流式/SSE 中断/DOM 锚定/气泡状态 | 悬停 Agent 无法拆分测试；改动牵一发而动全身 |
+| 2 | P1 | 严重 | `packages/contracts/src/hoverSanitize.ts:1-630` | 契约包内 630 行运行时正则净化逻辑 | 「契约层」与「业务净化」物理混杂，变更 DTO 与变更规则同包耦合 |
+| 3 | P0 | 高 | `apps/web/src/components/article/ArticleCardInlineAgent.tsx:1-450` + `useHoverAgent.ts` | 卡片内联悬停与页面悬停各维护一套并行状态机（共享 `runHoverExplainStream` 但 UI/时序逻辑重复） | 悬停体验两处演进，易出现行为漂移 |
+| 4 | P2 | 严重 | `services/api/prisma/schema.prisma:1-322` | 15 模型单 SQLite/Prisma 库；各域服务均注入同一 `PrismaClient` | 物理层未隔离；跨域约束仅靠脚本 + 自律 |
+| 5 | P2 | 高 | `services/agent/src/services/userContextCache.ts:41-48` 等 | 进程内单例缓存（用户上下文、浏览去重、API refresh 单飞） | 多实例部署缓存/计数不一致 |
+| 6 | P2 | 高 | `services/agent/src/services/agentOrchestrator.ts:21-24` | Orchestrator 依赖并 re-export `routes/schemas.ts` 的 Zod 类型 | 编排层与路由层反向耦合，替换 orchestrator 牵动路由 schema |
+| 7 | P2 | 高 | `openwiki/architecture/overview.md:10-57` 等 | 文档仍写 `apps/api`、`@agentforge/shared`、端口 5280/3001；源码为 `services/api`、`@core/contracts`、8180/8181 | 新人按 wiki 无法启动/找代码 |
+| 8 | P1 | 高 | `services/agent/src/services/agentMemory.ts:26-33` | 引用未定义的 `UserCtx` 类型 → `npm run typecheck` 在 `@core/agent` 失败 | CI 若启用全量 typecheck 将阻断合并 |
+| 9 | P2 | 高 | `apps/web/src/lib/apiToken.ts:3-22` | Access/Refresh Token 存 `localStorage` | XSS 可窃取会话（与 httponly cookie 迁移文档意图相悖） |
+| 10 | P3 | 中 | `apps/web` | 仅 `client.test.ts` 1 个测试；10k+ 行 UI 无组件/Hook 回归网 | 前端重构无自动化护栏 |
 
 ### 0.3 修复路线图 (3 阶段)
 
-- **阶段 1（立即，P0）**: 拆分 `api.ts` 为按域模块（`api/articles.ts`、`api/agent.ts`…）；将 `AgentFloat.tsx` 拆为 `HoverTip` + `AgentPanelShell` + hooks；将 `articles.ts` 中的 `viewedCache` 与 handler 逻辑下沉到 `services/viewTracking.ts`
-- **阶段 2（下个迭代，P1）**: 将 `explainSchema`/`chatSchema` 移至 `routes/schemas.ts` 或 `contracts`；继续瘦身 `agentOrchestrator.ts`；统一 API 默认端口为 `8181`（`index.ts` 与 `dev.mjs` 对齐）
-- **阶段 3（可延后，P2）**: 为多实例就绪引入 Redis 适配层（浏览去重、hover/agent 上下文缓存）；评估按域拆分 Prisma schema 或迁移 PostgreSQL；补充 `apps/web` Vitest + 关键路径组件测试
+- **阶段 1（立即，P0）**: 抽取共享 `useHoverExplainCore`（或状态机模块），让 `ArticleCardInlineAgent` 与 `useHoverAgent` 共用；为 `agentMemory.ts` 补充 `UserCtx` 类型定义或改为内联返回类型
+- **阶段 2（下个迭代，P1）**: 拆分 `useHoverAgent.ts`（计时器 / 流式 / 布局 / 状态 四文件）；评估将 `hoverSanitize.ts` 迁至 `packages/foundation` 或独立 `packages/hover-sanitize`，`contracts` 仅 re-export 类型常量
+- **阶段 3（可延后，P2）**: 批量修订 `openwiki/` 与 `docs/` 路径/包名；为多实例引入 Redis 适配（`viewTracking`、`userContextCache`）；推进 Token httponly cookie；路由层 Prisma 调用下沉 repository
 
 ### 0.4 总体统计
 
 | 维度 | 数值 |
 | --- | --- |
-| 上帝文件数 (>300 行警告 / >500 行严重) | 警告 8 / 严重 2 |
-| 循环依赖数 (相对 import SCC) | 0 |
-| 跨层引用数 | 2 |
-| 命名违例数 | 6 |
-| 跨业务文件数 | 3 |
-| 隐式全局依赖数 | 7 |
-| 业务调用矩阵杂糅度 | 2（前端 api 层、AgentFloat） |
+| 上帝文件数 (>300 警告 / >500 严重) | 警告 18 / 严重 4 |
+| 循环依赖数 (模块级 `@core/*` import) | 0 |
+| 跨层引用数 | 3 |
+| 命名违例数 | 5 |
+| 跨业务文件数 | 2 |
+| 隐式全局依赖数 | 6 |
+| 业务调用矩阵杂糅度 | 1（悬停双实现） |
 | 架构优雅主观分 (§1.9) | 16/25 |
 
 ---
@@ -59,367 +73,331 @@
 ```
 AgentForge/
 ├── apps/
-│   ├── web/          # @core/web — React 19 + Vite 8
-│   ├── desktop/      # @core/desktop — 占位
-│   └── mobile/       # @core/mobile — 占位
+│   ├── web/           # Vite + React SPA（活跃，73 个 src 文件）
+│   ├── desktop/       # 仅占位 package.json
+│   └── mobile/        # 仅占位 package.json
 ├── packages/
-│   ├── contracts/    # @core/contracts — DTO/端口/权限
-│   └── foundation/   # @core/foundation — JWT/SSE/错误/BYOK
+│   ├── contracts/     # DTO、权限、端口类型、hoverSanitize
+│   └── foundation/    # JWT、BYOK、SSE、错误处理、校验中间件
 ├── services/
-│   ├── api/          # @core/api — 组合根 + Prisma
-│   ├── identity/     # @core/identity
-│   ├── content/      # @core/content
-│   ├── community/    # @core/community
-│   ├── agent/        # @core/agent
-│   ├── llm/          # @core/llm
-│   └── mcp/          # @core/mcp — 占位
-├── scripts/          # dev.mjs, check-domain-boundaries.mjs
-└── docs/
+│   ├── api/           # 组合根宿主：Express app + Prisma + compose
+│   ├── agent/         # Agent runtime、路由、记忆、编排
+│   ├── content/       # 文章、域、动画、批注
+│   ├── community/     # 话题
+│   ├── identity/      # 认证、设置、作者申请
+│   ├── llm/           # LLM 网关与适配器
+│   └── mcp/           # 仅占位
+├── scripts/           # dev.mjs、check-domain-boundaries.mjs
+├── openwiki/          # 项目 wiki（**多处与源码不一致**）
+├── docs/              # 权威文档 + review 快照
+└── tests/             # integration/unit 目录（实际测试分散在各 workspace）
 ```
 
 ### 1.2 模块划分图
 
 ```mermaid
 graph LR
-  web[@core/web] --> contracts[@core/contracts]
-  foundation[@core/foundation] --> contracts
-  identity[@core/identity] --> foundation
-  content[@core/content] --> foundation
-  community[@core/community] --> foundation
-  agent[@core/agent] --> foundation
-  llm[@core/llm] --> foundation
-  api[@core/api] --> identity
-  api --> content
-  api --> community
-  api --> agent
-  api --> llm
-  api --> foundation
+  WEB[apps/web] --> CONTRACTS[packages/contracts]
+  WEB -->|HTTP /api/v1| API[services/api]
+  API --> ID[services/identity]
+  API --> CT[services/content]
+  API --> CM[services/community]
+  API --> AG[services/agent]
+  API --> LLM[services/llm]
+  ID --> FOUND[packages/foundation]
+  CT --> FOUND
+  CM --> FOUND
+  AG --> FOUND
+  LLM --> FOUND
+  ID --> CONTRACTS
+  CT --> CONTRACTS
+  CM --> CONTRACTS
+  AG --> CONTRACTS
+  LLM --> CONTRACTS
+  FOUND --> CONTRACTS
 ```
 
-### 1.3 跨模块依赖矩阵 (@core 包级 import 次数)
+### 1.3 跨模块依赖矩阵（`@core/*` 包级 import 次数，源码静态抽取）
 
 |  | contracts | foundation | identity | content | community | agent | llm |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| web | ✓ | — | — | — | — | — | — |
-| foundation | ✓ | — | — | — | — | — | — |
-| identity | ✓ | ✓ | — | — | — | — | — |
-| content | ✓ | ✓ | — | — | — | — | — |
-| community | ✓ | ✓ | — | — | — | — | — |
-| agent | ✓ | ✓ | — | — | — | — | — |
-| llm | ✓ | ✓ | — | — | — | — | — |
-| api | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **api** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **web** | ✓ | — | — | — | — | — | — |
+| **identity** | ✓ | ✓ | — | — | — | — | — |
+| **content** | ✓ | ✓ | — | — | — | — | — |
+| **community** | ✓ | ✓ | — | — | — | — | — |
+| **agent** | ✓ | ✓ | — | — | — | — | — |
+| **llm** | ✓ | ✓ | — | — | — | — | — |
+| **foundation** | ✓ | — | — | — | — | — | — |
 
-域服务之间**无**横向 `@core/*` import；仅 `services/api/src/compose.ts` 聚合（已验证 `node` 静态 SCC：157 文件，0 环）。
+域服务之间 **无** 直接 `@core/{other-service}` import（`node scripts/check-domain-boundaries.mjs` 通过）。
 
-### 1.4 数据流图 (典型 Agent 对话请求)
+### 1.4 数据流图 (一次面板对话请求)
 
 ```mermaid
 sequenceDiagram
-  Client->>Web: POST /api/v1/agent/chat/stream
-  Web->>API: fetch (proxy /api)
-  API->>AgentRouter: mount /api/v1/agent
-  AgentRouter->>Orchestrator: prepareChat()
-  Orchestrator->>Conversation: ensureConversation()
-  Orchestrator->>Memory: loadUserContext()
-  Orchestrator->>LLM: callLlmWithFallback / stream
-  LLM-->>Orchestrator: StreamChunk
-  Orchestrator->>Conversation: persistTurn()
-  AgentRouter-->>Web: SSE
+  participant Browser as apps/web
+  participant API as services/api
+  participant Agent as services/agent
+  participant LLM as services/llm
+  participant DB as Prisma/SQLite
+
+  Browser->>API: POST /api/v1/agent/chat (SSE)
+  API->>Agent: agent router (in-process)
+  Agent->>DB: agentConversation / agentMessage
+  Agent->>Agent: orchestrator.prepareChat
+  Agent->>LLM: LlmGatewayPort.call/stream
+  LLM-->>Agent: StreamChunk
+  Agent-->>Browser: SSE meta/thinking/final/done
+  Agent->>DB: finalizeChatTurn
 ```
 
 ### 1.5 技术栈清单
 
-| 类别 | 技术 | 出现位置 | 版本 |
+| 类别 | 技术 | 出现位置 | 版本（package.json） |
 | --- | --- | --- | --- |
-| 语言 | TypeScript | 全部 src | 5.x (workspace) |
-| 运行时 | Node.js | engines | ≥20.3 |
-| 前端 | React + Vite | apps/web | React 19, Vite 8 |
-| 后端 | Express | services/api | 4.x |
-| ORM | Prisma | services/api/prisma | SQLite |
-| 测试 | Vitest | 各 workspace | 3.2.7 |
-| 校验 | Zod | routes/services | — |
+| 语言 | TypeScript | 全仓 | ~5.9.3 |
+| 前端 | Vite + React | `apps/web` | Vite 8 / React 19 |
+| 后端 | Express 5 | `services/api` | express ^5 |
+| ORM | Prisma 6 | `services/api/prisma` | prisma ^6 |
+| DB | SQLite（可切 PG） | `schema.prisma` | provider sqlite |
+| 测试 | Vitest | 各 workspace | ^3.2.4 |
+| 校验 | Zod | routes/schemas | zod |
 
 ### 1.6 业务清单
 
-**核心业务 (6)**
-
-1. **身份与权限 (identity)**: 注册/登录/JWT 刷新、作者申请、用户设置与 BYOK 偏好
-2. **内容 (content)**: 文章 CRUD/发布、领域、动画定义、批注与审核
-3. **社区 (community)**: 话题与回复；关联文章经 `ArticleQueryPort`
-4. **Agent (agent)**: 悬停讲解、面板对话、记忆、学习进度、tool-loop
-5. **LLM 网关 (llm)**: 无状态多 Provider 调用、熔断、并发槽、BYOK 解密
-6. **Web 读者/作者端 (web)**: 路由、Agent UI、动画播放器、管理页
-
-**支撑业务 (2)**
-
-7. **契约层 (contracts)**: 跨域 DTO 与 Port 定义
-8. **机制层 (foundation)**: HTTP 中间件、JWT、SSE、日志、BYOK 加解密
+1. **身份与权限 (identity)**：注册/登录/JWT 轮换、用户资料、BYOK 设置、作者申请审核
+2. **内容 (content)**：文章 CRUD、知识域、动画定义、批注与审核
+3. **社区 (community)**：话题与回复，通过 `ArticleQueryPort` 关联文章
+4. **Agent (agent)**：悬停快讲、面板对话、ReAct tool-loop、记忆与学习进度
+5. **LLM 网关 (llm)**：多 Provider 适配、熔断重试、BYOK 出站
+6. **支撑：动画呈现 (web/anim)**：前端 `SceneCanvas` 分步动画引擎
+7. **支撑：悬停净化 (contracts/hoverSanitize)**：前后端共享答案质检
+8. **支撑：组合根 (api/compose)**：唯一跨域装配点
 
 ---
 
 ## 2. 模块级审查
 
-### 2.1 模块: `packages/contracts`
+### 2.1 模块：`apps/web`
 
 #### 2.1.1 功能定位
 
-品牌中立的共享契约：DTO、权限矩阵、`ArticleQueryPort`/`UserQueryPort`/`LlmGatewayPort`、悬停文本净化。
+读者/作者/管理员 SPA；通过 `lib/api/*` 访问 REST；内置双 Agent UI 与动画引擎。
 
 #### 2.1.2 入口文件
 
-`packages/contracts/src/index.ts:1-30`
+`apps/web/src/main.tsx`
 
-#### 2.1.3 内部文件清单
+#### 2.1.3 内部文件清单（节选）
 
 | 文件 | 行数 | 职责 | 命名合规 |
 | --- | --- | --- | --- |
-| `dto.ts` | ~200 | 领域 DTO | ✅ |
-| `ports.ts` | ~80 | 端口接口 | ✅ |
-| `permissions.ts` | ~100 | RBAC | ✅ |
-| `hoverSanitize.ts` | ~250 | 悬停净化算法 | ✅ |
-| `llm-types.ts` | ~60 | LLM 类型 | ✅ |
+| `components/agent/useHoverAgent.ts` | 642 | 悬停 Agent 全链路 | ⚠️ 上帝 Hook |
+| `components/article/ArticleCardInlineAgent.tsx` | 450 | 卡片内联悬停 | ⚠️ 与上重复 |
+| `pages/HomePage.tsx` | 535 | 首页布局+Feed | ⚠️ 上帝页面 |
+| `components/anim/primitives/SceneCanvas.tsx` | 560 | 动画渲染 | ⚠️ 体积大 |
+| `lib/api/client.ts` | 125 | HTTP 客户端+refresh 单飞 | ✅ |
+| `components/agent/AgentFloat.tsx` | 86 | Agent 入口（已瘦身） | ✅ |
 
 #### 2.1.4 依赖出入度
 
-- 入度: 全部被依赖（叶→根最底层）
-- 出度: 0（不 import 任何 `@core/*`）
+- 出度：仅 `@core/contracts`（类型）+ 本地模块；**不** import 任何 `@core/{service}`
+- 入度：无（前端叶子）
 
 #### 2.1.5 对外暴露面
 
-`export *` 聚合于 `index.ts`；无运行时服务。
+无 npm 导出；构建产物 `dist/`。
 
 #### 2.1.6 违例项
 
-- [P3/低] `packages/contracts/src/index.ts:16-19`: 导出别名 `stripSelfRevisionClient` 等与后端函数并存，同一概念双命名。修复方向: 统一命名或标注 `@deprecated`。
+- [P1/严重] `apps/web/src/components/agent/useHoverAgent.ts:24-641`：单函数 `useHoverAgent` 承载 ≥4 类职责（DOM 事件、请求节流、SSE 流、气泡 UI 状态）。证据：文件 642 行，含 6 组 `useRef` 计时器与 `runHoverExplainStream` 调用。修复方向：拆为 `useHoverTimers`、`useHoverStream`、`useHoverPlacement`。
+- [P0/高] `apps/web/src/components/article/ArticleCardInlineAgent.tsx:240-280` 与 `useHoverAgent.ts`：两套独立悬停状态机。证据：二者均调用 `runHoverExplainStream` 并各自维护 `IncompleteHoverKeys`、思考延迟常量。修复方向：共用 `createHoverExplainController()`。
+- [P1/严重] `apps/web/src/pages/HomePage.tsx:1-535`：首页硬编码 `DOMAINS` 营销数据 + 双 Feed API 拉取 + 视图模式。修复方向：拆 `HomeDomainsCarousel`、`HomeFeeds`。
+- [P2/高] `apps/web/src/lib/apiToken.ts:6-22`：Token 持久化于 `localStorage`。修复方向：对齐 `docs` 中 httponly cookie 迁移路线。
+- [P2/高] `apps/web/src/components/agent/AgentFloat.tsx:51-52`：`window` 自定义事件 `agent:explain` 无显式契约模块。修复方向：集中至 `lib/agentEvents.ts` 并 typed dispatch。
 
 #### 2.1.7 重构建议
 
-1. 将 Zod schema（目前在 agent/content 路由）逐步收敛到 contracts 或独立 `schemas` 子包
+1. 优先拆分 `useHoverAgent.ts`（风险最高、行数最多）
+2. 为 `lib/api/*` 各域补充契约测试（mock fetch）
+3. 保持 `AgentFloat.tsx` 薄封装模式，继续下沉逻辑到 hooks
 
 ---
 
-### 2.2 模块: `packages/foundation`
+### 2.2 模块：`services/api`
 
 #### 2.2.1 功能定位
 
-跨域 HTTP 机制：认证中间件、JWT、错误体、SSE 助手、BYOK 加解密、限流。
+**唯一组合根**：装配 Prisma、LLM、各域 Router；HTTP 中间件、健康检查、限流。
 
 #### 2.2.2 入口文件
 
-`packages/foundation/src/index.ts`
+`services/api/src/index.ts:8`（`PORT` 默认 **8181**，与 `scripts/dev.mjs:26` 一致）
 
-#### 2.2.3 违例项
+#### 2.2.3 内部文件清单
 
-- [P3/中] 包名 `foundation` 属语义模糊筐（§1.8）。修复方向: 拆为 `http-middleware`、`crypto-byok` 等具名包，或保留但文档明确边界。
-- [P2/中] `packages/foundation/src/llmAnswerExtract.ts` 与 `contracts/hoverSanitize.ts` 共同承担 LLM 答案提取语义，逻辑分散。修复方向: 收敛到 contracts 或单一 `llm-text` 模块。
+| 文件 | 行数 | 职责 |
+| --- | --- | --- |
+| `src/compose.ts` | 76 | 跨域装配与 port 接线 |
+| `src/app.ts` | 105 | Express 中间件栈 |
+| `prisma/schema.prisma` | 322 | 全库模型 |
+| `src/agent.sse.test.ts` | 288 | Agent SSE 集成测试 |
 
----
+#### 2.2.6 违例项
 
-### 2.3 模块: `services/identity`
-
-#### 2.3.1 功能定位
-
-认证、用户资料、作者申请、设置（含 BYOK 加密存储触发 agent 缓存失效）。
-
-#### 2.3.2 入口文件
-
-`services/identity/src/index.ts` — `createIdentityRouters`, `createIdentityRepository`
-
-#### 2.3.3 违例项
-
-- [P2/中] `services/identity/src/routes/settings.ts`: 偏好变更通过 `onPrefsChanged` 回调泄漏到 compose 层再转发 agent（`compose.ts:45-53`），identity 与 agent 存在**装配期隐式耦合**。修复方向: 事件端口或消息总线契约化，而非闭包回调。
+- [P2/严重] `services/api/prisma/schema.prisma:10-322`：identity/content/community/agent 模型同库。证据：单 `datasource` + 各服务 `createXRouter({ prisma })`。修复方向：文档化「模块化单体」取舍；长期 PostgreSQL + 逻辑分 schema 或拆库。
+- [P2/中] `services/api/src/app.ts:27-29`：CORS 默认硬编码 `localhost:8180`。可接受开发默认，生产需 `CORS_ORIGIN`。
 
 ---
 
-### 2.4 模块: `services/content`
+### 2.3 模块：`services/agent`
 
-#### 2.4.1 功能定位
+#### 2.3.6 违例项
 
-文章、动画、领域、批注；通过 `UserQueryPort` 补作者信息。
-
-#### 2.4.2 违例项
-
-- [P0/高] `services/content/src/routes/articles.ts:34-333`: Fat Router（见 TOP 10 #3）。
-- [P2/高] `services/content/src/routes/articles.ts:42-56`: 进程内 `viewedCache` Map，注释已承认多实例不一致（`articles.ts:39`）。修复方向: Redis SETNX 或 DB 侧去重表。
+- [P1/高] `services/agent/src/services/agentMemory.ts:26-33`：`UserCtx` 未定义。证据：`npm run typecheck` 输出 `error TS2304: Cannot find name 'UserCtx'`。修复方向：在文件顶部 `type UserCtx = Awaited<ReturnType<typeof loadUserContextInner>>` 或显式 interface。
+- [P2/高] `services/agent/src/services/agentOrchestrator.ts:21-24`：`import type { ChatBody, ExplainBody } from '../routes/schemas.js'` 并 re-export。修复方向：schema 移至 `services/agent/src/schemas.ts`，routes 与 orchestrator 共同依赖。
+- [P1/中] `services/agent/src/routes/chat.ts:1-272` 与 `explain.ts:1-257`：SSE 处理结构高度相似（meta/cache/final/done）。修复方向：抽取 `createAgentSseHandler` 模板。
 
 ---
 
-### 2.5 模块: `services/community`
+### 2.4 模块：`services/content`
 
-#### 2.5.1 功能定位
+#### 2.4.6 违例项
 
-话题论坛；`articleLink.ts` 经 `ArticleQueryPort` 校验关联文章（良好边界实践）。
-
-#### 2.5.2 违例项
-
-- 无 P0/P1；`services/community/src/routes/topics.ts` 体量适中。
+- [P2/高] `services/content/src/routes/articles.ts:35-314`：Router 内直接 `prisma.article.*`（15 处），repository 仅用于跨服务 `ArticleQueryPort`。证据：grep `prisma.` 路由 15 vs `repositories.ts` 5。修复方向：ArticleRepository 封装 CRUD。
+- [P2/高] `services/content/src/services/viewTracking.ts:33-38`：`getDefaultViewDedup()` 进程单例 Map。证据：注释已写明多实例需 Redis。修复方向：Port + 内存/Redis 实现。
 
 ---
 
-### 2.6 模块: `services/agent`
+### 2.5 模块：`services/identity`
 
-#### 2.6.1 功能定位
+#### 2.5.6 违例项
 
-悬停/面板 Agent、会话、记忆、tool-loop、学习进度。
-
-#### 2.6.2 违例项
-
-- [P1/高] `services/agent/src/services/agentOrchestrator.ts:24-319`: 多职责编排（见 TOP 10 #5）。
-- [P2/高] `services/agent/src/routes/chat.ts:17`: `import { chatSchema } from '../services/agentOrchestrator.js'` — 路由依赖编排实现文件。
-- [P2/高] `services/agent/src/routes/explain.ts:17`: 同上，`explainSchemaFixed`。
-- [P2/高] `services/agent/src/services/agentMemory.ts:29-49`: 进程内 `ctxCache` Map（`CTX_MAX_ENTRIES=5000`），多副本 TTL 窗口内不一致。
-- [P2/中] `services/agent/src/lib/agentConstants.ts:12-24`: 直接读 `process.env`，未通过 compose 注入。
+- [P2/高] `services/identity/src/routes/settings.ts:64-223`：设置路由 223 行，混合 BYOK CRUD、`test-llm`、偏好读写、限流。修复方向：拆 `byokRoutes`、`preferencesRoutes`。
+- [P2/高] `services/identity/src/routes/auth.ts`：10 处直接 `prisma` 调用，无 auth repository 层。
 
 ---
 
-### 2.7 模块: `services/llm`
+### 2.6 模块：`services/community`
 
-#### 2.7.1 功能定位
-
-Provider 加载、适配器（OpenAI/Anthropic）、熔断、并发控制、BYOK failover。
-
-#### 2.7.2 违例项
-
-- [P1/高] `services/llm/src/providers.ts:1-419`: 接近严重阈值；混合 env 加载、HTTP 调用、failover、流式、密钥密封（`sealProvider`）。
-- [P2/高] `services/llm/src/providers.ts:43-47`: `_providers` 模块级缓存，测试间可能泄漏状态。
-- [P2/高] `services/llm/src/resilience.ts:152`: `let inFlight = 0` 全局并发计数，多进程各自限流。
-- [P2/中] `services/llm/src/providers.ts:39-41` 及多处: 大量 `process.env` 直读，配置与实现未分离。
+- [P2/中] `services/community/src/routes/topics.ts:1-188`：Fat router + 直接 prisma（8 处）。`articleLink.ts` 正确使用 `ArticleQueryPort`。
 
 ---
 
-### 2.8 模块: `services/api`
+### 2.7 模块：`services/llm`
 
-#### 2.8.1 功能定位
-
-唯一组合根：Express 装配、Prisma、健康检查、域路由挂载。
-
-#### 2.8.2 违例项
-
-- [P2/严重] 单 `schema.prisma` 持有全部 15 模型 — 域物理边界未分离（设计选择，但影响独立部署）。
-- [P2/高] `services/api/src/index.ts:8`: `const port = Number(process.env.PORT || 3001)` 与 `scripts/dev.mjs:26`（`8181`）、`docs/architecture/overview.md:135`（8181）不一致。
-- [P2/中] `services/api/src/app.ts:27`: CORS 默认 `http://localhost:5280`，与 Vite 默认 `8180` 不符；开发若设 `VITE_API_BASE_URL` 跨源则可能 CORS 失败。
+- [P1/中] `services/llm/src/providers.ts:1-372`：Provider 解析、URL 拼装、BYOK 解密、缓存同文件。已拆 adapters，主文件仍偏大。
+- [P2/中] `services/llm/src/providerEnv.ts:18-31`：Provider 默认 URL 硬编码（可通过 env 覆盖，属合理默认）。
 
 ---
 
-### 2.9 模块: `apps/web`
+### 2.8 模块：`packages/contracts`
 
-#### 2.9.1 功能定位
+- [P1/严重] `packages/contracts/src/hoverSanitize.ts:1-630`：运行时正则 + 导出函数，非纯类型契约。与 `dto.ts`（179 行）同包。修复方向：迁出净化实现或拆子包。
+- [P3/中] 包名 `@core/contracts` 与项目名 AgentForge/Grimoire 不一致（workspace 惯例 `@core/*`，可接受但文档需统一）。
 
-读者/作者 SPA；仅允许依赖 `@core/contracts`（CI 强制）。
+---
 
-#### 2.9.2 违例项
+### 2.9 模块：`packages/foundation`
 
-- [P0/严重] `apps/web/src/lib/api.ts:134-442` — 全业务上帝 API 客户端（TOP 10 #1）。
-- [P0/严重] `apps/web/src/components/agent/AgentFloat.tsx:1-918` — 双 Agent UI 上帝组件（TOP 10 #2）。
-- [P1/严重] `AgentFloat.tsx` 918 行；`HomePage.tsx` 517 行；`SceneCanvas.tsx` 532 行 — 均超警告阈值。
-- [P2/中] `apps/web/src/lib/apiToken.ts`: JWT 存 `localStorage`（`overview.md:44` 已记录风险，HttpOnly 迁移待做）。
+- 职责清晰：JWT、BYOK 加解密、`byokUrlPolicy.ts` SSRF 防护、Express 中间件。
+- [P2/中] `packages/foundation/src/auth.ts:15`：`declare global` 扩展 Express `Request.user`——隐式全局类型约定，多服务共享。
+
+---
+
+### 2.10 占位模块：`apps/desktop`、`apps/mobile`、`services/mcp`
+
+仅 `package.json`/`tsconfig.json`，无源码。`services/api/src/app.ts:93-100` 暴露 `/api/v1/mcp/status` 占位响应。
 
 ---
 
 ## 3. 业务级审查
 
-### 3.1 业务: Agent（悬停 + 面板）
-
-#### 3.1.1 业务描述
-
-双模式 Agent：悬停快速讲解（单轮、缓存 L1/L2）与面板深度对话（会话持久化、tool-loop）。
+### 3.1 业务：Agent（悬停 + 面板）
 
 #### 3.1.2 边界与接口
 
-- 输入: HTTP `/api/v1/agent/explain|chat|memory|progress`
-- 输出: SSE 流或 JSON；`AgentMemory`/`LearningProgress` 持久化
-- 依赖: `UserQueryPort`, `ArticleQueryPort`, `LlmGatewayPort`
-
-#### 3.1.3 涉及文件（跨模块）
-
-| 文件 | 所属模块 | 业务归属 |
-| --- | --- | --- |
-| `services/agent/src/services/agentOrchestrator.ts` | agent | 编排核心 |
-| `apps/web/src/components/agent/AgentFloat.tsx` | web | 双模式 UI |
-| `apps/web/src/hooks/useAgentPanel.ts` | web | 面板状态 |
-| `apps/web/src/lib/hoverExplainSession.ts` | web | 悬停 L1 |
+- 输入：悬停 DOM 目标 / 面板 chat 消息
+- 输出：SSE 流式讲解、会话持久化、`AgentMemory`
+- 依赖：`UserQueryPort`、`ArticleQueryPort`、`LlmGatewayPort`
 
 #### 3.1.4 业务间调用矩阵
 
-|  | identity | content | llm |
+|  | identity | content | agent |
 | --- | --- | --- | --- |
-| agent | 经 Port 读用户偏好 | 经 Port 读文章/进度标题 | 经 Port 调 LLM |
+| identity | — | 0 | 0（经 compose 回调 invalidate） |
+| content | 0 | — | 0 |
+| agent | 端口调用 | 端口调用 | — |
 
-矩阵合规：无直接跨域表访问（`check-domain-boundaries.mjs` 通过）。
+#### 3.1.5 杂糅度
 
-#### 3.1.5 杂糅度评估
-
-- 跨业务文件数: 2（`AgentFloat.tsx` 混悬停+面板；`api.ts` agent 段与其他域并列）
+- 跨业务文件：2（`ArticleCardInlineAgent` + `useHoverAgent` 双实现悬停）
 
 #### 3.1.6 违例项
 
-- [P0/严重] `AgentFloat.tsx`: 同一组件处理悬停预取、气泡动画、面板开关、帮助态 — 违反 §1.3。
+- [P0/高] 见 §0.2 #3。
 
 ---
 
-### 3.2 业务: 内容 (文章)
+### 3.2 业务：内容（文章/域/批注）
 
-#### 3.2.1 违例项
-
-- [P0/高] `articles.ts` 路由工厂内嵌浏览统计缓存与完整 CRUD（§1.3 同模块多业务场景分支：列表/详情/发布权限各异但混于单函数块）。
+- 批注审核逻辑已拆至 `annotationReview.ts`、`annotationAcl.ts`（✅）
+- 文章路由仍 Fat（§2.4）
 
 ---
 
-### 3.3 业务: 身份
+### 3.3 业务：身份（认证/BYOK）
 
-边界清晰；`applicationReview.ts` 有单测覆盖。无 P0。
+- BYOK 加密在 `foundation`，设置路由在 `identity`（边界清晰）
+- Token 存 localStorage 在前端（§2.1）
 
 ---
 
 ## 4. 文件级审查
 
-### 4.1 上帝文件清单
+### 4.1 上帝文件清单（仅 `.ts/.tsx` 源码，排除 seed/脚本/静态站）
 
 | 文件 | 行数 | 职责数 | 严重度 |
 | --- | --- | --- | --- |
-| `apps/web/src/components/agent/AgentFloat.tsx` | 918 | 4+ | 严重 |
-| `services/api/prisma/seed-content.ts` | 1035 | 1（种子数据） | 中（数据文件） |
-| `apps/web/src/components/anim/primitives/SceneCanvas.tsx` | 532 | 3 | 高 |
-| `apps/web/src/pages/HomePage.tsx` | 517 | 3 | 高 |
-| `apps/web/src/lib/api.ts` | 443 | 10+ | 高 |
-| `services/llm/src/providers.ts` | 419 | 4 | 高 |
-| `apps/web/src/pages/SettingsPage.tsx` | 451 | 3 | 高 |
-| `services/content/src/routes/articles.ts` | 334 | 4 | 高 |
-| `services/agent/src/services/agentOrchestrator.ts` | 324 | 5 | 高 |
+| `apps/web/src/components/agent/useHoverAgent.ts` | 642 | ≥4 | 严重 |
+| `packages/contracts/src/hoverSanitize.ts` | 630 | 1（但错层） | 严重 |
+| `apps/web/src/components/anim/primitives/SceneCanvas.tsx` | 560 | 2 | 严重 |
+| `apps/web/src/pages/HomePage.tsx` | 535 | 3 | 严重 |
+| `apps/web/src/pages/SettingsPage.tsx` | 474 | 3 | 高 |
+| `apps/web/src/components/article/ArticleCardInlineAgent.tsx` | 450 | 2 | 高 |
+| `services/llm/src/providers.ts` | 372 | 3 | 高 |
 
 ### 4.2 重复功能文件清单
 
 | 文件组 | 文件数 | 重复度 | 严重度 |
 | --- | --- | --- | --- |
-| 悬停净化前后端 | 2 (`contracts/hoverSanitize`, `foundation/llmAnswerExtract`) | 语义重叠 ~40% | 中 |
-| LLM 默认 URL | 2 (`llm/providers.ts:55`, `web/SettingsPage.tsx:19`) | 硬编码重复 | 低 |
+| 悬停状态机 | `useHoverAgent.ts` + `ArticleCardInlineAgent.tsx` | ~40% | 高 |
+| Agent SSE 路由 | `chat.ts` + `explain.ts` | ~35% | 中 |
 
 ### 4.3 命名违例清单
 
 | 文件 | 行号 | 违例命名 | 严重度 |
 | --- | --- | --- | --- |
-| `services/agent/src/services/agentOrchestrator.ts` | 1 | `Orchestrator` 模糊筐 | 中 |
-| `packages/foundation/` | — | `foundation` 模糊筐 | 中 |
-| `package.json` | 7 | 描述含品牌 `Grimoire` | 低 |
-| `@core/*` workspace 名 | — | 项目代号式命名空间 | 低 |
-| `services/*/src/services/` 目录 | — | 目录名 `services` 嵌套于 service 包内 | 低 |
+| `packages/contracts` | — | `contracts` 含非契约实现 | 中 |
+| `packages/foundation` | — | `foundation` 模糊筐（内容尚可） | 低 |
+| `openwiki` | 多处 | `AgentForge` 品牌嵌入路径叙述 | 低 |
+| `@core/*` | — | 与根 `package.json` description「Grimoire」不一致 | 低 |
 
 ### 4.4 死代码清单
 
 | 文件 | 符号 | 调用方数 |
 | --- | --- | --- |
-| `services/mcp` | 除 `GET /api/v1/mcp/status` 外无实现 | 占位（文档已声明） |
-| `apps/desktop`, `apps/mobile` | 占位 build 脚本 | 0 业务引用 |
+| N/A | 未做全量调用图 | — |
 
-（未做全仓调用图；以上为有文档佐证之占位代码，非「从未引用」之确定死代码。）
+（未运行专用 dead-code 分析；`apps/desktop`、`apps/mobile` 为占位包。）
 
 ### 4.5 跨业务文件清单
 
 | 文件 | 命中业务 | 严重度 |
 | --- | --- | --- |
-| `apps/web/src/lib/api.ts` | auth, articles, community, agent, annotations, domains… | 严重 |
-| `apps/web/src/components/agent/AgentFloat.tsx` | 悬停 Agent + 面板 Agent | 严重 |
-| `services/content/src/routes/articles.ts` | 列表/CRUD/统计/发布 | 高 |
+| `apps/web/src/pages/SettingsPage.tsx` | UI 偏好 + API 设置 + Agent 缓存 | 中 |
+| `services/api/src/compose.ts` | 全业务装配（**设计使然**） | N/A |
 
 ---
 
@@ -429,16 +407,13 @@ Provider 加载、适配器（OpenAI/Anthropic）、熔断、并发控制、BYOK
 
 | 文件 | 函数 | 行数 | 参数 | 严重度 |
 | --- | --- | --- | --- | --- |
-| `articles.ts` | `createArticlesRouter` (工厂) | 300 | 2 | 严重 |
-| `articles.ts` | `GET /` handler | 95 | — | 高 |
-| `agentConversation.ts` | `persistTurn` | 51 | 4 | 高 |
-| `agentOrchestrator.ts` | `runExplain` | 50 | — | 高 |
-| `agentOrchestrator.ts` | `prepareChat` | 49 | — | 高 |
-| `api.ts` | `request` | 55 | 3 | 中 |
+| `useHoverAgent.ts` | `useHoverAgent` | ~600 | 2 | 严重 |
+| `hoverSanitize.ts` | `extractHoverAnswer` 等 | 多函数 | — | 中 |
+| `HomePage.tsx` | `HomePage` | ~400 | 0 | 高 |
 
 ### 5.2 类级问题清单
 
-项目以函数式工厂为主，无典型上帝**类**；`ApiError`（`api.ts:23-31`）体量正常。
+无典型「上帝类」；项目以工厂函数 + Router 为主（✅）。
 
 ---
 
@@ -446,81 +421,53 @@ Provider 加载、适配器（OpenAI/Anthropic）、熔断、并发控制、BYOK
 
 ### 6.1 循环依赖清单
 
-| 环路 | 文件 | 严重度 |
-| --- | --- | --- |
-| — | 静态分析 157 个 `src` 文件，SCC=0 | N/A |
+| 环路 | 严重度 |
+| --- | --- |
+| 无（模块级 Tarjan SCC 为空；`check-domain-boundaries.mjs` 通过） | — |
 
 ### 6.2 跨层引用清单
 
 | 来源 | 目标 | 文件:行号 | 严重度 |
 | --- | --- | --- | --- |
-| routes | services (schema) | `services/agent/src/routes/chat.ts:17` | 高 |
-| routes | services (schema) | `services/agent/src/routes/explain.ts:17` | 高 |
+| orchestrator | routes schemas | `agentOrchestrator.ts:21-24` | 高 |
+| routes | prisma 直调 | `content/routes/*.ts` 等 | 高 |
+| web UI | `window` 事件总线 | `AgentFloat.tsx:51` | 中 |
 
 ### 6.3 隐式全局依赖清单
 
 | 类型 | 位置 | 严重度 |
 | --- | --- | --- |
-| 模块缓存 | `services/llm/src/providers.ts:43` | 高 |
-| 并发计数 | `services/llm/src/resilience.ts:152` | 高 |
-| 用户上下文缓存 | `services/agent/src/services/agentMemory.ts:29` | 高 |
-| 浏览去重 | `services/content/src/routes/articles.ts:42` | 高 |
-| Prisma 单例 | `services/api/src/lib/prisma.ts:3-12` | 中（惯例） |
-| Token refresh 单飞 | `apps/web/src/lib/api.ts:38` | 中 |
-| 卡片展开锁 | `apps/web/src/lib/cardExpandLock.ts:14` | 低 |
+| 模块单例 | `userContextCache.ts:41-48` | 高 |
+| 模块单例 | `viewTracking.ts:33-38` | 高 |
+| refresh 单飞 | `api/client.ts:29` | 中 |
+| `localStorage` 全局 | `apiToken.ts` | 高 |
+| Express `global` 扩展 | `foundation/auth.ts:15` | 中 |
 
-### 6.4 完整依赖图（目录级简图）
+### 6.4 完整依赖图
 
-```mermaid
-graph TD
-  subgraph apps
-    web[web/src]
-  end
-  subgraph packages
-    contracts[contracts]
-    foundation[foundation]
-  end
-  subgraph services
-    api[api/compose]
-    id[identity]
-    ct[content]
-    cm[community]
-    ag[agent]
-    ll[llm]
-  end
-  web --> contracts
-  foundation --> contracts
-  id --> foundation
-  ct --> foundation
-  cm --> foundation
-  ag --> foundation
-  ll --> foundation
-  api --> id
-  api --> ct
-  api --> cm
-  api --> ag
-  api --> ll
-```
+见 §1.2（无环）。
 
 ---
 
 ## 7. 命名审查
 
-### 7.1 品牌/项目代号出现位置
+### 7.1 品牌/项目代号
 
 | 位置 | 违例 | 严重度 |
 | --- | --- | --- |
-| `package.json:7` | `Grimoire` 品牌 | 低 |
-| `docs/architecture/overview.md:1` | 文档标题 Grimoire | 低（文档允许） |
-| `apps/web/src/app/brand.ts` | 品牌注入点（有意设计） | N/A |
+| `openwiki/architecture/overview.md` | AgentForge 叙述与 `@core` 包名并存 | 低 |
 
-### 7.2 模糊命名清单
+### 7.2 模糊命名
 
-见 §4.3。
+| 位置 | 违例 | 严重度 |
+| --- | --- | --- |
+| `packages/foundation` | 「基础」筐 | 低 |
+| `packages/contracts` | 含实现非纯契约 | 中 |
 
 ### 7.3 命名一致性
 
-- 后端 port 称 `UserQueryPort`（`articles.ts:7` import alias）与 contracts 中 `UserSummaryPort` 并存 — 同一概念别名，易混淆。
+- API 客户端：已统一 `lib/api/{domain}.ts`（✅，相对旧版单体 `api.ts` 已改进）
+- 端口命名：`UserSummaryPort` vs `UserQueryPort` 别名并存（`annotations.ts:12`）— 低
 
 ---
 
@@ -528,18 +475,18 @@ graph TD
 
 ### 8.1 错误处理
 
-- 统一 `AppError` + `errorHandler`（`@core/foundation`）；路由层 `next(e)` 传递。
-- 未发现空 `catch {}` 块（全仓 grep 无匹配）。
-- LLM 错误经 `llmError()` 映射（`agentOrchestrator.ts:205-225`）。
+- 统一 `AppError` + `errorHandler`（`foundation`）✅
+- LLM 错误经 `mapLlmError` / `LlmCallError` 脱敏 ✅
+- 空 `catch {}`：全仓扫描 **0** 处
 
 ### 8.2 状态管理
 
-- 后端：多处进程内 `Map`/`let` 缓存（§6.3）。
-- 前端：`localStorage` 存 JWT（`apiToken.ts`）、主题、guestKey。
+- 前端：React state + `localStorage` + 模块级 Map 缓存
+- 后端：Prisma 持久化 + 进程内 TTL 缓存
 
 ### 8.3 违例项
 
-- [P2/高] `services/content/src/routes/articles.ts:42-56`: 多实例下浏览计数不准确（代码注释已披露，属已知架构债）。
+- [P2/中] `agentMemory.ts:61-63`、`89-90`：`trimPrefMemories` / `maybeSaveImportantMemory` catch 仅 `logger.warn`，记忆写入失败静默。设计为 fire-and-forget，需在运维文档标明。
 
 ---
 
@@ -549,21 +496,20 @@ graph TD
 
 | 配置 | 位置 | 消费方 | 耦合度 |
 | --- | --- | --- | --- |
-| `.env` / `DATABASE_URL` | `services/api` | api + 全部注入 prisma 的域 | 高（共享） |
-| `JWT_SECRET` | env | foundation + api | 高 |
-| LLM Provider env | env | llm 服务直读 | 中 |
-| `vite.config.ts` | apps/web | 仅 web | 低 |
+| `.env` / `DATABASE_URL` | `services/api` | api + 全部服务（经 compose 注入 prisma） | 高（共享） |
+| `JWT_SECRET` | env | foundation jwt + BYOK 加密 | 高 |
+| `CORS_ORIGIN` | env | `app.ts` | 中 |
 
 ### 9.2 脚本清单
 
 | 脚本 | 职责 | 命名合规 |
 | --- | --- | --- |
 | `scripts/check-domain-boundaries.mjs` | CI 域边界 | ✅ |
-| `scripts/dev.mjs` | 双进程开发启动 | ✅ |
+| `scripts/dev.mjs` | 并行启动 web+api | ✅ |
 
 ### 9.3 违例项
 
-- [P2/高] 端口默认值三角不一致：`index.ts:8`（3001）、`dev.mjs:26`（8181）、`app.ts:27` CORS（5280）。
+- [P3/低] 根目录 `fix_chinese.py`、`screenshot_all.py` 等临时脚本未纳入 `.gitignore`，与主工程混杂（git status 显示 untracked）。
 
 ---
 
@@ -571,20 +517,19 @@ graph TD
 
 ### 10.1 测试覆盖
 
-- 后端/packages: **128** 测试全通过（`npm test` 于 2026-09-02 验证）
-- `apps/web`: **0** 测试文件
-- E2E: 无
+- **单元/集成测试**：32 个 `*.test.ts` 文件；`npm test` **全部通过**（含 `check-domain-boundaries.mjs`）
+- **分布**：`packages/*`、`services/*` 为主；`apps/web` 仅 1 测试
+- **E2E**：未发现 Playwright/Cypress 配置
 
 ### 10.2 可测性
 
-- 工厂注入 `createXxxRouter(prisma, ports)` 利于 mock — 良好
-- 模块级 `_providers`/`ctxCache` 阻碍测试隔离 — 需 `resetProviders()` 类钩子（目前无）
-- 前端 `api` 上帝对象难以按域 mock
+- 单例缓存均提供 `setDefault*` 注入（`userContextCache`、`viewTracking`）✅
+- `typecheck`：`@core/agent` **失败**（`UserCtx`）❌
 
 ### 10.3 违例项
 
-- [P2/高] `apps/web` 无自动化测试，与 22k 行源码体量不匹配。
-- [P2/中] `services/content/src/routes/*.ts`、`services/identity/src/routes/*.ts` 路由层几乎无单测（仅 service 层部分覆盖）。
+- [P2/高] 前端可测性不足（§0.2 #10）
+- [P1/高] `useHoverAgent` 难以单测（无导出纯函数，全在 Hook 内）
 
 ---
 
@@ -594,20 +539,21 @@ graph TD
 
 ### 11.1 安全
 
-- JWT access/refresh 存 `localStorage` — XSS 可窃取（`overview.md:44` 已标记 roadmap）
-- BYOK 密钥服务端加密存储（`foundation/byokCrypto`）— 有单测
-- 工具调用白名单（`tools.test.ts` 验证 `rm_rf` 拒绝）
-- 域边界 CI 防止跨域 Prisma 访问 — 已验证通过
-- 无硬编码 `sk-` 密钥于源码
+- [ ] 硬编码密钥：未发现生产密钥；测试用 `sk-*` 仅在 `*.test.ts`
+- [x] BYOK SSRF：`byokUrlPolicy.ts` 阻断私网/元数据地址
+- [x] SQL 拼接：Prisma 参数化
+- [ ] Token 存储：`localStorage`（§2.1）
+- [x] 限流：`express-rate-limit` 通用 + auth 桶
 
 ### 11.2 可维护性
 
-- `docs/architecture/overview.md` 与代码大体一致，但 **API 默认端口** 与 `index.ts` 不符（文档偏离）
-- 源码 TODO/FIXME: **0** 处（良好）
+- [ ] 文档与代码：`openwiki` **严重偏离**（§0.2 #7）
+- [x] TODO/FIXME：源码 **0** 处
+- [x] 决策标记 A-/B-/C- 注释仍存在于 agent/llm 路径
 
 ### 11.3 违例项
 
-- [P2/中] 文档声称默认 8181（`overview.md:135`），`index.ts:8` 实际默认 3001 — 文档 vs 代码偏离（§2.8 视角 8）。
+- [P2/高] 文档偏离导致错误运维/ onboarding（§0.2 #7）
 
 ---
 
@@ -615,53 +561,52 @@ graph TD
 
 | 变更 | 期望 | 实际 | 评级 |
 | --- | --- | --- | --- |
-| C1: 加「用户反馈」业务 | ≤1 模块, ≤5 文件 | 新路由 `services/feedback` + compose 挂载 + contracts DTO + web api 段 + 页面 ≈ **6-8 文件 / 2 模块** | 中 |
-| C2: 订单状态机 5→8 态 | ≤1 模块, ≤3 文件 | N/A（项目无订单域） | N/A |
-| C3: MySQL→PostgreSQL | ≤1 adapter 层 | 改 `schema.prisma` provider + 各服务 Prisma 调用点（无 repository 抽象层）≈ **1 schema + 潜在全服务回归** | 中 |
-| C4: HTTP API v2 | ≤1 模块, 不影响 v1 | 需在 `compose.ts` 增前缀或各 router 内版本分支；**约 1 文件 + 各域路由** | 良 |
-| C5: Web→小程序 | ≤1 前端模块, 不影响后端 | `apps/mobile` 占位存在；需新客户端 + 复用 contracts 类型 ≈ **1 模块** | 良 |
+| C1: 加「用户反馈」业务 | ≤1 模块, ≤5 文件 | 新 `services/feedback` + `compose.ts` + web 页面 ≈ 3 模块 6+ 文件 | ⚠️ 中 |
+| C2: 文章状态机扩展 | ≤1 模块, ≤3 文件 | `content/routes/articles.ts` + schema + serialize ≈ 3 文件 | ✅ 良 |
+| C3: SQLite → PostgreSQL | ≤1 层 | 仅 `schema.prisma` + migrate | ✅ 优 |
+| C4: HTTP API v2 | ≤1 模块, 不影响 v1 | `app.ts` 新 prefix 挂载 | ✅ 良 |
+| C5: 新客户端 | ≤1 模块 | `apps/mobile` 占位已存在 | ✅ 优 |
 
 **详细分析**
 
-- C1: 后端可独立加 `services/feedback`，但前端必然修改 `api.ts` 上帝对象 — 前端耦合拖累。
-- C3: 各域直接 `prisma.<model>`，无存储 adapter；换库影响面大于理想「仅 adapter 层」。
-- C4: `compose.ts` 设计支持增 `mounts` 条目，演进友好。
+- C1：模块化单体下新域需 compose 接线，无法做到「单模块」；但服务内部可独立开发（边界脚本可扩展 RULES）。
+- C2：`articles.ts` 已 314 行，继续扩状态机将触及上帝文件阈值，应先拆 repository。
 
 ---
 
 ## 13. 优先级与修复路线图
 
-### 13.1 P0 清单（必须立即处理）
+### 13.1 P0 清单
 
-| # | 位置 | 问题 | 改造成本 | 风险 | 依赖前提 |
+| # | 位置 | 问题 | 成本 | 风险 | 依赖 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `apps/web/src/lib/api.ts` | 按域拆分 API 客户端 | M | 低 | 无 |
-| 2 | `AgentFloat.tsx` | 拆悬停/面板组件 | M | 中 | 无 |
-| 3 | `articles.ts` | 抽出 viewTracking + 瘦路由 | S | 低 | 无 |
+| 1 | `ArticleCardInlineAgent` + `useHoverAgent` | 悬停双实现 | M | 中 | 无 |
+| 2 | `packages/contracts/hoverSanitize` | 契约层掺实现 | M | 中 | 无 |
 
-### 13.2 P1 清单（下个迭代）
+### 13.2 P1 清单
 
-| # | 位置 | 问题 | 改造成本 |
-| --- | --- | --- | --- |
-| 4 | `agentOrchestrator.ts` | 拆 schema / 错误映射 | M |
-| 5 | `providers.ts` | 拆 env loader 与 call 路径 | M |
-| 6 | `index.ts:8` | 统一 PORT 默认 8181 | S |
+| # | 位置 | 问题 | 成本 | 风险 |
+| --- | --- | --- | --- | --- |
+| 1 | `useHoverAgent.ts` | 拆上帝 Hook | M | 中 |
+| 2 | `agentMemory.ts` | 修复 `UserCtx` | S | 低 |
+| 3 | `HomePage.tsx` | 拆页面 | S | 低 |
 
-### 13.3 P2 清单（可延后）
+### 13.3 P2 清单
 
-| # | 位置 | 问题 | 改造成本 |
-| --- | --- | --- | --- |
-| 7 | 进程内 Map 缓存 | Redis 适配 | L |
-| 8 | `apps/web` | 引入 Vitest +  smoke 测试 | M |
-| 9 | `schema.prisma` | 评估按域 schema 拆分 | L |
+| # | 位置 | 问题 | 成本 | 风险 |
+| --- | --- | --- | --- | --- |
+| 1 | `openwiki/` | 文档对齐源码 | M | 低 |
+| 2 | 单例缓存 | Redis 适配 | L | 中 |
+| 3 | `apiToken.ts` | httponly cookie | L | 高 |
+| 4 | Fat routers | Repository 层 | L | 中 |
 
 ### 13.4 推荐重构顺序
 
-1. 统一端口默认值（低成本、减新人困惑）
-2. 拆分 `api.ts`（解锁前端域并行）
-3. 拆分 `AgentFloat.tsx`
-4. Schema 上移，消除 routes→orchestrator 依赖
-5. 提取缓存为可注入 Port（为多实例做准备）
+1. 修复 `UserCtx` typecheck（立刻、零风险）
+2. 统一悬停状态机（P0）
+3. 拆 `useHoverAgent`（P1）
+4. 修订 openwiki 路径/包名（P2，与 onboarding 并行）
+5. 缓存外置与 Token 改造（部署前）
 
 ---
 
@@ -669,75 +614,90 @@ graph TD
 
 ### 14.1 审查方法论
 
-- 执行 §2 对抗性方法 8 视角中的：删除攻击（compose 单点）、重命名攻击（ports）、替换攻击（Prisma）、并发攻击（Map 缓存）、故障注入（env fail-fast）、演化压力、跨边界泄露、文档偏离。
-- 阈值：动态语言文件警告 300 / 严重 500 行；函数警告 50 / 严重 80 行（§1.5）。
-- **全量审查**（304 文件 < 2000 阈值，未启用抽样）。
-- **清单外发现**: `index.ts` 与 `dev.mjs` 端口不一致 — 依据 §1.7 边界清晰 / §2 视角 8。
+- 执行 §2 对抗性 8 视角 + §3 六步流程
+- TypeScript 阈值：动态类型行（§1.5 默认 300/500）
+- **清单外发现**：`agentMemory.ts` 的 `UserCtx` 缺失属 typecheck 实证，非反模式清单条目
+- **阈值对照**：TS/TSX 归入动态类型行；Kotlin/Swift 未涉及
 
 ### 14.2 工具与命令记录
 
 ```bash
-# 域边界（通过）
+# commit
+git rev-parse HEAD
+# → 83d75f47ee056a92f02d92806f4f1d4800015252
+
+# 行数 Top（Python 遍历 .ts/.tsx，排除 node_modules/dist）
+# → TOTAL_LOC workspace 主包合计约 21029（见 MODULE_LOC 输出）
+
+# 域边界
 node scripts/check-domain-boundaries.mjs
+# → 域边界扫描通过（8 组规则）
 
-# 测试（128 passed）
+# 模块依赖 + Tarjan（离线脚本抽取 @core import）
+# → CYCLES: none
+
+# 测试
 npm test
+# → 全部 workspace 测试通过
 
-# 循环依赖（离线脚本：抽取 from 语句 + Tarjan SCC）
-# 结果：157 files, 0 cycles
-
-# 行数统计（Node 脚本）
-# files=304, srcLines=22171, testLines=2474
-
-# git
-git rev-parse HEAD  # e61a0e2591a1b53b3e7e36b910eb2e9a00e4ae43
+# 类型检查
+npm run typecheck
+# → @core/agent 失败: agentMemory.ts(26,47): Cannot find name 'UserCtx'
 ```
+
+未使用 `madge`/`depcruise`（离线手写 Tarjan 替代，见 §3.1.1 兜底路径）。
 
 ### 14.3 未审查文件清单
 
-| 文件/目录 | 原因 |
+| 路径 | 原因 |
 | --- | --- |
-| `node_modules/**` | 第三方依赖 |
-| `**/dist/**` | 构建产物 |
-| `verify_shots/**` | 截图验证资产 |
-| `agentforge-docs/**`, `agentforge-site/**`, `agentforge-tech/**` | 独立静态站点，非核心运行时 |
-| `*.py`（`fix_chinese.py` 等） | 一次性脚本，非业务源码 |
+| `fix_chinese.py` 等根目录脚本 | 非产品源码，临时工具 |
+| `agentforge-site/`、`agentforge-tech/` | 静态展示站，非主产品 |
+| `verify_shots/` | 截图产物 |
+| `_legacy/` | 归档静态站 |
+| `node_modules/`、`dist/` | §3.1.2 排除 |
 
 ### 14.4 术语表
 
-- **业务**: 用户可感知的完整功能切片（identity/content/community/agent/llm/web）
-- **模块**: npm workspace 包（`@core/*`）
-- **P0–P4**: 原则优先级（§1.1）
-- **严重/高/中/低**: 单条违例严重度（§3.6.1）
+- **业务**：用户可感知功能切片（identity/content/community/agent/llm）
+- **模块**：npm workspace 包或 `apps/*`、`services/*`、`packages/*` 一级目录
+- **P0–P4**：原则优先级（§1.1）
+- **严重/高/中/低**：单条违例严重度（§3.6.1）
 
-### 14.5 修复模板（可选）
+### 14.5 修复模板（P0 最小草案）
 
-**P0 #1 — 拆分 `api.ts`（描述性 patch，不写入仓库）**
+**统一悬停状态机（描述级）**
 
+1. 新增 `apps/web/src/lib/hoverExplainController.ts`：导出 `createHoverExplainController({ onUpdate, style })`，内含 `IncompleteHoverKeys`、节流、 `runHoverExplainStream` 包装。
+2. `useHoverAgent` 仅保留 DOM 事件与气泡布局，调用 controller。
+3. `ArticleCardInlineAgent` 删除并行计时逻辑，改用同一 controller。
+
+**修复 UserCtx**
+
+在 `agentMemory.ts` 内、`loadUserContextInner` 之后添加：
+
+```typescript
+type UserCtx = Awaited<ReturnType<typeof loadUserContextInner>>;
 ```
-apps/web/src/lib/api/
-  index.ts      # re-export 聚合，保持 import 路径兼容
-  client.ts     # request(), ApiError, token refresh
-  auth.ts
-  articles.ts
-  agent.ts
-  ...
-```
 
-**P2 — 统一端口**
-
-```diff
-# services/api/src/index.ts
--const port = Number(process.env.PORT || 3001);
-+const port = Number(process.env.PORT || 8181);
-```
+并将 `loadUserContextInner` 提前声明或改为 function 声明以便类型推断。
 
 ### 14.6 增量审查对比
 
-| 对比项 | 上次 | 本次 | 变化 |
+| 对比项 | 上次 (`architecture-review-2026-08-04.md`) | 本次 | 变化 |
 | --- | --- | --- | --- |
-| — | 无历史报告 | 首次 Composer 审查 | — |
+| 后端结构 | `apps/api` 单体 | `services/*` + `compose.ts` | ↑ 显著改进 |
+| 前端 `api.ts` | 单体 400+ 行 | 拆为 `lib/api/*` | ↑ 已修复 |
+| `AgentFloat.tsx` | 918 行 | 86 行 | ↑ 已修复 |
+| API 默认端口 | 3001 vs 8181 分裂 | 统一 8181 | ↑ 已修复 |
+| P0（悬停/UI） | AgentFloat 上帝组件 | useHoverAgent 上帝 Hook | ↔ 问题迁移 |
+| 文档一致性 | 部分偏离 | openwiki 大面积过时 | ↓ 恶化 |
+| typecheck | 未记录 | agent 包失败 | ↓ 新问题 |
+
+- **已修复（相对 08-04）**：API 客户端拆分、AgentFloat 瘦身、服务域拆分、端口统一、CI 域边界
+- **新增**：`UserCtx` typecheck 失败；`useHoverAgent` 体积膨胀
+- **仍未修复**：单库 Prisma、localStorage Token、进程内缓存、openwiki 路径
 
 ---
 
-*报告结束。所有结论均基于仓库 commit `e61a0e25` 源码静态分析与 `npm test` 执行结果；未做生产环境渗透或性能压测。*
+*报告结束。所有结论均基于 commit `83d75f47` 源码静态分析与命令输出；未修改任何产品代码。*
