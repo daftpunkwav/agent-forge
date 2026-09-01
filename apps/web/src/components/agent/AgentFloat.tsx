@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import { subscribeAgentExplain } from '@/lib/agentEvents';
 import { useAgentStyle } from '@/hooks/useAgentStyle';
 import { useAgentPanel } from '@/hooks/useAgentPanel';
 import { AgentPanel } from './AgentPanel';
@@ -38,18 +39,10 @@ export function AgentFloat() {
   } = useHoverAgent(style, location.pathname);
 
   useEffect(() => {
-    function onExplain(e: Event) {
-      const detail = (e as CustomEvent).detail as {
-        text: string;
-        title?: string;
-        articleSlug?: string;
-      };
-      if (!detail?.text) return;
+    return subscribeAgentExplain((detail) => {
       setOpen(true);
       void deepExplain(detail.text, detail.title, detail.articleSlug);
-    }
-    window.addEventListener('agent:explain', onExplain);
-    return () => window.removeEventListener('agent:explain', onExplain);
+    });
   }, [deepExplain]);
 
   return (

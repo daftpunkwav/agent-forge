@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/Button';
 import type { ChatMsg } from '@/hooks/useAgentPanel';
 import { MarkdownView } from './MarkdownView';
 
-export const HOVER_REVEAL_MS = 700;
+import { HOVER_REVEAL_MS } from './hoverConstants';
 
 type Props = {
   open: boolean;

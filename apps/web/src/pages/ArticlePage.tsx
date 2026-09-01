@@ -5,6 +5,7 @@ import type { AnnotationItem, ArticleDetail } from '@core/contracts';
 import { ArticleBody } from '@/components/article/ArticleBody';
 import { ArticleLayout, ArticleTags } from '@/components/article/ArticleLayout';
 import { Button } from '@/components/ui/Button';
+import { dispatchAgentExplain } from '@/lib/agentEvents';
 import { useAuth } from '@/hooks/useAuth';
 
 /** slug → 默认动画模板（种子文章用） */
@@ -101,15 +102,11 @@ export function ArticlePage() {
               size="sm"
               variant="secondary"
               onClick={() => {
-                window.dispatchEvent(
-                  new CustomEvent('agent:explain', {
-                    detail: {
-                      text: `${article.title}\n\n${article.summary}\n\n${article.markdown.slice(0, 3000)}`,
-                      title: article.title,
-                      articleSlug: article.slug,
-                    },
-                  }),
-                );
+                dispatchAgentExplain({
+                  text: `${article.title}\n\n${article.summary}\n\n${article.markdown.slice(0, 3000)}`,
+                  title: article.title,
+                  articleSlug: article.slug,
+                });
               }}
             >
               Agent 详细讲解
