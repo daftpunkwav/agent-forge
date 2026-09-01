@@ -173,7 +173,7 @@ export function createArticleRepository(prisma: PrismaClient) {
         publishedAt?: Date | null;
       },
     ) {
-      const patch: Prisma.ArticleUpdateInput = {};
+      const patch: Prisma.ArticleUncheckedUpdateInput = {};
       if (data.title !== undefined) patch.title = data.title;
       if (data.summary !== undefined) patch.summary = data.summary;
       if (data.markdown !== undefined) patch.markdown = data.markdown;
