@@ -7,6 +7,7 @@ import { createAgentConversation } from './agentConversation.js';
 
 function mockPrisma() {
   const prisma = {
+    $transaction: vi.fn(),
     agentConversation: {
       deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       findUnique: vi.fn(),
@@ -17,9 +18,11 @@ function mockPrisma() {
       findMany: vi.fn().mockResolvedValue([]),
       createMany: vi.fn().mockResolvedValue({ count: 0 }),
       count: vi.fn().mockResolvedValue(0),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
-  } as unknown as import('@prisma/client').PrismaClient;
-  return prisma;
+  };
+  prisma.$transaction.mockImplementation(async (fn: (tx: typeof prisma) => unknown) => fn(prisma));
+  return prisma as unknown as import('@prisma/client').PrismaClient;
 }
 
 describe('ensureConversation', () => {
@@ -138,5 +141,48 @@ describe('ensureConversation', () => {
   it('不传 conversationId → 直接新建', async () => {
     const conv = await conversation.ensureConversation('me');
     expect(conv.id).toBe('new-conv');
+  });
+});
+
+describe('persistTurn', () => {
+  let prisma: import('@prisma/client').PrismaClient;
+  let conversation: ReturnType<typeof createAgentConversation>;
+
+  beforeEach(() => {
+    prisma = mockPrisma();
+    conversation = createAgentConversation(prisma);
+    vi.clearAllMocks();
+  });
+
+  it('未超限只更新 updatedAt，不删消息', async () => {
+    vi.mocked(prisma.agentMessage.count).mockResolvedValue(10);
+    await conversation.persistTurn('c1', 'hi', { content: 'ok' });
+    expect(prisma.agentMessage.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.agentConversation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'c1' },
+        data: expect.objectContaining({ updatedAt: expect.any(Date) }),
+      }),
+    );
+  });
+
+  it('超限则写入滚动摘要并删除最旧消息', async () => {
+    vi.mocked(prisma.agentMessage.count).mockResolvedValue(26);
+    vi.mocked(prisma.agentMessage.findMany).mockResolvedValue([
+      { id: 'm1', role: 'user', content: 'old-1' },
+      { id: 'm2', role: 'assistant', content: 'old-2' },
+    ] as never);
+    vi.mocked(prisma.agentConversation.findUnique).mockResolvedValue({
+      summary: 'prev',
+    } as never);
+    await conversation.persistTurn('c1', 'hi', { content: 'ok' });
+    expect(prisma.agentMessage.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ['m1', 'm2'] } },
+    });
+    expect(prisma.agentConversation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ summary: expect.stringContaining('prev') }),
+      }),
+    );
   });
 });

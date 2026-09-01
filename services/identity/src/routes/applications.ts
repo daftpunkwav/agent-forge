@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { validate, requireAuth, requirePermission, requireRole, badRequest, conflict, notFound, param } from '@core/foundation';
+import { validate, requireAuth, requirePermission, requireRole, badRequest, conflict, param } from '@core/foundation';
 import type { PrismaClient } from '@prisma/client';
+import { applyApplicationDecision } from '../services/applicationReview.js';
 
 const applySchema = z.object({
   field: z.string().min(1).max(120),
@@ -88,34 +89,10 @@ export function createApplicationsRouter(prisma: PrismaClient): Router {
     ),
     async (req, res, next) => {
       try {
-        const existing = await prisma.authorApplication.findUnique({
-          where: { id: param(req, 'id') },
-        });
-        if (!existing) throw notFound('申请不存在');
-        if (existing.status !== 'pending') {
-          throw badRequest('该申请已处理');
-        }
         const { status } = req.body as { status: 'approved' | 'rejected' };
-
-        const app = await prisma.$transaction(async (tx) => {
-          const updated = await tx.authorApplication.update({
-            where: { id: existing.id },
-            data: { status, reviewedAt: new Date(), pendingGuard: null },
-          });
-          if (status === 'approved') {
-            if (existing.kind === 'elite') {
-              await tx.user.update({
-                where: { id: existing.userId },
-                data: { role: 'author', authorTier: 'elite' },
-              });
-            } else {
-              await tx.user.update({
-                where: { id: existing.userId },
-                data: { role: 'author', authorTier: 'standard' },
-              });
-            }
-          }
-          return updated;
+        const app = await applyApplicationDecision(prisma, {
+          id: param(req, 'id'),
+          status,
         });
         res.json({ application: app });
       } catch (e) {

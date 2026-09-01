@@ -1,5 +1,6 @@
 import type { LlmRequest, LlmResponse, ProviderConfig } from '../types.js';
 import { LlmCallError, stripSlash, tokenDefaults } from '../providerHttp.js';
+import { providerApiKey } from '../providerSecret.js';
 
 export function resolveOpenAiResponsesUrl(baseUrl: string): string {
   const b = stripSlash(baseUrl);
@@ -29,7 +30,7 @@ export async function callOpenAiResponses(p: ProviderConfig, req: LlmRequest): P
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${p.apiKey}`,
+      authorization: `Bearer ${providerApiKey(p)}`,
     },
     body: JSON.stringify({
       model: p.model,

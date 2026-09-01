@@ -1,6 +1,6 @@
 /**
  * @core/llm —— 无状态 LLM 网关(独立 workspace)。
- * 持有全部 LLM 密钥(env provider)与 BYOK 解密后的明文 key,密钥不出此服务。
+ * 持有全部 LLM 密钥(env provider)与 BYOK 解密后的明文 key,密钥只在本服务内解密。
  * 导出 createLlmGateway():返回符合 agent/identity 端口形状的网关对象。
  */
 import {

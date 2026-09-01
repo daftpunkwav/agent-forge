@@ -32,7 +32,7 @@ export function createIdentityRepository(prisma: PrismaClient): UserQueryPort {
   };
 }
 
-/** 单用户偏好(含 BYOK 密文;agent 解密后供 LLM 网关),用户不存在返回 null */
+/** 单用户偏好(含 BYOK 密文;llm 网关负责解密),用户不存在返回 null */
 export async function getUserPreferences(
   prisma: PrismaClient,
   userId: string,

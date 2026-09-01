@@ -44,6 +44,10 @@ model User {
   refreshTokens  RefreshToken[]
 }
 
+// =============================================================================
+// identity 域：User / RefreshToken / AuthorApplication
+// =============================================================================
+
 /// 刷新令牌（仅存 sha256 hash；明文只下发给客户端一次）
 model RefreshToken {
   id        String    @id @default(cuid())
@@ -99,6 +103,11 @@ model AuthorApplication {
   @@index([kind, status])
 }
 
+// =============================================================================
+// content 域：Domain / Article / AnimationDef / ArticleAnimation / Annotation
+// 跨域引用只存 ID，不建 FK（Topic.articleId、LearningProgress.articleId）。
+// =============================================================================
+
 model Article {
   id          String    @id @default(cuid())
   slug        String    @unique
@@ -120,8 +129,6 @@ model Article {
   author      User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
   domain      Domain?            @relation(fields: [domainId], references: [id], onDelete: SetNull)
   animations  ArticleAnimation[]
-  progress    LearningProgress[]
-  topics      Topic[]
   annotations Annotation[]
 
   @@index([status, category])
@@ -160,6 +167,10 @@ model ArticleAnimation {
   @@unique([articleId, animationId])
 }
 
+// =============================================================================
+// community 域：Topic / TopicReply
+// =============================================================================
+
 /// 话题（社区发帖，可附带文章）
 model Topic {
   id        String   @id @default(cuid())
@@ -169,12 +180,12 @@ model Topic {
   kind      String   @default("discussion")
   status    String   @default("open")
   authorId  String
+  /// 跨域引用 content.Article.id；无 FK，存在性经 ArticleQueryPort 校验
   articleId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   author  User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  article Article?     @relation(fields: [articleId], references: [id], onDelete: SetNull)
   replies TopicReply[]
 
   @@index([createdAt])
@@ -196,6 +207,7 @@ model TopicReply {
 }
 
 /// 文章批注（游客只读已通过；读者可写待审；作者/管理员审核）
+/// articleId 为本域 Article 的 FK（content 内部，非跨域）
 model Annotation {
   id          String   @id @default(cuid())
   articleId   String
@@ -222,6 +234,11 @@ model Annotation {
   @@index([articleId, status])
   @@index([userId])
 }
+
+// =============================================================================
+// agent 域：AgentConversation / AgentMessage / HoverExplainCache /
+// AgentMemory / LearningProgress
+// =============================================================================
 
 /// Agent 对话会话（面板长期上下文）
 model AgentConversation {
@@ -291,14 +308,15 @@ model AgentMemory {
 model LearningProgress {
   id        String   @id @default(cuid())
   userId    String
+  /// 跨域引用 content.Article.id；无 FK，存在性经 ArticleQueryPort 校验
   articleId String
   progress  Float    @default(0)
   /// not_started | learning | mastered
   mastery   String   @default("learning")
   updatedAt DateTime @updatedAt
 
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, articleId])
+  @@index([articleId])
 }

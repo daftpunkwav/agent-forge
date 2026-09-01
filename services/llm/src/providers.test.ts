@@ -14,8 +14,10 @@ import {
   resolveOpenAiResponsesUrl,
   resetProviderCache,
   resolveProvider,
+  providerApiKey,
 } from './providers.js';
 import { resetCircuits } from './resilience.js';
+import { encryptByokKey } from '@core/foundation';
 
 const KEYS = [
   'STEPFUN_API_KEY',
@@ -43,6 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const k of KEYS) delete process.env[k];
+  delete process.env.JWT_SECRET;
   resetProviderCache();
   resetCircuits();
 });
@@ -165,6 +168,20 @@ describe('loadProviders / byokToProvider / resolveProvider', () => {
     expect(
       byokToProvider({ enabled: true, baseUrl: 'https://x.com', apiKey: 'k', model: 'm' } as never),
     ).toMatchObject({ id: 'byok', format: 'anthropic_messages', vision: true });
+  });
+  it('byokToProvider：密文 apiKey 在网关内解密', () => {
+    process.env.JWT_SECRET = 'test-secret-for-byok-crypto-0123456789';
+    const enc = encryptByokKey('sk-live-secret');
+    const p = byokToProvider({
+      enabled: true,
+      baseUrl: 'https://x.com',
+      apiKey: enc,
+      model: 'm',
+    } as never);
+    expect(p?.apiKey).toBe('');
+    expect(JSON.stringify(p)).not.toContain('sk-live-secret');
+    expect(providerApiKey(p!)).toBe('sk-live-secret');
+    delete process.env.JWT_SECRET;
   });
   it('byokToProvider：拒绝内网 baseUrl（SSRF）', () => {
     expect(() =>
