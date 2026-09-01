@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { validate, optionalAuth, requireAuth, requireRole, badRequest, conflict, forbidden, notFound, param, attachUserRefs } from '@core/foundation';
+import { validate, optionalAuth, requireAuth, requireRole, badRequest, conflict, forbidden, notFound, param, attachUserRefs, logger } from '@core/foundation';
 import type { PrismaClient, Article } from '@prisma/client';
 import { toArticleDetail, toArticleSummary } from '../services/serialize.js';
 import { slugify } from '../domain/slug.js';
-import type { UserSummaryPort as UserQueryPort } from '@core/contracts';
+import type { UserSummaryPort } from '@core/contracts';
+import { getDefaultViewDedup } from '../services/viewTracking.js';
 
 const createSchema = z.object({
   title: z.string().min(1).max(200),
@@ -24,36 +25,16 @@ const updateSchema = createSchema.partial().extend({
 });
 
 /** 批量补作者名(跨服务边界：不 join user 表,经用户端口批量取) */
-const attachAuthors = (rows: Article[], users: UserQueryPort) =>
+const attachAuthors = (rows: Article[], users: UserSummaryPort) =>
   attachUserRefs(rows, users, (r) => r.authorId, (r, author) => ({ ...toArticleSummary(r), author }));
 
 /** 单条作者名(详情/创建/更新响应用) */
-const fetchAuthor = (users: UserQueryPort, authorId: string) =>
+const fetchAuthor = (users: UserSummaryPort, authorId: string) =>
   attachUserRefs([{ authorId }], users, (r) => r.authorId, (_r, author) => author).then((a) => a[0]);
 
-export function createArticlesRouter(prisma: PrismaClient, users: UserQueryPort): Router {
+export function createArticlesRouter(prisma: PrismaClient, users: UserSummaryPort): Router {
   const articlesRouter = Router();
-
-  /**
-   * 阅读量去重（进程内存级）：同一用户/IP 24h 内对同一篇文章只计一次。
-   * 多实例部署下每实例各自计数，仍能显著抑制刷新/爬虫刷量；生产可换 Redis。
-   */
-  const VIEW_DEDUP_TTL_MS = 24 * 60 * 60 * 1000;
-  const viewedCache = new Map<string, number>();
-
-  function shouldCountView(key: string): boolean {
-    const now = Date.now();
-    const last = viewedCache.get(key);
-    if (last && now - last < VIEW_DEDUP_TTL_MS) return false;
-    viewedCache.set(key, now);
-    // 防内存膨胀：量级超过阈值时顺带清理过期键
-    if (viewedCache.size > 10_000) {
-      for (const [k, v] of viewedCache) {
-        if (now - v > VIEW_DEDUP_TTL_MS) viewedCache.delete(k);
-      }
-    }
-    return true;
-  }
+  const viewDedup = getDefaultViewDedup();
 
   articlesRouter.get('/', optionalAuth, async (req, res, next) => {
     try {
@@ -172,13 +153,15 @@ export function createArticlesRouter(prisma: PrismaClient, users: UserQueryPort)
       } else {
         // 异步增加阅读量（24h 内同一用户/IP 去重，防刷新刷量）
         const viewerKey = `${req.user?.id || req.ip || 'anon'}:${article.id}`;
-        if (shouldCountView(viewerKey)) {
+        if (viewDedup.shouldCount(viewerKey)) {
           void prisma.article
             .update({
               where: { id: article.id },
               data: { viewCount: { increment: 1 } },
             })
-            .catch(() => undefined);
+            .catch((e) => {
+              logger.warn({ err: String(e), articleId: article.id }, 'article viewCount increment failed');
+            });
         }
       }
       // 作者名经用户端口补
