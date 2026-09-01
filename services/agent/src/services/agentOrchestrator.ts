@@ -18,10 +18,10 @@ import type { AgentConversation } from './agentConversation.js';
 import type { HoverCache } from './hoverCache.js';
 import type { AgentMemory } from './agentMemory.js';
 import type { ToolLoop } from '../lib/tools/toolLoop.js';
-import type { ChatBody, ExplainBody } from '../routes/schemas.js';
+import type { ChatBody, ExplainBody } from '../schemas.js';
 import { mapLlmError, noProviderError } from './llmErrors.js';
 
-export type { ChatBody, ExplainBody } from '../routes/schemas.js';
+export type { ChatBody, ExplainBody } from '../schemas.js';
 
 export function createAgentOrchestrator(
   deps: AgentDeps,

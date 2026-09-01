@@ -14,7 +14,7 @@ import { extractVisibleAnswer } from '@core/foundation';
 import type { LlmResponse, ProviderConfig, StreamChunk } from '@core/contracts';
 import { LLM_TOKEN_LIMITS } from '@core/contracts';
 import { looksLikeHoverPlanning } from '@core/contracts';
-import { chatSchema } from './schemas.js';
+import { chatSchema } from '../schemas.js';
 import { createStreamConsumer } from '../lib/streamConsumers.js';
 import { AGENT_MODE_META } from '../lib/agentPrompt.js';
 import type { AgentRuntime } from '../runtime.js';

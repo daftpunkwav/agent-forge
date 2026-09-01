@@ -14,7 +14,7 @@ import {
 import { extractVisibleAnswer } from '@core/foundation';
 import type { LlmResponse, ProviderConfig, StreamChunk } from '@core/contracts';
 import { extractHoverAnswer, looksLikeHoverPlanning } from '@core/contracts';
-import { explainSchemaFixed } from './schemas.js';
+import { explainSchemaFixed } from '../schemas.js';
 import { createStreamConsumer } from '../lib/streamConsumers.js';
 import { AGENT_MODE_META } from '../lib/agentPrompt.js';
 import type { AgentRuntime } from '../runtime.js';

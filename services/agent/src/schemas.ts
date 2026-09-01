@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+/** Agent 路由请求体校验（与 orchestrator 共享，避免编排层依赖 routes） */
 export const explainSchemaFixed = z.object({
   mode: z.enum(['hover', 'click']),
   selection: z.object({
