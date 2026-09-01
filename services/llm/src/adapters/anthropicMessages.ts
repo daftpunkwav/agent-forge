@@ -2,6 +2,7 @@ import type { LlmRequest, LlmResponse, ProviderConfig, StreamChunk } from '../ty
 import { extractVisibleAnswer } from '@core/foundation';
 import { LLM_TOKEN_LIMITS } from '../config.js';
 import { LlmCallError, stripSlash, tokenDefaults } from '../providerHttp.js';
+import { providerApiKey } from '../providerSecret.js';
 
 /**
  * Anthropic Messages 完整 URL。
@@ -71,8 +72,8 @@ export async function* streamAnthropicMessages(
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-api-key': p.apiKey,
-      authorization: `Bearer ${p.apiKey}`,
+      'x-api-key': providerApiKey(p),
+      authorization: `Bearer ${providerApiKey(p)}`,
       'anthropic-version': '2023-06-01',
       accept: 'text/event-stream',
     },
@@ -96,8 +97,8 @@ export async function* streamAnthropicMessages(
           method: 'POST',
           headers: {
             'content-type': 'application/json',
-            'x-api-key': p.apiKey,
-            authorization: `Bearer ${p.apiKey}`,
+            'x-api-key': providerApiKey(p),
+            authorization: `Bearer ${providerApiKey(p)}`,
             'anthropic-version': '2023-06-01',
             accept: 'text/event-stream',
           },
@@ -270,8 +271,8 @@ export async function callAnthropicMessages(p: ProviderConfig, req: LlmRequest):
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-api-key': p.apiKey,
-        authorization: `Bearer ${p.apiKey}`,
+        'x-api-key': providerApiKey(p),
+        authorization: `Bearer ${providerApiKey(p)}`,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(payload),

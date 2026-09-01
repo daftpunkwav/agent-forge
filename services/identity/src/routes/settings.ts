@@ -170,8 +170,8 @@ export function createSettingsRouter(deps: {
     try {
       const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
       const preferences = parsePrefs(user?.preferences);
-      // A-03：库中为密文，测试前先解密
-      const byok = decryptByokConfig((preferences.byok as ByokConfig) || null) || undefined;
+      // 密文原样交给 llm 网关；明文 key 只在 llm 内解密
+      const byok = (preferences.byok as ByokConfig) || undefined;
       const provider = llm.resolveProvider(byok);
       if (!provider) {
         res.status(400).json({

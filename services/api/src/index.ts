@@ -5,7 +5,7 @@ import { validateEnv } from './lib/env.js';
 import { logger } from '@core/foundation';
 import { createLlmGateway } from '@core/llm';
 
-const port = Number(process.env.PORT || 3001);
+const port = Number(process.env.PORT || 8181);
 
 const llm = createLlmGateway();
 

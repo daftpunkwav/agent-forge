@@ -8,7 +8,7 @@ import type {
 } from './types.js';
 import { LLM_RETRY_BACKOFF_MS } from './config.js';
 import { logger } from '@core/foundation';
-import { assertSafeByokBaseUrl } from '@core/foundation';
+import { assertSafeByokBaseUrl, decryptByokConfig } from '@core/foundation';
 import {
   LlmCallError,
   isAbortError,
@@ -27,91 +27,50 @@ import {
   recordProviderSuccess,
   releaseCircuitProbe,
 } from './resilience.js';
+import { sealProvider } from './providerSecret.js';
+
+export { providerApiKey, sealProvider } from './providerSecret.js';
 
 export { LlmCallError } from './providerHttp.js';
 export { extractAnthropicParts, resolveAnthropicMessagesUrl } from './adapters/anthropicMessages.js';
 export { resolveOpenAiChatUrl } from './adapters/openaiChat.js';
 export { resolveOpenAiResponsesUrl } from './adapters/openaiResponses.js';
 
-function env(name: string, fallback = ''): string {
-  return process.env[name] || fallback;
-}
+import {
+  getCachedProviders,
+  getPreferredProviderId,
+  isByokFallbackToServerEnabled,
+  resetProviderCache,
+} from './providerEnv.js';
 
-let _providers: ProviderConfig[] | null = null;
-
-/** 从环境变量加载服务端默认 Provider（B-03：进程启动后缓存一次，生产环境变量不热更） */
 export function loadProviders(): ProviderConfig[] {
-  if (_providers) return _providers;
-  const list: ProviderConfig[] = [];
-
-  const stepKey = env('STEPFUN_API_KEY') || env('LLM_API_KEY');
-  if (stepKey) {
-    list.push({
-      id: 'stepfun',
-      name: 'StepFun',
-      baseUrl: stripSlash(env('STEPFUN_BASE_URL', 'https://api.stepfun.com/step_plan')),
-      apiKey: stepKey,
-      model: env('STEPFUN_MODEL', 'step-3.7-flash'),
-      format: (env('STEPFUN_API_FORMAT', 'anthropic_messages') as ApiFormat) || 'anthropic_messages',
-      vision: true,
-    });
-  }
-
-  const oaiKey = env('OPENAI_API_KEY');
-  if (oaiKey) {
-    list.push({
-      id: 'openai',
-      name: 'OpenAI',
-      baseUrl: stripSlash(env('OPENAI_BASE_URL', 'https://api.openai.com/v1')),
-      apiKey: oaiKey,
-      model: env('OPENAI_MODEL', 'gpt-4o-mini'),
-      format: (env('OPENAI_API_FORMAT', 'openai_chat') as ApiFormat) || 'openai_chat',
-      vision: true,
-    });
-  }
-
-  const genericKey = env('GENERIC_LLM_API_KEY');
-  if (genericKey && env('GENERIC_LLM_BASE_URL')) {
-    list.push({
-      id: 'generic',
-      name: env('GENERIC_LLM_NAME', 'Generic'),
-      baseUrl: stripSlash(env('GENERIC_LLM_BASE_URL')),
-      apiKey: genericKey,
-      model: env('GENERIC_LLM_MODEL', 'default'),
-      format: (env('GENERIC_LLM_API_FORMAT', 'openai_chat') as ApiFormat) || 'openai_chat',
-      vision: env('GENERIC_LLM_VISION', 'false') === 'true',
-    });
-  }
-
-  _providers = list.filter((p) => p.baseUrl && p.apiKey);
-  return _providers;
+  return getCachedProviders();
 }
 
-/** 仅测试用：重置 Provider 缓存，便于按用例切换环境变量 */
-export function resetProviderCache(): void {
-  _providers = null;
-}
+export { resetProviderCache } from './providerEnv.js';
 
 export function getDefaultProvider(): ProviderConfig | null {
-  const preferred = env('LLM_PROVIDER_ID', 'stepfun');
+  const preferred = getPreferredProviderId();
   const all = loadProviders();
   return all.find((p) => p.id === preferred) || all[0] || null;
 }
 
 export function byokToProvider(byok?: ByokConfig | null): ProviderConfig | null {
-  if (!byok?.enabled) return null;
-  if (!byok.baseUrl?.trim() || !byok.apiKey?.trim() || !byok.model?.trim()) return null;
+  // 密钥边界：密文/明文统一在此解密；调用方（agent/identity）只传存储态配置
+  const plain = decryptByokConfig(byok);
+  if (!plain?.enabled) return null;
+  if (!plain.baseUrl?.trim() || !plain.apiKey?.trim() || !plain.model?.trim()) return null;
   // SSRF：仅校验用户 BYOK；服务端 env Provider 不走此路径
-  const baseUrl = assertSafeByokBaseUrl(byok.baseUrl);
-  return {
+  const baseUrl = assertSafeByokBaseUrl(plain.baseUrl);
+  return sealProvider({
     id: 'byok',
-    name: byok.name?.trim() || 'BYOK',
+    name: plain.name?.trim() || 'BYOK',
     baseUrl,
-    apiKey: byok.apiKey.trim(),
-    model: byok.model.trim(),
-    format: byok.format || 'anthropic_messages',
-    vision: byok.vision !== false,
-  };
+    apiKey: plain.apiKey.trim(),
+    model: plain.model.trim(),
+    format: plain.format || 'anthropic_messages',
+    vision: plain.vision !== false,
+  });
 }
 
 /** 优先用户 BYOK，其次服务端默认 */
@@ -128,8 +87,8 @@ export function resolveProviderChain(byok?: ByokConfig | null): ProviderConfig[]
   const byokP = byokToProvider(byok);
   if (byokP) chain.push(byokP);
   const all = loadProviders();
-  if (!byokP || process.env.LLM_BYOK_FALLBACK_TO_SERVER === '1') {
-    const preferred = env('LLM_PROVIDER_ID', 'stepfun');
+  if (!byokP || isByokFallbackToServerEnabled()) {
+    const preferred = getPreferredProviderId();
     const sorted = [...all].sort((a, b) =>
       a.id === preferred ? -1 : b.id === preferred ? 1 : 0,
     );

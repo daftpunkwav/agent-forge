@@ -1,5 +1,6 @@
 import type { LlmRequest, LlmResponse, ProviderConfig, StreamChunk } from '../types.js';
 import { LlmCallError, stripSlash, tokenDefaults } from '../providerHttp.js';
+import { providerApiKey } from '../providerSecret.js';
 
 export function resolveOpenAiChatUrl(baseUrl: string): string {
   const b = stripSlash(baseUrl);
@@ -40,7 +41,7 @@ export async function* streamOpenAiChat(
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${p.apiKey}`,
+      authorization: `Bearer ${providerApiKey(p)}`,
       accept: 'text/event-stream',
     },
     body: JSON.stringify(body),
@@ -118,7 +119,7 @@ export async function callOpenAiChat(p: ProviderConfig, req: LlmRequest): Promis
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${p.apiKey}`,
+      authorization: `Bearer ${providerApiKey(p)}`,
     },
     body: JSON.stringify({
       model: p.model,

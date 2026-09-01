@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { validate, optionalAuth, requireAuth, requirePermission, badRequest, forbidden, notFound, param } from '@core/foundation';
+import { validate, optionalAuth, requireAuth, requirePermission, forbidden, notFound, param } from '@core/foundation';
 import type { PrismaClient } from '@prisma/client';
 import type { ArticleQueryPort } from '@core/contracts';
 import type { UserSummaryPort as UserQueryPort } from '@core/contracts';
 import { attachTopicRefs, toTopicSummary } from '../serialize.js';
+import { resolveLinkedArticleId } from '../articleLink.js';
 
 const createSchema = z.object({
   title: z.string().min(2).max(200),
@@ -114,12 +115,10 @@ export function createTopicsRouter(
     async (req, res, next) => {
       try {
         const body = req.body as z.infer<typeof createSchema>;
-        let articleId = body.articleId || null;
-        if (!articleId && body.articleSlug) {
-          const art = await deps.articles.getArticleIdBySlug(body.articleSlug);
-          if (!art) throw badRequest('关联文章不存在');
-          articleId = art;
-        }
+        const articleId = await resolveLinkedArticleId(deps.articles, {
+          articleId: body.articleId,
+          articleSlug: body.articleSlug,
+        });
         const topic = await prisma.topic.create({
           data: {
             title: body.title,

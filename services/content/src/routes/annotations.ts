@@ -8,6 +8,7 @@ import {
   canReviewAnnotation,
   resolveReviewBy,
 } from '../services/annotationAcl.js';
+import { applyAnnotationDecision } from '../services/annotationReview.js';
 import type { UserSummaryPort as UserQueryPort } from '@core/contracts';
 
 const createSchema = z
@@ -138,10 +139,6 @@ export function createAnnotationsRouter(prisma: PrismaClient, users: UserQueryPo
           throw forbidden('无权审核该批注');
         }
 
-        if (existing.status !== 'pending') {
-          throw badRequest('该批注已审核');
-        }
-
         const body = req.body as z.infer<typeof reviewSchema>;
         const reviewBy = resolveReviewBy({
           reviewerId: req.user!.id,
@@ -149,15 +146,12 @@ export function createAnnotationsRouter(prisma: PrismaClient, users: UserQueryPo
           reviewerRole: req.user!.role,
         });
 
-        const updated = await prisma.annotation.update({
-          where: { id },
-          data: {
-            status: body.status,
-            reviewBy,
-            reviewedAt: new Date(),
-            reviewerId: req.user!.id,
-            ...(body.agentNote != null ? { agentNote: body.agentNote } : {}),
-          },
+        const updated = await applyAnnotationDecision(prisma, {
+          id,
+          status: body.status,
+          reviewBy,
+          reviewerId: req.user!.id,
+          agentNote: body.agentNote,
         });
 
         const authors = await users.getUserSummaries([updated.userId]);

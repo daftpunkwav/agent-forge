@@ -1,10 +1,8 @@
 /**
  * Agent Orchestrator（自 routes/agent.ts 拆分）
- * 讲解/对话的上下文组装、答案门控、错误映射与收尾持久化；路由层只做 HTTP/SSE 适配。
- * 工厂注入 AgentDeps(外部 ports)+ 内部协作者(会话/记忆/缓存/工具循环)——服务内依赖显式化,便于独立测试。
+ * 讲解/对话的上下文组装、答案门控与收尾持久化；路由层只做 HTTP/SSE 适配。
  */
-import { z } from 'zod';
-import { logger, AppError } from '@core/foundation';
+import { logger } from '@core/foundation';
 import {
   buildDeepSystem,
   buildHoverRetrySystem,
@@ -20,42 +18,10 @@ import type { AgentConversation } from './agentConversation.js';
 import type { HoverCache } from './hoverCache.js';
 import type { AgentMemory } from './agentMemory.js';
 import type { ToolLoop } from '../lib/tools/toolLoop.js';
+import type { ChatBody, ExplainBody } from '../routes/schemas.js';
+import { mapLlmError, noProviderError } from './llmErrors.js';
 
-export const explainSchemaFixed = z.object({
-  mode: z.enum(['hover', 'click']),
-  selection: z.object({
-    text: z.string().min(1).max(4000),
-    context: z.string().max(2000).optional(),
-    sectionId: z.string().max(120).optional(),
-    route: z.string().max(300).optional(),
-    articleSlug: z.string().max(120).optional(),
-    title: z.string().max(200).optional(),
-  }),
-  style: z.string().max(40).optional(),
-});
-
-export const chatSchema = z.object({
-  message: z.string().min(1).max(4000),
-  conversationId: z.string().max(64).optional(),
-  /** 匿名会话 ACL：与 conversation.guestKey 匹配；登录用户忽略 */
-  guestKey: z.string().min(16).max(80).optional(),
-  context: z
-    .object({
-      route: z.string().max(300).optional(),
-      articleSlug: z.string().max(120).optional(),
-      sectionId: z.string().max(120).optional(),
-    })
-    .optional(),
-  style: z.string().max(40).optional(),
-  mode: z.enum(['fast', 'deep']).optional(),
-  /** 推理模式：react 启用真 tool-loop；默认 deep_teach */
-  reasoningMode: z.enum(['deep_teach', 'react']).optional(),
-  /** 与 reasoningMode:'react' 等价的快捷开关 */
-  toolsEnabled: z.boolean().optional(),
-});
-
-export type ExplainBody = z.infer<typeof explainSchemaFixed>;
-export type ChatBody = z.infer<typeof chatSchema>;
+export type { ChatBody, ExplainBody } from '../routes/schemas.js';
 
 export function createAgentOrchestrator(
   deps: AgentDeps,
@@ -95,8 +61,8 @@ export function createAgentOrchestrator(
       }
       logger.warn({ event: 'hover_retry_fail' }, 'hover retry fail');
       return '';
-    } catch {
-      logger.warn({ event: 'hover_retry_fail' }, 'hover retry fail');
+    } catch (e) {
+      logger.warn({ event: 'hover_retry_fail', err: String(e) }, 'hover retry fail');
       return '';
     }
   }
@@ -202,36 +168,9 @@ export function createAgentOrchestrator(
     void memory.maybeSaveImportantMemory(userId, userMsg, answer);
   }
 
-  function llmError(err: unknown): AppError {
-    // 业务 AppError（如 BYOK_URL_REJECTED / NO_PROVIDER）原样透传
-    if (err instanceof AppError) return err;
-    // A-01：上游错误带 URL/原文诊断字段——只进日志，客户端只见安全消息
-    const info = llm.isLlmCallError(err) ? err : null;
-    if (info) {
-      logger.error(
-        { err: info.diagnostic, status: info.status },
-        'LLM call failed',
-      );
-      // 5xx 视为上游问题给 502；4xx 中的 400/422 已在 provider 内部处理
-      return new AppError(502, 'LLM_ERROR', info.messageForClient);
-    }
-    logger.error(
-      {
-        err: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : { raw: String(err) },
-      },
-      'LLM call failed',
-    );
-    return new AppError(502, 'LLM_ERROR', '模型调用失败，请稍后重试');
+  function llmError(err: unknown) {
+    return mapLlmError(llm, err);
   }
-
-  function noProviderError(): AppError {
-    return new AppError(
-      400,
-      'NO_PROVIDER',
-      '未配置模型：请登录后在「设置 → BYOK」填写 Base URL、API Key、模型与 API 格式。',
-    );
-  }
-
   async function runExplain(body: ExplainBody, userId: string | undefined) {
     const ctx = await memory.loadUserContext(userId, body.selection.route);
     // R-04：主备故障转移链；provider 用于元信息/提示词，chain 用于调用

@@ -1,6 +1,6 @@
 /**
  * Agent 会话管理（C-02：自 routes/agent.ts 拆分）
- * 会话生命周期、过期匿名会话清理、消息持久化与滚动摘要。
+ * 会话生命周期、过期匿名会话清理、消息持久化与滚动摘要（超限删除最旧消息）。
  * 匿名会话须绑定 guestKey，防止仅凭 conversationId 续写（IDOR）。
  * 工厂注入 PrismaClient——仅访问 agent 归属表(AgentConversation/AgentMessage)。
  */
@@ -106,39 +106,51 @@ export function createAgentConversation(prisma: import('@prisma/client').PrismaC
     userMsg: string,
     assistant: { content: string; thinking?: string },
   ) {
-    await prisma.agentMessage.createMany({
-      data: [
-        { conversationId, role: 'user', content: userMsg.slice(0, 4000) },
-        {
-          conversationId,
-          role: 'assistant',
-          content: assistant.content.slice(0, 8000),
-          thinking: (assistant.thinking || '').slice(0, 4000),
-        },
-      ],
+    await prisma.$transaction(async (tx) => {
+      await tx.agentMessage.createMany({
+        data: [
+          { conversationId, role: 'user', content: userMsg.slice(0, 4000) },
+          {
+            conversationId,
+            role: 'assistant',
+            content: assistant.content.slice(0, 8000),
+            thinking: (assistant.thinking || '').slice(0, 4000),
+          },
+        ],
+      });
+      const count = await tx.agentMessage.count({ where: { conversationId } });
+      if (count > 24) {
+        const old = await tx.agentMessage.findMany({
+          where: { conversationId },
+          orderBy: { createdAt: 'asc' },
+          take: 8,
+        });
+        const snippet = old
+          .map((m) => `${m.role}: ${m.content.slice(0, 80)}`)
+          .join(' | ')
+          .slice(0, 500);
+        const conv = await tx.agentConversation.findUnique({
+          where: { id: conversationId },
+          select: { summary: true },
+        });
+        const merged = [conv?.summary, snippet].filter(Boolean).join(' | ');
+        const summary = merged.length <= 500 ? merged : merged.slice(merged.length - 500);
+        await tx.agentConversation.update({
+          where: { id: conversationId },
+          data: { summary, updatedAt: new Date() },
+        });
+        if (old.length) {
+          await tx.agentMessage.deleteMany({
+            where: { id: { in: old.map((m) => m.id) } },
+          });
+        }
+      } else {
+        await tx.agentConversation.update({
+          where: { id: conversationId },
+          data: { updatedAt: new Date() },
+        });
+      }
     });
-    // 滚动摘要：超过 20 条时压缩最旧事实
-    const count = await prisma.agentMessage.count({ where: { conversationId } });
-    if (count > 24) {
-      const old = await prisma.agentMessage.findMany({
-        where: { conversationId },
-        orderBy: { createdAt: 'asc' },
-        take: 8,
-      });
-      const snippet = old
-        .map((m) => `${m.role}: ${m.content.slice(0, 80)}`)
-        .join(' | ')
-        .slice(0, 500);
-      await prisma.agentConversation.update({
-        where: { id: conversationId },
-        data: { summary: snippet, updatedAt: new Date() },
-      });
-    } else {
-      await prisma.agentConversation.update({
-        where: { id: conversationId },
-        data: { updatedAt: new Date() },
-      });
-    }
   }
 
   return { createGuestKey, ensureConversation, loadRecentMessages, persistTurn };

@@ -1,22 +1,40 @@
 # Grimoire 架构说明
 
-> 最后核对：2026-08-04（以仓库代码为准）
+> 最后核对：2026-08-28（以仓库代码为准）
 
 ## 概览
 
-Monorepo（npm workspaces：`apps/*`、`packages/*`）：
+模块化单体（npm workspaces：`apps/*`、`packages/*`、`services/*`）。域间**禁止 import 实现**，只经 `@core/contracts` 的端口与 DTO 通信；唯一组合根是 `services/api`。
 
 | 路径 | 职责 | 状态 |
 |------|------|------|
-| `apps/web` | Vite 8 + React 19 + TypeScript 读者/作者端 | 已实现 |
-| `apps/api` | Express 5 + Prisma 6 + SQLite（可换 PostgreSQL） | 已实现 |
-| `packages/shared` | 共享类型、权限矩阵、悬停答案净化 | 已实现 |
-| `services/agent` | 独立 Agent Runtime 拆分预留 | **仅 README**；站内 Agent 已在 `apps/api` |
+| `apps/web` | Vite 8 + React 19 + TypeScript 读者/作者端（仅依赖 `@core/contracts`） | 已实现 |
+| `apps/desktop` / `apps/mobile` | 客户端占位 | 占位 |
+| `packages/contracts` | 契约：DTO、权限矩阵、端口、悬停净化 | 已实现 |
+| `packages/foundation` | 机制：JWT、错误、SSE、BYOK 加解密、限流中间件 | 已实现 |
+| `services/identity` | 认证 / 用户 / 作者申请 / 设置 | 已实现 |
+| `services/content` | 文章 / 动画 / 领域 / 批注 | 已实现 |
+| `services/community` | 话题论坛（关联文章经 `ArticleQueryPort`） | 已实现 |
+| `services/agent` | 悬停/面板 Agent、记忆、tool-loop、学习进度 | 已实现 |
+| `services/llm` | 无状态 LLM 网关（密钥只在此解密） | 已实现 |
+| `services/api` | 宿主组合根：Express 装配、Prisma schema、健康检查 | 已实现 |
 | `services/mcp` | MCP Server 预留 | **仅 README + `GET /api/v1/mcp/status`** |
-| 种子内容 | `apps/api/prisma/seed-content.ts`（`DEFAULT_ARTICLE_SEEDS`，20 篇 + 5 个领域） | 已实现 |
-| `_legacy/` | 旧静态站归档（已停维护） | 已迁入；`.gitignore` 已忽略（46 文件历史已纳入 git 跟踪，新内容不会再进 git） |
+| 种子内容 | `services/api/prisma/seed-content.ts` | 已实现 |
 
-根目录若存在空壳 `api/`，以 `apps/api` 为准，勿混用。
+CI：`node scripts/check-domain-boundaries.mjs` 扫描跨服务 import 与他域 `prisma.<model>`。
+
+## 依赖矩阵（允许方向）
+
+```
+apps/web            → @core/contracts
+packages/foundation → @core/contracts
+services/*          → contracts + foundation + 本域表
+services/api        → 全部（组合根，唯一允许）
+```
+
+禁止：服务间 import 实现、服务读写他域表、前端 import 任何服务或 foundation。
+
+跨域文章引用（`Topic.articleId`、`LearningProgress.articleId`）只存 ID、无 FK；存在性经 `ArticleQueryPort` 校验。`Annotation.articleId` 仍为本域 FK（content 内部）。
 
 ## 角色与权限
 
@@ -59,17 +77,12 @@ Refresh/access 目前仍存前端 localStorage；HttpOnly Cookie 迁移见 **`do
 
 ### 主要数据模型
 
-`apps/api/prisma/schema.prisma`（15 个模型）：
+`services/api/prisma/schema.prisma`（15 个模型，按域分组注释）：
 
-- `User`（`role`、`authorTier`、`adminLevel`、`allowAgentAnnotationReview`、`preferences`）
-- `RefreshToken`（refresh 旋转/吊销，存 sha256）
-- `Domain`（`agent | llm` track）
-- `Article` / `AnimationDef` / `ArticleAnimation`
-- `AgentConversation` / `AgentMessage`（匿名会话 TTL 7 天）
-- `AgentMemory` / `LearningProgress` / `HoverExplainCache`
-- `Topic` / `TopicReply`
-- `AuthorApplication`（`author | elite`）
-- `Annotation`（GET/POST/PATCH 见 `/api/v1/annotations`）
+- identity：`User`、`RefreshToken`、`AuthorApplication`
+- content：`Domain`、`Article`、`AnimationDef`、`ArticleAnimation`、`Annotation`
+- community：`Topic`、`TopicReply`
+- agent：`AgentConversation`、`AgentMessage`、`AgentMemory`、`LearningProgress`、`HoverExplainCache`
 
 ## 前端结构（Web）
 
@@ -88,13 +101,16 @@ Refresh/access 目前仍存前端 localStorage；HttpOnly Cookie 迁移见 **`do
 
 Vite：端口 **8180**、`host: 127.0.0.1`、`/api` 代理到 `8181`。
 
-## 后端结构（API）
+## 后端结构（组合根 + 域服务）
 
-- 路由：`auth` · `articles` · `animations` · `applications` · `domains` · `settings` · `topics` · `agent` · `annotations`
-- 中间件：`optionalAuth` / `requireAuth` / `requireRole` / `requirePermission` / `requireAdminLevel`；Zod `validate`；统一 `errorHandler`
-- LLM：`providers.ts`（三种 API 格式 + BYOK，调用委托 `adapters/`）；`agentPrompt.ts`（Prompt + 复用 shared 净化）；`tools/`（P0 tool-loop 最小集：`search_articles` / `get_article`）
-- 服务：`services/agentOrchestrator.ts`（讲解/对话编排）、`services/agentConversation.ts`（会话/摘要/匿名 TTL）、`services/agentMemory.ts`（记忆/BYOK/话题）、`services/hoverCache.ts`（L2 缓存 v7）、`services/annotationAcl.ts`（批注可见性/审核）、`services/serialize.ts`（DTO）
-- 日志：`lib/logger.ts`（Pino；开发 pino-pretty）
+- 组合根：`services/api/src/compose.ts` 注入 ports，按前缀挂载各域 Router；`app.ts` 只做限流/健康/CORS
+- identity：`routes/auth` · `settings` · `applications`
+- content：`routes/articles` · `animations` · `domains` · `annotations`
+- community：`routes/topics`（文章经 `ArticleQueryPort`）
+- agent：`routes/agent` + `services/agentOrchestrator` / `agentConversation` / `agentMemory` / `hoverCache` / `learningProgress`
+- llm：`providers.ts` + `adapters/`（三种 API 格式；BYOK 密文在 `byokToProvider` 内解密）
+- 机制：`@core/foundation`（JWT、errorHandler、SSE、BYOK 加解密）
+- 中间件：`optionalAuth` / `requireAuth` / `requireRole` / `requirePermission`；Zod `validate`
 
 ## 安全要点
 
@@ -104,8 +120,8 @@ Vite：端口 **8180**、`host: 127.0.0.1`、`/api` 代理到 `8181`。
 
 ```bash
 npm install
-# 配置 apps/api/.env（见仓库根 .env.example）
-cd apps/api && npx prisma db push && npm run db:seed
+# 配置 services/api/.env（见仓库根 .env.example）
+cd services/api && npx prisma db push && npm run db:seed
 npm run dev:api     # :8181（含 /docs Swagger UI）
 npm run dev:web     # :8180
 ```

@@ -18,9 +18,10 @@
     "db:generate": "npm run db:generate --workspace=@core/api",
     "db:migrate": "npm run db:migrate --workspace=@core/api",
     "db:seed": "npm run db:seed --workspace=@core/api",
+    "check:boundaries": "node scripts/check-domain-boundaries.mjs",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspace=@core/api --if-present && npm run test --workspace=@core/contracts --if-present && npm run test --workspace=@core/foundation --if-present && npm run test --workspace=@core/identity --if-present && npm run test --workspace=@core/content --if-present && npm run test --workspace=@core/community --if-present && npm run test --workspace=@core/agent --if-present && npm run test --workspace=@core/llm --if-present"
+    "test": "node scripts/check-domain-boundaries.mjs && npm run test --workspace=@core/api --if-present && npm run test --workspace=@core/contracts --if-present && npm run test --workspace=@core/foundation --if-present && npm run test --workspace=@core/identity --if-present && npm run test --workspace=@core/content --if-present && npm run test --workspace=@core/community --if-present && npm run test --workspace=@core/agent --if-present && npm run test --workspace=@core/llm --if-present && npm run test --workspace=@core/web --if-present"
   },
   "engines": {
     "node": ">=20.3"
