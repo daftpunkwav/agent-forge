@@ -13,9 +13,9 @@
   "dependencies": {
     "@core/contracts": "*",
     "@core/foundation": "*",
-    "@prisma/client": "^6.10.1",
+    "@prisma/client": "^7.10.0",
     "express": "^5.1.0",
-    "zod": "^3.25.67"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/node": "^24.0.10",
