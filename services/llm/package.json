@@ -15,10 +15,10 @@
     "@core/foundation": "*"
   },
   "devDependencies": {
-    "@types/node": "^24.0.10",
-    "oxlint": "^1.76.0",
-    "typescript": "~5.9.3",
-    "vitest": "^3.2.7"
+    "@types/node": "^26.4.0",
+    "oxlint": "^1.80.0",
+    "typescript": "~7.0.2",
+    "vitest": "^4.1.11"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
